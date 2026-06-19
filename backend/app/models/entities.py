@@ -1,0 +1,79 @@
+from __future__ import annotations
+
+from sqlmodel import Field, SQLModel
+
+
+class ProjectEntity(SQLModel, table=True):
+    id: str = Field(primary_key=True)
+    name: str
+    destination: str
+    platform: str
+    target_duration_sec: int
+    video_type: str
+    style_preference: str
+    route_text: str
+    media_root: str = ""
+    status: str
+    selected_theme_id: str = ""
+
+
+class AssetEntity(SQLModel, table=True):
+    asset_id: str = Field(primary_key=True)
+    project_id: str = Field(index=True)
+    location: str
+    scene: str
+    relative_path: str = ""
+    media_type: str
+    shot_type: str
+    emotion_tags: str
+    visual_tags: str
+    information_density: str
+    suggested_duration_sec: float
+    function_tags: str
+
+
+class ThemeEntity(SQLModel, table=True):
+    id: str = Field(primary_key=True)
+    project_id: str = Field(index=True)
+    title: str
+    summary: str
+    core_emotion: str
+    rhythm_profile: str
+    platform_reason: str
+
+
+class StoryboardSegmentEntity(SQLModel, table=True):
+    id: str = Field(primary_key=True)
+    project_id: str = Field(index=True)
+    theme_id: str = Field(index=True)
+    start_time: float
+    end_time: float
+    asset_id: str = Field(index=True)
+    shot_description: str
+    function_name: str
+    rhythm: str
+    beat_mode: str
+    beat_points: str
+    subtitle: str
+
+
+class RhythmPlanEntity(SQLModel, table=True):
+    id: str = Field(primary_key=True)
+    project_id: str = Field(index=True)
+    bgm_style: str
+    selected_track_name: str
+    beat_mode: str
+    beat_points: str
+    rhythm_notes: str
+    dark_cut_suggestions: str
+    photo_motion_suggestions: str
+
+
+class PublishPlanEntity(SQLModel, table=True):
+    id: str = Field(primary_key=True)
+    project_id: str = Field(index=True)
+    title: str
+    short_title: str
+    description: str
+    tags: str
+    cover_suggestion: str
