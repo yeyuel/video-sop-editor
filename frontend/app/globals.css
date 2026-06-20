@@ -23,3 +23,63 @@ a {
   color: inherit;
   text-decoration: none;
 }
+
+@keyframes async-orbit {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes async-dot {
+  0%,
+  80%,
+  100% {
+    transform: translateY(0) scale(0.88);
+    opacity: 0.35;
+  }
+
+  40% {
+    transform: translateY(-5px) scale(1);
+    opacity: 1;
+  }
+}
+
+@keyframes toast-enter {
+  from {
+    opacity: 0;
+    transform: translateY(-14px) scale(0.98);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes toast-progress {
+  from {
+    transform: scaleX(1);
+    transform-origin: left;
+  }
+
+  to {
+    transform: scaleX(0);
+    transform-origin: left;
+  }
+}
+
+.async-orbit {
+  animation: async-orbit 0.9s linear infinite;
+}
+
+.async-dot {
+  animation: async-dot 1s ease-in-out infinite;
+}
+
+.toast-enter {
+  animation: toast-enter 220ms ease-out;
+}
+
+.toast-progress {
+  animation: toast-progress 2.4s linear forwards;
+}

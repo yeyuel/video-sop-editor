@@ -10,11 +10,13 @@ from app.models.entities import (
     RhythmPlanEntity,
     StoryboardSegmentEntity,
     ThemeEntity,
+    UserEntity,
 )
 from app.models.schemas import (
     AssetCreateRequest,
     AssetRead,
     AssetUpdateRequest,
+    AuthUserRead,
     ExportDocumentRead,
     ExportPlanRead,
     ExportPlanWriteRequest,
@@ -26,6 +28,8 @@ from app.models.schemas import (
     RhythmPlanWriteRequest,
     StoryboardBundleRead,
     StoryboardGenerateRequest,
+    StoryboardInsertRequest,
+    StoryboardReorderRequest,
     StoryboardSaveRequest,
     StoryboardSegmentRead,
     StoryboardSegmentWrite,
@@ -33,6 +37,7 @@ from app.models.schemas import (
     ThemeSelectRequest,
     WorkspaceDataRead,
 )
+from app.services.auth import verify_password
 
 
 def _loads_str_list(value: str) -> list[str]:
@@ -52,6 +57,16 @@ def _dumps(value: list[str] | list[float]) -> str:
 
 
 class SqlRepository:
+    def authenticate_user(
+        self, session: Session, username: str, password: str
+    ) -> AuthUserRead | None:
+        user = session.exec(select(UserEntity).where(UserEntity.username == username)).first()
+        if not user or not user.ui_enabled:
+            return None
+        if not verify_password(password, user.password_hash):
+            return None
+        return self._map_user(user)
+
     def list_projects(self, session: Session) -> list[ProjectRead]:
         projects = session.exec(select(ProjectEntity)).all()
         return [self._map_project(item) for item in projects]
@@ -65,6 +80,7 @@ class SqlRepository:
             target_duration_sec=payload.targetDurationSec,
             video_type=payload.videoType,
             style_preference=payload.stylePreference,
+            style_notes=payload.styleNotes,
             route_text=payload.routeText,
             media_root=payload.mediaRoot,
             status=payload.status,
@@ -97,6 +113,7 @@ class SqlRepository:
         project.target_duration_sec = payload.targetDurationSec
         project.video_type = payload.videoType
         project.style_preference = payload.stylePreference
+        project.style_notes = payload.styleNotes
         project.route_text = payload.routeText
         project.media_root = payload.mediaRoot
         project.status = payload.status
@@ -344,6 +361,14 @@ class SqlRepository:
             ),
         )
 
+    def get_storyboard_segment(
+        self, session: Session, project_id: str, segment_id: str
+    ) -> StoryboardSegmentRead | None:
+        segment = session.get(StoryboardSegmentEntity, segment_id)
+        if not segment or segment.project_id != project_id:
+            return None
+        return self._map_segment(segment)
+
     def generate_storyboard(
         self, session: Session, project_id: str, request: StoryboardGenerateRequest
     ) -> StoryboardBundleRead | None:
@@ -387,6 +412,110 @@ class SqlRepository:
         theme = self._resolve_theme(session, project_id, payload.themeId)
         theme_id = theme.id if theme else project.selected_theme_id
         self._replace_storyboard_segments(session, project_id, theme_id, payload.segments)
+        return self.get_storyboard_bundle(session, project_id)
+
+    def insert_storyboard_segment(
+        self, session: Session, project_id: str, payload: StoryboardInsertRequest
+    ) -> StoryboardBundleRead | None:
+        project = self.get_project_entity(session, project_id)
+        if not project:
+            return None
+
+        current_segments = self.list_storyboard(session, project_id)
+        ordered_segments = [self._segment_read_to_write(item) for item in current_segments]
+        if payload.afterSegmentId:
+            insert_index = next(
+                (
+                    index + 1
+                    for index, segment in enumerate(ordered_segments)
+                    if segment.id == payload.afterSegmentId
+                ),
+                None,
+            )
+            if insert_index is None:
+                raise ValueError("Reference storyboard segment not found")
+        else:
+            insert_index = len(ordered_segments)
+
+        new_segment = payload.segment.model_copy(
+            update={"id": payload.segment.id or f"seg_{uuid4().hex[:8]}"}
+        )
+        ordered_segments.insert(insert_index, new_segment)
+
+        normalized_segments = self._normalize_storyboard_segments(
+            ordered_segments,
+            self.get_rhythm_plan(session, project_id),
+        )
+        theme = self._resolve_theme(session, project_id, payload.themeId)
+        theme_id = theme.id if theme else project.selected_theme_id
+        self._replace_storyboard_segments(session, project_id, theme_id, normalized_segments)
+        return self.get_storyboard_bundle(session, project_id)
+
+    def reorder_storyboard(
+        self, session: Session, project_id: str, payload: StoryboardReorderRequest
+    ) -> StoryboardBundleRead | None:
+        project = self.get_project_entity(session, project_id)
+        if not project:
+            return None
+
+        current_segments = self.list_storyboard(session, project_id)
+        segment_map = {segment.id: self._segment_read_to_write(segment) for segment in current_segments}
+        current_ids = list(segment_map.keys())
+        if sorted(current_ids) != sorted(payload.orderedSegmentIds):
+            raise ValueError("Reorder request must include every storyboard segment exactly once")
+
+        ordered_segments = [segment_map[segment_id] for segment_id in payload.orderedSegmentIds]
+        normalized_segments = self._normalize_storyboard_segments(
+            ordered_segments,
+            self.get_rhythm_plan(session, project_id),
+        )
+        theme_id = project.selected_theme_id
+        self._replace_storyboard_segments(session, project_id, theme_id, normalized_segments)
+        return self.get_storyboard_bundle(session, project_id)
+
+    def update_storyboard_segment(
+        self,
+        session: Session,
+        project_id: str,
+        segment_id: str,
+        payload: StoryboardSegmentWrite,
+    ) -> StoryboardSegmentRead | None:
+        project = self.get_project_entity(session, project_id)
+        if not project:
+            return None
+
+        segment = session.get(StoryboardSegmentEntity, segment_id)
+        if not segment or segment.project_id != project_id:
+            return None
+
+        segment.start_time = payload.startTime
+        segment.end_time = payload.endTime
+        segment.asset_id = payload.assetId
+        segment.shot_description = payload.shotDescription
+        segment.function_name = payload.function
+        segment.rhythm = payload.rhythm
+        segment.beat_mode = payload.beatMode
+        segment.beat_points = _dumps(payload.beatPoints)
+        segment.subtitle = payload.subtitle
+
+        session.add(segment)
+        session.commit()
+        session.refresh(segment)
+        return self._map_segment(segment)
+
+    def delete_storyboard_segment(
+        self, session: Session, project_id: str, segment_id: str
+    ) -> StoryboardBundleRead | None:
+        project = self.get_project_entity(session, project_id)
+        if not project:
+            return None
+
+        segment = session.get(StoryboardSegmentEntity, segment_id)
+        if not segment or segment.project_id != project_id:
+            return None
+
+        session.delete(segment)
+        session.commit()
         return self.get_storyboard_bundle(session, project_id)
 
     def get_export_plan(self, session: Session, project_id: str) -> ExportPlanRead | None:
@@ -499,10 +628,21 @@ class SqlRepository:
             targetDurationSec=item.target_duration_sec,
             videoType=item.video_type,
             stylePreference=item.style_preference,
+            styleNotes=item.style_notes,
             routeText=item.route_text,
             mediaRoot=item.media_root,
             status=item.status,
             selectedThemeId=item.selected_theme_id,
+        )
+
+    @staticmethod
+    def _map_user(item: UserEntity) -> AuthUserRead:
+        return AuthUserRead(
+            id=item.id,
+            username=item.username,
+            displayName=item.display_name,
+            role=item.role,
+            uiEnabled=item.ui_enabled,
         )
 
     @staticmethod
@@ -777,6 +917,62 @@ class SqlRepository:
                 )
             )
         session.commit()
+
+    @staticmethod
+    def _segment_read_to_write(segment: StoryboardSegmentRead) -> StoryboardSegmentWrite:
+        return StoryboardSegmentWrite(
+            id=segment.id,
+            startTime=segment.startTime,
+            endTime=segment.endTime,
+            assetId=segment.assetId,
+            shotDescription=segment.shotDescription,
+            function=segment.function,
+            rhythm=segment.rhythm,
+            beatMode=segment.beatMode,
+            beatPoints=segment.beatPoints,
+            subtitle=segment.subtitle,
+        )
+
+    @staticmethod
+    def _normalize_storyboard_segments(
+        segments: list[StoryboardSegmentWrite],
+        rhythm: RhythmPlanRead | None,
+    ) -> list[StoryboardSegmentWrite]:
+        normalized: list[StoryboardSegmentWrite] = []
+        current_time = 0.0
+        for segment in segments:
+            duration = max(round(segment.endTime - segment.startTime, 2), 0.5)
+            start_time = round(current_time, 2)
+            end_time = round(start_time + duration, 2)
+            beat_mode = rhythm.beatMode if rhythm and rhythm.beatMode != "none" else segment.beatMode
+            beat_points = SqlRepository._slice_beat_points(
+                rhythm.beatPoints if rhythm else [],
+                start_time,
+                end_time,
+            )
+            normalized.append(
+                segment.model_copy(
+                    update={
+                        "startTime": start_time,
+                        "endTime": end_time,
+                        "beatMode": beat_mode,
+                        "beatPoints": beat_points,
+                    }
+                )
+            )
+            current_time = end_time
+        return normalized
+
+    @staticmethod
+    def _slice_beat_points(
+        beat_points: list[float], start_time: float, end_time: float
+    ) -> list[float]:
+        scoped_points = [
+            round(point, 2) for point in beat_points if start_time <= point <= end_time
+        ]
+        if scoped_points:
+            return scoped_points
+        return [start_time, end_time]
 
     @staticmethod
     def _build_storyboard_validation(

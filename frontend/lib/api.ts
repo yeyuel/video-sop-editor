@@ -7,6 +7,7 @@ import type {
   Project,
   RhythmPlan,
   StoryboardBundle,
+  StoryboardSegment,
   WorkspaceData
 } from "@/types/domain";
 
@@ -65,6 +66,19 @@ export async function getStoryboard(projectId: string): Promise<StoryboardBundle
     segments: fallbackWorkspace.storyboard,
     validation: fallbackWorkspace.storyboardValidation
   });
+}
+
+export async function getStoryboardSegment(
+  projectId: string,
+  segmentId: string
+): Promise<StoryboardSegment> {
+  const fallbackSegment =
+    fallbackWorkspace.storyboard.find((item) => item.id === segmentId) ??
+    fallbackWorkspace.storyboard[0];
+  return safeFetch<StoryboardSegment>(
+    `/projects/${projectId}/storyboard/${segmentId}`,
+    fallbackSegment
+  );
 }
 
 export async function getExportPlan(projectId: string): Promise<ExportPlan | null> {

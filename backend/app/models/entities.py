@@ -3,6 +3,15 @@ from __future__ import annotations
 from sqlmodel import Field, SQLModel
 
 
+class UserEntity(SQLModel, table=True):
+    id: str = Field(primary_key=True)
+    username: str = Field(index=True, unique=True)
+    display_name: str
+    password_hash: str
+    role: str
+    ui_enabled: bool = True
+
+
 class ProjectEntity(SQLModel, table=True):
     id: str = Field(primary_key=True)
     name: str
@@ -11,6 +20,7 @@ class ProjectEntity(SQLModel, table=True):
     target_duration_sec: int
     video_type: str
     style_preference: str
+    style_notes: str = ""
     route_text: str
     media_root: str = ""
     status: str

@@ -1,6 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.api.routes.auth import router as auth_router
 from app.api.routes.assets import router as assets_router
 from app.api.routes.exports import router as exports_router
 from app.api.routes.health import router as health_router
@@ -37,6 +38,7 @@ def on_startup() -> None:
 
 
 app.include_router(health_router, prefix=api_prefix)
+app.include_router(auth_router, prefix=api_prefix)
 app.include_router(projects_router, prefix=api_prefix)
 app.include_router(assets_router, prefix=api_prefix)
 app.include_router(themes_router, prefix=api_prefix)

@@ -214,6 +214,7 @@ Base URL:
 
 - 生成逻辑优先参考节拍点
 - 分镜在当前实现中会覆盖该项目原有分镜
+- 当前“生成分镜”是整表重建，不是增量追加
 
 ## 5.3 保存分镜
 
@@ -240,6 +241,91 @@ Base URL:
   ]
 }
 ```
+
+说明：
+
+- 当前接口用于整表覆盖保存
+- 当需要批量调整时间线时可继续复用此接口
+
+## 5.4 单条分镜编辑
+
+`PUT /projects/{projectId}/storyboard/{segmentId}`
+
+请求体：
+
+```json
+{
+  "id": "seg_xxx",
+  "startTime": 12,
+  "endTime": 13,
+  "assetId": "KANAS_010",
+  "shotDescription": "喀纳斯 - 湖边回望镜头",
+  "function": "transition",
+  "rhythm": "balanced",
+  "beatMode": "beat_1",
+  "beatPoints": [12, 12.5, 13],
+  "subtitle": "喀纳斯 / 湖边回望"
+}
+```
+
+说明：
+
+- 用于单条分镜详细编辑
+- 前端保存成功后可直接返回分镜列表页
+
+## 5.5 删除单条分镜
+
+`DELETE /projects/{projectId}/storyboard/{segmentId}`
+
+说明：
+
+- 删除后返回最新分镜列表和校验结果
+
+## 5.6 一期建议新增接口：后插一条分镜
+
+`POST /projects/{projectId}/storyboard/insert`
+
+请求体建议：
+
+```json
+{
+  "afterSegmentId": "seg_xxx",
+  "segment": {
+    "assetId": "KANAS_010",
+    "shotDescription": "喀纳斯 - 湖边回望镜头",
+    "function": "transition",
+    "rhythm": "balanced",
+    "beatMode": "beat_1",
+    "beatPoints": [12, 12.5, 13],
+    "subtitle": "喀纳斯 / 湖边回望",
+    "startTime": 12,
+    "endTime": 13
+  }
+}
+```
+
+说明：
+
+- 最小改动版只支持“在当前镜头后插一条”
+- 插入后需要重排后续镜头的开始和结束时间
+
+## 5.7 一期建议新增接口：顺序调整
+
+`PUT /projects/{projectId}/storyboard/reorder`
+
+请求体建议：
+
+```json
+{
+  "orderedSegmentIds": ["seg_a", "seg_c", "seg_b", "seg_d"]
+}
+```
+
+说明：
+
+- 对应前端“上移 / 下移”
+- 后端按新顺序保留每条分镜原时长，并重算整条时间线
+- 一期暂不要求支持自由拖拽排序
 
 ## 6. 导出信息
 

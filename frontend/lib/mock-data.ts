@@ -14,6 +14,7 @@ export const fallbackProjects: Project[] = [
     targetDurationSec: 60,
     videoType: "emotion_film",
     stylePreference: "情绪氛围片",
+    styleNotes: "冷蓝色调，空镜为主，结尾保留回味感。",
     routeText: "将军山 - 喀纳斯 - 禾木",
     mediaRoot: "D:\\素材库\\阿勒泰项目",
     status: "draft",

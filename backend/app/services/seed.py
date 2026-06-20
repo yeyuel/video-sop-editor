@@ -9,10 +9,26 @@ from app.models.entities import (
     RhythmPlanEntity,
     StoryboardSegmentEntity,
     ThemeEntity,
+    UserEntity,
 )
+from app.services.auth import hash_password
 
 
 def seed_demo_data(session: Session) -> None:
+    default_user = session.exec(select(UserEntity).where(UserEntity.username == "director")).first()
+    if not default_user:
+        session.add(
+            UserEntity(
+                id="user_director",
+                username="director",
+                display_name="Director",
+                password_hash=hash_password("root123"),
+                role="director",
+                ui_enabled=True,
+            )
+        )
+        session.commit()
+
     existing = session.exec(select(ProjectEntity).where(ProjectEntity.id == "proj_001")).first()
     if existing:
         existing.media_root = existing.media_root or r"D:\素材库\阿勒泰项目"
@@ -29,6 +45,7 @@ def seed_demo_data(session: Session) -> None:
         target_duration_sec=60,
         video_type="emotion_film",
         style_preference="情绪氛围片",
+        style_notes="冷蓝色调，空镜为主，结尾保留回味感。",
         route_text="将军山 - 喀纳斯 - 禾木",
         media_root=r"D:\素材库\阿勒泰项目",
         status="draft",

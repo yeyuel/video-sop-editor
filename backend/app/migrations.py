@@ -17,6 +17,19 @@ def run_sqlite_migrations() -> None:
                 session.exec(
                     text("ALTER TABLE projectentity ADD COLUMN selected_theme_id TEXT DEFAULT ''")
                 )
+            if "style_notes" not in project_columns:
+                session.exec(text("ALTER TABLE projectentity ADD COLUMN style_notes TEXT DEFAULT ''"))
+                session.exec(
+                    text(
+                        """
+                        UPDATE projectentity
+                        SET
+                          style_notes = substr(style_preference, instr(style_preference, '；补充：') + length('；补充：')),
+                          style_preference = substr(style_preference, 1, instr(style_preference, '；补充：') - 1)
+                        WHERE instr(style_preference, '；补充：') > 0
+                        """
+                    )
+                )
 
         if "assetentity" in table_names:
             asset_columns = {column["name"] for column in inspector.get_columns("assetentity")}

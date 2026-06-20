@@ -1,6 +1,7 @@
 import Link from "next/link";
 
 type TopbarProps = {
+  allowLogout?: boolean;
   eyebrow?: string;
   title?: string;
   action?: {
@@ -10,6 +11,7 @@ type TopbarProps = {
 };
 
 export function Topbar({
+  allowLogout = true,
   eyebrow = "Travel Edit OS",
   title = "旅行短视频剪辑导演助手",
   action
@@ -22,18 +24,30 @@ export function Topbar({
           {title}
         </h1>
       </div>
-      {action ? (
-        <Link
-          href={action.href}
-          className="inline-flex rounded-full border border-pine/15 bg-white/85 px-5 py-3 text-sm font-medium text-pine transition hover:border-pine/30 hover:bg-mist"
-        >
-          {action.label}
-        </Link>
-      ) : (
-        <div className="rounded-full border border-pine/20 bg-white/75 px-4 py-2 text-sm text-ink/75">
-          MVP Workspace
-        </div>
-      )}
+      <div className="flex items-center gap-3">
+        {action ? (
+          <Link
+            href={action.href}
+            className="inline-flex rounded-full border border-pine/15 bg-white/85 px-5 py-3 text-sm font-medium text-pine transition hover:border-pine/30 hover:bg-mist"
+          >
+            {action.label}
+          </Link>
+        ) : (
+          <div className="rounded-full border border-pine/20 bg-white/75 px-4 py-2 text-sm text-ink/75">
+            MVP Workspace
+          </div>
+        )}
+        {allowLogout ? (
+          <form action="/api/auth/logout" method="post">
+            <button
+              type="submit"
+              className="inline-flex rounded-full border border-pine/15 bg-white/85 px-5 py-3 text-sm font-medium text-pine transition hover:border-pine/30 hover:bg-mist"
+            >
+              退出登录
+            </button>
+          </form>
+        ) : null}
+      </div>
     </header>
   );
 }

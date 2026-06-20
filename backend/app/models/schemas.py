@@ -9,6 +9,19 @@ class ApiResponse(BaseModel):
     meta: dict[str, str] = Field(default_factory=lambda: {"requestId": "local-dev"})
 
 
+class AuthLoginRequest(BaseModel):
+    username: str
+    password: str
+
+
+class AuthUserRead(BaseModel):
+    id: str
+    username: str
+    displayName: str
+    role: str
+    uiEnabled: bool
+
+
 class ProjectRead(BaseModel):
     id: str
     name: str
@@ -17,6 +30,7 @@ class ProjectRead(BaseModel):
     targetDurationSec: int
     videoType: str
     stylePreference: str
+    styleNotes: str
     routeText: str
     mediaRoot: str
     status: str
@@ -30,6 +44,7 @@ class ProjectWriteRequest(BaseModel):
     targetDurationSec: int
     videoType: str
     stylePreference: str
+    styleNotes: str = ""
     routeText: str
     mediaRoot: str
     status: str = "draft"
@@ -132,6 +147,16 @@ class StoryboardGenerateRequest(BaseModel):
 class StoryboardSaveRequest(BaseModel):
     themeId: str | None = None
     segments: list[StoryboardSegmentWrite]
+
+
+class StoryboardInsertRequest(BaseModel):
+    themeId: str | None = None
+    afterSegmentId: str | None = None
+    segment: StoryboardSegmentWrite
+
+
+class StoryboardReorderRequest(BaseModel):
+    orderedSegmentIds: list[str]
 
 
 class StoryboardValidationRead(BaseModel):

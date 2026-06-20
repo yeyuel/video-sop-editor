@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { SectionCard } from "@/components/section-card";
-import { StoryboardClient } from "@/components/storyboard-client";
+import { StoryboardListClient } from "@/components/storyboard-list-client";
 import { Topbar } from "@/components/topbar";
 import { WorkflowStepper } from "@/components/workflow-stepper";
 import { getWorkspace } from "@/lib/api";
@@ -32,12 +32,12 @@ export default async function ProjectStoryboardPage({
               项目页
             </Link>
             <span>/</span>
-            <span className="text-ink/75">分镜生成</span>
+            <span className="text-ink/75">分镜列表</span>
           </div>
           <p className="text-xs uppercase tracking-[0.24em] text-pine/70">Storyboard</p>
           <h2 className="mt-3 text-3xl font-semibold text-ink">分镜时间线</h2>
           <p className="mt-2 text-sm leading-6 text-ink/70">
-            分镜会绑定素材 ID，并按节拍点生成镜头时长。你也可以在生成后再做人工微调并保存。
+            这里先看时间线摘要，确认镜头顺序、素材绑定和功能位。单条镜头的详细编辑已经下沉到独立页面，避免长列表里来回滚动。
           </p>
         </section>
 
@@ -59,10 +59,10 @@ export default async function ProjectStoryboardPage({
 
         <div className="mt-6">
           <SectionCard
-            title="分镜脚本"
-            description="每条分镜都必须绑定素材 ID，导出时会连同标题、标签和文案一起写入结果。"
+            title="分镜列表"
+            description="列表页只保留关键信息。需要调整镜头内容时，进入单独编辑页逐条保存。"
           >
-            <StoryboardClient
+            <StoryboardListClient
               projectId={projectId}
               initialBundle={{
                 segments: workspace.storyboard,

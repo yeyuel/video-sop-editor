@@ -54,6 +54,7 @@ export type ProjectPayload = {
   targetDurationSec: number;
   videoType: string;
   stylePreference: string;
+  styleNotes: string;
   routeText: string;
   mediaRoot: string;
   status?: string;
@@ -77,6 +78,16 @@ export type RhythmPlanPayload = RhythmPlan;
 export type StoryboardSavePayload = {
   themeId?: string;
   segments: StoryboardSegment[];
+};
+
+export type StoryboardInsertPayload = {
+  themeId?: string;
+  afterSegmentId?: string;
+  segment: StoryboardSegment;
+};
+
+export type StoryboardReorderPayload = {
+  orderedSegmentIds: string[];
 };
 
 export type ExportPlanPayload = ExportPlan;
@@ -172,6 +183,46 @@ export function saveStoryboard(
   payload: StoryboardSavePayload
 ): Promise<StoryboardBundle> {
   return request<StoryboardBundle>(`/projects/${projectId}/storyboard`, {
+    method: "PUT",
+    body: JSON.stringify(payload)
+  });
+}
+
+export function updateStoryboardSegment(
+  projectId: string,
+  segmentId: string,
+  payload: StoryboardSegment
+): Promise<StoryboardSegment> {
+  return request<StoryboardSegment>(`/projects/${projectId}/storyboard/${segmentId}`, {
+    method: "PUT",
+    body: JSON.stringify(payload)
+  });
+}
+
+export function deleteStoryboardSegment(
+  projectId: string,
+  segmentId: string
+): Promise<StoryboardBundle> {
+  return request<StoryboardBundle>(`/projects/${projectId}/storyboard/${segmentId}`, {
+    method: "DELETE"
+  });
+}
+
+export function insertStoryboardSegment(
+  projectId: string,
+  payload: StoryboardInsertPayload
+): Promise<StoryboardBundle> {
+  return request<StoryboardBundle>(`/projects/${projectId}/storyboard/insert`, {
+    method: "POST",
+    body: JSON.stringify(payload)
+  });
+}
+
+export function reorderStoryboard(
+  projectId: string,
+  payload: StoryboardReorderPayload
+): Promise<StoryboardBundle> {
+  return request<StoryboardBundle>(`/projects/${projectId}/storyboard/reorder`, {
     method: "PUT",
     body: JSON.stringify(payload)
   });

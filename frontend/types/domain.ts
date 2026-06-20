@@ -6,6 +6,7 @@ export type Project = {
   targetDurationSec: number;
   videoType: string;
   stylePreference: string;
+  styleNotes: string;
   routeText: string;
   mediaRoot: string;
   status: string;
