@@ -2,6 +2,7 @@
 
 import type { FormEvent } from "react";
 import { useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
 import { generateRhythmPlan, saveRhythmPlan } from "@/lib/browser-api";
 import type { RhythmPlan } from "@/types/domain";
 
@@ -43,6 +44,7 @@ export function RhythmPlanClient({
   projectId,
   initialPlan
 }: RhythmPlanClientProps) {
+  const router = useRouter();
   const [plan, setPlan] = useState(initialPlan);
   const [beatPointsText, setBeatPointsText] = useState(numberListToText(initialPlan.beatPoints));
   const [rhythmNotesText, setRhythmNotesText] = useState(listToText(initialPlan.rhythmNotes));
@@ -65,6 +67,7 @@ export function RhythmPlanClient({
       try {
         const nextPlan = await generateRhythmPlan(projectId);
         syncFromPlan(nextPlan);
+        router.refresh();
       } catch (submitError) {
         setError(
           submitError instanceof Error ? submitError.message : "生成节奏规划失败，请稍后重试。"
@@ -86,6 +89,7 @@ export function RhythmPlanClient({
           photoMotionSuggestions: parseTextList(photoText)
         });
         syncFromPlan(nextPlan);
+        router.refresh();
       } catch (submitError) {
         setError(
           submitError instanceof Error ? submitError.message : "保存节奏规划失败，请稍后重试。"

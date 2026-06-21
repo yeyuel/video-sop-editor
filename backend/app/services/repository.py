@@ -1,4 +1,5 @@
 import json
+import re
 from uuid import uuid4
 
 from sqlmodel import Session, delete, select
@@ -159,7 +160,8 @@ class SqlRepository:
         assets = session.exec(
             select(AssetEntity).where(AssetEntity.project_id == project_id)
         ).all()
-        return [self._map_asset(item) for item in assets]
+        mapped_assets = [self._map_asset(item) for item in assets]
+        return sorted(mapped_assets, key=self._asset_order_key)
 
     def get_asset_entity(self, session: Session, asset_id: str) -> AssetEntity | None:
         return session.get(AssetEntity, asset_id)
@@ -366,12 +368,14 @@ class SqlRepository:
     def get_storyboard_bundle(self, session: Session, project_id: str) -> StoryboardBundleRead:
         project = self.get_project_entity(session, project_id)
         segments = self.list_storyboard(session, project_id)
+        assets = self.list_assets(session, project_id)
         return StoryboardBundleRead(
             segments=segments,
             validation=self._build_storyboard_validation(
-                project.target_duration_sec if project else 0,
+                project,
                 segments,
                 self.get_rhythm_plan(session, project_id),
+                assets,
             ),
         )
 
@@ -397,9 +401,10 @@ class SqlRepository:
             return StoryboardBundleRead(
                 segments=[],
                 validation=self._build_storyboard_validation(
-                    project.target_duration_sec,
+                    project,
                     [],
                     rhythm,
+                    assets,
                 ),
             )
 
@@ -1032,16 +1037,46 @@ class SqlRepository:
 
     @staticmethod
     def _build_storyboard_validation(
-        target_duration_sec: int,
+        project: ProjectEntity | None,
         segments: list[StoryboardSegmentRead],
         rhythm: RhythmPlanRead | None,
+        assets: list[AssetRead],
     ) -> StoryboardValidationRead:
-        all_bound = all(bool(segment.assetId) for segment in segments)
+        asset_map = {asset.assetId: asset for asset in assets}
+        all_bound = all(bool(segment.assetId) and segment.assetId in asset_map for segment in segments)
         total_duration = round(segments[-1].endTime if segments else 0.0, 2)
         beat_adaptation_enabled = any(segment.beatMode != "none" for segment in segments)
-        beat_alignment = all(len(segment.beatPoints) > 0 for segment in segments) if segments else False
-        beat_alignment = beat_alignment and beat_adaptation_enabled
-        target_duration_reached = total_duration >= float(target_duration_sec)
+        route_locations = (
+            SqlRepository._parse_route_locations(project.route_text)
+            if project and project.route_text
+            else []
+        )
+        location_continuity = SqlRepository._check_location_continuity(
+            segments,
+            asset_map,
+            route_locations,
+        )
+        beat_alignment = (
+            SqlRepository._check_beat_alignment(segments, rhythm.beatPoints if rhythm else [])
+            if beat_adaptation_enabled
+            else False
+        )
+        target_duration_reached = total_duration >= float(project.target_duration_sec if project else 0)
+        if not segments:
+            message = "\u5f53\u524d\u8fd8\u6ca1\u6709\u53ef\u7528\u5206\u955c\uff0c\u8bf7\u5148\u786e\u8ba4\u7d20\u6750\u548c\u4e3b\u9898\u3002"
+        elif target_duration_reached:
+            message = "\u5df2\u751f\u6210\u5230\u76ee\u6807\u65f6\u957f\u8303\u56f4\u5185\u3002"
+        else:
+            message = "\u7d20\u6750\u5df2\u5168\u90e8\u4f7f\u7528\u5b8c\uff0c\u5f53\u524d\u603b\u65f6\u957f\u8fd8\u672a\u8fbe\u5230\u76ee\u6807\u65f6\u957f\u3002\u5efa\u8bae\u8865\u5145\u7d20\u6750\uff0c\u6216\u5148\u5c06\u957f\u7d20\u6750\u5207\u5206\u540e\u5206\u522b\u5f55\u5165\u3002"
+        return StoryboardValidationRead(
+            allSegmentsBoundToAsset=all_bound,
+            locationContinuityPassed=location_continuity,
+            beatAlignmentPassed=beat_alignment,
+            beatAdaptationEnabled=beat_adaptation_enabled,
+            totalDurationSec=total_duration,
+            targetDurationReached=target_duration_reached,
+            message=message,
+        )
         if not segments:
             message = "当前还没有可用分镜，请先确认素材和主题。"
         elif target_duration_reached:
@@ -1050,13 +1085,97 @@ class SqlRepository:
             message = "素材已全部使用完，当前总时长未达到目标时长。建议补充素材，或先将长素材切分后分别录入。"
         return StoryboardValidationRead(
             allSegmentsBoundToAsset=all_bound,
-            locationContinuityPassed=all_bound,
+            locationContinuityPassed=location_continuity,
             beatAlignmentPassed=beat_alignment,
             beatAdaptationEnabled=beat_adaptation_enabled,
             totalDurationSec=total_duration,
             targetDurationReached=target_duration_reached,
             message=message,
         )
+
+    @staticmethod
+    def _parse_route_locations(route_text: str) -> list[str]:
+        return [
+            item.strip()
+            for item in re.split(
+                r"\s*(?:->|\u2192|\u2014|-|,|\uff0c|\u3001|\r?\n)\s*",
+                route_text,
+            )
+            if item.strip()
+        ]
+        return [
+            item.strip()
+            for item in re.split(r"\s*(?:->|→|—|-|,|，|、|\r?\n)\s*", route_text)
+            if item.strip()
+        ]
+
+    @staticmethod
+    def _check_location_continuity(
+        segments: list[StoryboardSegmentRead],
+        asset_map: dict[str, AssetRead],
+        route_locations: list[str],
+    ) -> bool:
+        if not segments:
+            return False
+
+        segment_locations: list[str] = []
+        for segment in segments:
+            asset = asset_map.get(segment.assetId)
+            if not asset or not asset.location:
+                return False
+            segment_locations.append(asset.location)
+
+        if route_locations:
+            route_index_map = {location: index for index, location in enumerate(route_locations)}
+            route_indexes = [route_index_map.get(location) for location in segment_locations]
+            if all(index is not None for index in route_indexes):
+                last_index = -1
+                for index in route_indexes:
+                    if index is not None and index < last_index:
+                        return False
+                    if index is not None:
+                        last_index = index
+                return True
+
+        seen_order: dict[str, int] = {}
+        last_seen_index = -1
+        for location in segment_locations:
+            if location not in seen_order:
+                seen_order[location] = len(seen_order)
+            current_index = seen_order[location]
+            if current_index < last_seen_index:
+                return False
+            last_seen_index = current_index
+        return True
+
+    @staticmethod
+    def _check_beat_alignment(
+        segments: list[StoryboardSegmentRead],
+        beat_points: list[float],
+        tolerance: float = 0.05,
+    ) -> bool:
+        if not segments or len(beat_points) < 2:
+            return False
+
+        for segment in segments:
+            if not segment.beatPoints:
+                return False
+            if not SqlRepository._is_on_beat(segment.startTime, beat_points, tolerance):
+                return False
+            if not SqlRepository._is_on_beat(segment.endTime, beat_points, tolerance):
+                return False
+        return True
+
+    @staticmethod
+    def _is_on_beat(time_point: float, beat_points: list[float], tolerance: float) -> bool:
+        return any(abs(point - time_point) <= tolerance for point in beat_points)
+
+    @staticmethod
+    def _asset_order_key(asset: AssetRead) -> tuple[int, str]:
+        match = re.search(r"_(\d+)$", asset.assetId)
+        if match:
+            return (int(match.group(1)), asset.assetId)
+        return (10**9, asset.assetId)
 
     def _render_export_content(self, workspace: WorkspaceDataRead, fmt: str) -> str:
         export_payload = {

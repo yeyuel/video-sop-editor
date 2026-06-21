@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
 import { generateThemes, selectTheme } from "@/lib/browser-api";
 import type { NarrativeTheme } from "@/types/domain";
 
@@ -13,6 +14,7 @@ export function ThemeSelectorClient({
   projectId,
   initialThemes
 }: ThemeSelectorClientProps) {
+  const router = useRouter();
   const [themes, setThemes] = useState(initialThemes);
   const [error, setError] = useState("");
   const [isPending, startTransition] = useTransition();
@@ -23,6 +25,7 @@ export function ThemeSelectorClient({
       try {
         const nextThemes = await generateThemes(projectId, 3);
         setThemes(nextThemes);
+        router.refresh();
       } catch (submitError) {
         setError(
           submitError instanceof Error ? submitError.message : "生成主题失败，请稍后重试。"
@@ -37,6 +40,7 @@ export function ThemeSelectorClient({
       try {
         const nextThemes = await selectTheme(projectId, themeId);
         setThemes(nextThemes);
+        router.refresh();
       } catch (submitError) {
         setError(
           submitError instanceof Error ? submitError.message : "选择主题失败，请稍后重试。"

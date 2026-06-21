@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState, useTransition } from "react";
 
 import { BlockingNotice, ToastNotice } from "@/components/async-status";
@@ -32,6 +33,7 @@ export function StoryboardListClient({
   selectedTrackName,
   targetDurationSec
 }: StoryboardListClientProps) {
+  const router = useRouter();
   const [bundle, setBundle] = useState(initialBundle);
   const [alignToBeat, setAlignToBeat] = useState(true);
   const [error, setError] = useState("");
@@ -102,6 +104,7 @@ export function StoryboardListClient({
           selectedTrackName
         });
         setBundle(nextBundle);
+        router.refresh();
         setNotice({
           title: "分镜已更新",
           message: nextBundle.validation.message || "当前时间线已经重新生成。"
@@ -125,6 +128,7 @@ export function StoryboardListClient({
       try {
         const nextBundle = await deleteStoryboardSegment(projectId, segmentId);
         setBundle(nextBundle);
+        router.refresh();
         setNotice({
           title: "镜头已删除",
           message: "当前分镜列表已经更新。"
@@ -161,6 +165,7 @@ export function StoryboardListClient({
           orderedSegmentIds: orderedIds
         });
         setBundle(nextBundle);
+        router.refresh();
         setNotice({
           title: "顺序已更新",
           message: "分镜顺序和时间线已经重新排布。"

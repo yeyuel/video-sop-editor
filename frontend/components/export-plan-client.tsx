@@ -2,6 +2,7 @@
 
 import type { FormEvent } from "react";
 import { useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
 import { previewExport, saveExportPlan } from "@/lib/browser-api";
 import type { ExportDocument, ExportPlan } from "@/types/domain";
 
@@ -22,6 +23,7 @@ function splitTags(value: string) {
 }
 
 export function ExportPlanClient({ projectId, initialPlan }: ExportPlanClientProps) {
+  const router = useRouter();
   const [plan, setPlan] = useState(initialPlan);
   const [tagsText, setTagsText] = useState(joinTags(initialPlan.tags));
   const [preview, setPreview] = useState<ExportDocument | null>(null);
@@ -39,6 +41,7 @@ export function ExportPlanClient({ projectId, initialPlan }: ExportPlanClientPro
         });
         setPlan(nextPlan);
         setTagsText(joinTags(nextPlan.tags));
+        router.refresh();
       } catch (submitError) {
         setError(
           submitError instanceof Error ? submitError.message : "保存导出信息失败，请稍后重试。"
