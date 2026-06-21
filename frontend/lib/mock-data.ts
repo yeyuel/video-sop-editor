@@ -26,7 +26,10 @@ const fallbackValidation: StoryboardValidation = {
   allSegmentsBoundToAsset: true,
   locationContinuityPassed: true,
   beatAlignmentPassed: true,
-  totalDurationSec: 2.5
+  beatAdaptationEnabled: true,
+  totalDurationSec: 2.5,
+  targetDurationReached: false,
+  message: "素材已全部使用完，当前总时长未达到目标时长。建议补充素材，或先将长素材切分后分别录入。"
 };
 
 const fallbackExportPlan: ExportPlan = {

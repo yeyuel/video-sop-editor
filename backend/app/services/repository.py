@@ -57,6 +57,20 @@ def _dumps(value: list[str] | list[float]) -> str:
 
 
 class SqlRepository:
+    STORYBOARD_CHAPTER_PRIORITY = {
+        "opening_hook": 0,
+        "supporting": 1,
+        "slow_climax": 2,
+        "main_climax": 3,
+        "ending": 4,
+    }
+
+    STORYBOARD_MODIFIER_PRIORITY = {
+        "base": 0,
+        "rhythm_hit": 1,
+        "transition_buffer": 2,
+    }
+
     def authenticate_user(
         self, session: Session, username: str, password: str
     ) -> AuthUserRead | None:
@@ -390,8 +404,13 @@ class SqlRepository:
             )
 
         target_duration = request.targetDurationSec or project.target_duration_sec
-        beat_mode = request.beatMode or (rhythm.beatMode if rhythm else "none")
-        beat_points = rhythm.beatPoints if rhythm else []
+        align_to_beat = request.alignToBeat
+        beat_mode = (
+            request.beatMode or (rhythm.beatMode if rhythm else "none")
+            if align_to_beat
+            else "none"
+        )
+        beat_points = rhythm.beatPoints if rhythm and align_to_beat else []
 
         segments = self._generate_storyboard_segments(
             assets=assets,
@@ -828,16 +847,14 @@ class SqlRepository:
         if not assets:
             return []
 
+        ordered_assets = SqlRepository._order_assets_for_storyboard(assets)
         segments: list[StoryboardSegmentWrite] = []
         beat_index = 0
         current_time = 0.0
         safe_beats = beat_points if len(beat_points) >= 2 and beat_mode != "none" else []
-        max_segments = min(max(int(target_duration_sec / 0.5) + 2, len(assets) * 3), 120)
-
-        for index in range(max_segments):
+        for asset in ordered_assets:
             if current_time >= float(target_duration_sec):
                 break
-            asset = assets[index % len(assets)]
 
             if safe_beats:
                 beat_index = SqlRepository._advance_beat_index(safe_beats, current_time, beat_index)
@@ -872,6 +889,45 @@ class SqlRepository:
             current_time = round(end_time, 2)
 
         return segments
+
+    @staticmethod
+    def _order_assets_for_storyboard(assets: list[AssetRead]) -> list[AssetRead]:
+        indexed_assets = list(enumerate(assets))
+        indexed_assets.sort(
+            key=lambda item: (
+                SqlRepository._asset_storyboard_chapter_priority(item[1]),
+                SqlRepository._asset_storyboard_modifier_priority(item[1]),
+                SqlRepository._asset_sequence_number(item[1].assetId),
+                item[0],
+            )
+        )
+        return [asset for _, asset in indexed_assets]
+
+    @staticmethod
+    def _asset_storyboard_chapter_priority(asset: AssetRead) -> int:
+        priorities = [
+            SqlRepository.STORYBOARD_CHAPTER_PRIORITY[tag]
+            for tag in asset.functionTags
+            if tag in SqlRepository.STORYBOARD_CHAPTER_PRIORITY
+        ]
+        if priorities:
+            return min(priorities)
+        return SqlRepository.STORYBOARD_CHAPTER_PRIORITY["supporting"]
+
+    @staticmethod
+    def _asset_storyboard_modifier_priority(asset: AssetRead) -> int:
+        if "transition_buffer" in asset.functionTags:
+            return SqlRepository.STORYBOARD_MODIFIER_PRIORITY["transition_buffer"]
+        if "rhythm_hit" in asset.functionTags:
+            return SqlRepository.STORYBOARD_MODIFIER_PRIORITY["rhythm_hit"]
+        return SqlRepository.STORYBOARD_MODIFIER_PRIORITY["base"]
+
+    @staticmethod
+    def _asset_sequence_number(asset_id: str) -> int:
+        if "_" not in asset_id:
+            return 10**9
+        suffix = asset_id.rsplit("_", 1)[-1]
+        return int(suffix) if suffix.isdigit() else 10**9
 
     @staticmethod
     def _advance_beat_index(beat_points: list[float], current_time: float, beat_index: int) -> int:
@@ -982,13 +1038,24 @@ class SqlRepository:
     ) -> StoryboardValidationRead:
         all_bound = all(bool(segment.assetId) for segment in segments)
         total_duration = round(segments[-1].endTime if segments else 0.0, 2)
+        beat_adaptation_enabled = any(segment.beatMode != "none" for segment in segments)
         beat_alignment = all(len(segment.beatPoints) > 0 for segment in segments) if segments else False
-        beat_alignment = beat_alignment and bool(rhythm and rhythm.beatMode != "none")
+        beat_alignment = beat_alignment and beat_adaptation_enabled
+        target_duration_reached = total_duration >= float(target_duration_sec)
+        if not segments:
+            message = "当前还没有可用分镜，请先确认素材和主题。"
+        elif target_duration_reached:
+            message = "已生成到目标时长范围内。"
+        else:
+            message = "素材已全部使用完，当前总时长未达到目标时长。建议补充素材，或先将长素材切分后分别录入。"
         return StoryboardValidationRead(
             allSegmentsBoundToAsset=all_bound,
             locationContinuityPassed=all_bound,
             beatAlignmentPassed=beat_alignment,
-            totalDurationSec=total_duration if total_duration else float(target_duration_sec),
+            beatAdaptationEnabled=beat_adaptation_enabled,
+            totalDurationSec=total_duration,
+            targetDurationReached=target_duration_reached,
+            message=message,
         )
 
     def _render_export_content(self, workspace: WorkspaceDataRead, fmt: str) -> str:

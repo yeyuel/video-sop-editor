@@ -16,6 +16,10 @@ type ProjectBasicsPrototypeProps = {
   backHref?: string;
 };
 
+type ProjectFormState = Omit<ProjectPayload, "targetDurationSec"> & {
+  targetDurationSec: string;
+};
+
 const styleOptions = [
   {
     value: "情绪氛围片",
@@ -69,11 +73,11 @@ export function ProjectBasicsPrototype({
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState("");
   const [showSuccess, setShowSuccess] = useState(false);
-  const [form, setForm] = useState<ProjectPayload>({
+  const [form, setForm] = useState<ProjectFormState>({
     name: project?.name ?? "",
     destination: project?.destination ?? "",
     platform: project?.platform ?? "xiaohongshu",
-    targetDurationSec: project?.targetDurationSec ?? 60,
+    targetDurationSec: project?.targetDurationSec?.toString() ?? "60",
     videoType: project?.videoType ?? "emotion_film",
     stylePreference: project?.stylePreference ?? styleOptions[0].value,
     styleNotes: project?.styleNotes ?? "",
@@ -102,8 +106,17 @@ export function ProjectBasicsPrototype({
 
     startTransition(async () => {
       try {
+        const targetDurationSec = Number(form.targetDurationSec);
+        if (!form.targetDurationSec.trim() || Number.isNaN(targetDurationSec)) {
+          throw new Error("请填写有效的目标时长。");
+        }
+        if (targetDurationSec < 5) {
+          throw new Error("目标时长不能小于 5 秒。");
+        }
+
         const payload: ProjectPayload = {
           ...form,
+          targetDurationSec,
           styleNotes: form.styleNotes.trim(),
           status: "draft"
         };
@@ -120,7 +133,7 @@ export function ProjectBasicsPrototype({
             name: updated.name,
             destination: updated.destination,
             platform: updated.platform,
-            targetDurationSec: updated.targetDurationSec,
+            targetDurationSec: updated.targetDurationSec.toString(),
             videoType: updated.videoType,
             stylePreference: updated.stylePreference,
             styleNotes: updated.styleNotes,
@@ -196,12 +209,16 @@ export function ProjectBasicsPrototype({
             <span className="mb-2 block text-sm text-ink/75">目标时长（秒）</span>
             <input
               required
-              min={10}
-              type="number"
+              type="text"
+              inputMode="numeric"
               value={form.targetDurationSec}
-              onChange={(event) =>
-                setForm({ ...form, targetDurationSec: Number(event.target.value) })
-              }
+              onChange={(event) => {
+                const nextValue = event.target.value;
+                if (nextValue === "" || /^\d*$/.test(nextValue)) {
+                  setForm({ ...form, targetDurationSec: nextValue });
+                }
+              }}
+              placeholder="例如：15"
               className="w-full rounded-2xl border border-pine/30 bg-white px-4 py-3 outline-none transition focus:border-pine"
             />
           </label>

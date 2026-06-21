@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState, useTransition } from "react";
+
 import { BlockingNotice, ToastNotice } from "@/components/async-status";
 import {
   deleteStoryboardSegment,
@@ -32,6 +33,7 @@ export function StoryboardListClient({
   targetDurationSec
 }: StoryboardListClientProps) {
   const [bundle, setBundle] = useState(initialBundle);
+  const [alignToBeat, setAlignToBeat] = useState(true);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState<{
     message: string;
@@ -52,7 +54,7 @@ export function StoryboardListClient({
   const validationItems = useMemo(
     () => [
       {
-        label: "绑定素材",
+        label: "素材绑定",
         value: bundle.validation.allSegmentsBoundToAsset ? "通过" : "未通过"
       },
       {
@@ -60,11 +62,19 @@ export function StoryboardListClient({
         value: bundle.validation.locationContinuityPassed ? "通过" : "未通过"
       },
       {
-        label: "节拍对齐",
-        value: bundle.validation.beatAlignmentPassed ? "通过" : "未通过"
+        label: "节拍适配",
+        value: bundle.validation.beatAdaptationEnabled
+          ? bundle.validation.beatAlignmentPassed
+            ? "已对齐"
+            : "未对齐"
+          : "未启用"
       },
       {
-        label: "总时长",
+        label: "目标时长",
+        value: bundle.validation.targetDurationReached ? "已达到" : "素材不足"
+      },
+      {
+        label: "当前总时长",
         value: `${bundle.validation.totalDurationSec}s`
       }
     ],
@@ -88,12 +98,13 @@ export function StoryboardListClient({
           themeId: selectedThemeId,
           targetDurationSec,
           beatMode,
+          alignToBeat,
           selectedTrackName
         });
         setBundle(nextBundle);
         setNotice({
           title: "分镜已更新",
-          message: "已根据当前节奏重新生成时间线。"
+          message: nextBundle.validation.message || "当前时间线已经重新生成。"
         });
       } catch (submitError) {
         showError(
@@ -179,11 +190,20 @@ export function StoryboardListClient({
       <div className="space-y-5">
         <div className="rounded-[28px] border border-pine/10 bg-mist/70 p-4">
           <div className="flex flex-wrap items-start justify-between gap-4">
-            <div>
+            <div className="max-w-2xl">
               <p className="text-sm font-medium text-ink">时间线整理区</p>
               <p className="mt-1 text-sm leading-6 text-ink/65">
-                先生成基础分镜，再用后插、上移、下移快速整理结构。详细字段修改放到单镜头页完成。
+                当前生成规则已按一期逻辑收敛为“默认不重复使用素材”。如果素材不足，系统会在素材用完时停止生成，并提示你补充素材或先把长素材切分后分别录入。
               </p>
+              <label className="mt-3 inline-flex items-center gap-2 text-sm text-ink/70">
+                <input
+                  type="checkbox"
+                  checked={alignToBeat}
+                  onChange={(event) => setAlignToBeat(event.target.checked)}
+                  className="h-4 w-4 rounded border-pine/30 text-pine focus:ring-pine"
+                />
+                生成时适配节拍
+              </label>
             </div>
             <div className="flex flex-wrap items-center gap-3">
               <button
@@ -192,7 +212,7 @@ export function StoryboardListClient({
                 disabled={isPending}
                 className="inline-flex rounded-full bg-pine px-5 py-3 text-sm font-medium text-white transition hover:bg-pine/90 disabled:cursor-not-allowed disabled:opacity-60"
               >
-                {isPending ? "生成中..." : "根据节拍生成分镜"}
+                {isPending ? "生成中..." : "生成分镜"}
               </button>
               <Link
                 href={`/projects/${projectId}/storyboard/new`}
@@ -210,7 +230,13 @@ export function StoryboardListClient({
           </div>
         ) : null}
 
-        <div className="grid gap-3 md:grid-cols-4">
+        {bundle.validation.message ? (
+          <div className="rounded-2xl border border-pine/10 bg-sand/45 px-4 py-3 text-sm text-ink/70">
+            {bundle.validation.message}
+          </div>
+        ) : null}
+
+        <div className="grid gap-3 md:grid-cols-5">
           {validationItems.map((item) => (
             <div
               key={item.label}
@@ -228,7 +254,10 @@ export function StoryboardListClient({
         ) : (
           <div className="space-y-4">
             {bundle.segments.map((segment, index) => {
-              const duration = Math.max(0, Number((segment.endTime - segment.startTime).toFixed(2)));
+              const duration = Math.max(
+                0,
+                Number((segment.endTime - segment.startTime).toFixed(2))
+              );
 
               return (
                 <article

@@ -121,7 +121,7 @@ export function AssetFormPrototype({
     emotionTags: joinTags(asset?.emotionTags ?? []),
     visualTags: joinTags(asset?.visualTags ?? []),
     informationDensity: asset?.informationDensity ?? "medium",
-    suggestedDurationSec: asset?.suggestedDurationSec ?? 1.5
+    suggestedDurationSec: asset?.suggestedDurationSec?.toString() ?? "1.5"
   });
 
   const selectedFunctionDescriptions = useMemo(() => {
@@ -145,6 +145,14 @@ export function AssetFormPrototype({
 
     startTransition(async () => {
       try {
+        const suggestedDurationSec = Number(form.suggestedDurationSec);
+        if (!form.suggestedDurationSec.trim() || Number.isNaN(suggestedDurationSec)) {
+          throw new Error("请填写有效的建议时长。");
+        }
+        if (suggestedDurationSec <= 0) {
+          throw new Error("建议时长需要大于 0 秒。");
+        }
+
         const payload: AssetPayload = {
           location: form.location,
           scene: form.scene,
@@ -154,7 +162,7 @@ export function AssetFormPrototype({
           emotionTags: splitTags(form.emotionTags),
           visualTags: splitTags(form.visualTags),
           informationDensity: form.informationDensity,
-          suggestedDurationSec: Number(form.suggestedDurationSec),
+          suggestedDurationSec,
           functionTags: [...selectedFunctionTags, ...splitTags(customFunctionTags)]
         };
 
@@ -265,13 +273,16 @@ export function AssetFormPrototype({
           <span className="mb-2 block text-sm text-ink/75">建议时长（秒）</span>
           <input
             required
-            min={0.1}
-            step={0.1}
-            type="number"
+            type="text"
+            inputMode="decimal"
             value={form.suggestedDurationSec}
-            onChange={(event) =>
-              setForm({ ...form, suggestedDurationSec: Number(event.target.value) })
-            }
+            onChange={(event) => {
+              const nextValue = event.target.value;
+              if (nextValue === "" || /^\d*\.?\d*$/.test(nextValue)) {
+                setForm({ ...form, suggestedDurationSec: nextValue });
+              }
+            }}
+            placeholder="例如：1.5"
             className="w-full rounded-2xl border border-pine/30 bg-white px-4 py-3 outline-none transition focus:border-pine"
           />
         </label>

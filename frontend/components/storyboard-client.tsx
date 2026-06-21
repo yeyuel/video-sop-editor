@@ -1,7 +1,7 @@
 "use client";
 
 import type { FormEvent } from "react";
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import { generateStoryboard, saveStoryboard } from "@/lib/browser-api";
 import type { StoryboardBundle, StoryboardSegment } from "@/types/domain";
 
@@ -14,6 +14,23 @@ type StoryboardClientProps = {
   selectedTrackName: string;
 };
 
+type SegmentTimeDraft = {
+  endTime: string;
+  startTime: string;
+};
+
+function buildTimeDrafts(segments: StoryboardSegment[]) {
+  return Object.fromEntries(
+    segments.map((segment) => [
+      segment.id,
+      {
+        startTime: segment.startTime.toString(),
+        endTime: segment.endTime.toString()
+      }
+    ])
+  ) as Record<string, SegmentTimeDraft>;
+}
+
 export function StoryboardClient({
   projectId,
   initialBundle,
@@ -23,8 +40,15 @@ export function StoryboardClient({
   selectedTrackName
 }: StoryboardClientProps) {
   const [bundle, setBundle] = useState(initialBundle);
+  const [timeDrafts, setTimeDrafts] = useState<Record<string, SegmentTimeDraft>>(() =>
+    buildTimeDrafts(initialBundle.segments)
+  );
   const [error, setError] = useState("");
   const [isPending, startTransition] = useTransition();
+
+  useEffect(() => {
+    setTimeDrafts(buildTimeDrafts(bundle.segments));
+  }, [bundle.segments]);
 
   function updateSegment(id: string, patch: Partial<StoryboardSegment>) {
     setBundle((current) => ({
@@ -32,6 +56,50 @@ export function StoryboardClient({
       segments: current.segments.map((segment) =>
         segment.id === id ? { ...segment, ...patch } : segment
       )
+    }));
+  }
+
+  function updateTimeDraft(
+    segmentId: string,
+    field: keyof SegmentTimeDraft,
+    rawValue: string,
+    fallbackValue: number
+  ) {
+    if (rawValue !== "" && !/^\d*\.?\d*$/.test(rawValue)) {
+      return;
+    }
+
+    setTimeDrafts((current) => ({
+      ...current,
+      [segmentId]: {
+        startTime: current[segmentId]?.startTime ?? fallbackValue.toString(),
+        endTime: current[segmentId]?.endTime ?? fallbackValue.toString(),
+        [field]: rawValue
+      }
+    }));
+
+    if (!rawValue.trim()) {
+      return;
+    }
+
+    const parsedValue = Number(rawValue);
+    if (Number.isNaN(parsedValue)) {
+      return;
+    }
+
+    updateSegment(segmentId, {
+      [field]: parsedValue
+    } as Partial<StoryboardSegment>);
+  }
+
+  function resetTimeDraft(segmentId: string, field: keyof SegmentTimeDraft, fallbackValue: number) {
+    setTimeDrafts((current) => ({
+      ...current,
+      [segmentId]: {
+        startTime: current[segmentId]?.startTime ?? fallbackValue.toString(),
+        endTime: current[segmentId]?.endTime ?? fallbackValue.toString(),
+        [field]: fallbackValue.toString()
+      }
     }));
   }
 
@@ -91,6 +159,7 @@ export function StoryboardClient({
           {isPending ? "保存中..." : "保存分镜"}
         </button>
       </div>
+
       {error ? <p className="text-sm text-red-600">{error}</p> : null}
 
       <div className="grid gap-3 md:grid-cols-4">
@@ -123,24 +192,39 @@ export function StoryboardClient({
                 <label className="block">
                   <span className="mb-2 block text-sm text-ink/75">开始</span>
                   <input
-                    type="number"
-                    step={0.1}
-                    value={segment.startTime}
+                    type="text"
+                    inputMode="decimal"
+                    value={timeDrafts[segment.id]?.startTime ?? segment.startTime.toString()}
                     onChange={(event) =>
-                      updateSegment(segment.id, { startTime: Number(event.target.value) })
+                      updateTimeDraft(
+                        segment.id,
+                        "startTime",
+                        event.target.value,
+                        segment.startTime
+                      )
                     }
+                    onBlur={() => {
+                      if (!(timeDrafts[segment.id]?.startTime ?? "").trim()) {
+                        resetTimeDraft(segment.id, "startTime", segment.startTime);
+                      }
+                    }}
                     className="w-full rounded-2xl border border-pine/30 bg-white px-4 py-3 outline-none transition focus:border-pine"
                   />
                 </label>
                 <label className="block">
                   <span className="mb-2 block text-sm text-ink/75">结束</span>
                   <input
-                    type="number"
-                    step={0.1}
-                    value={segment.endTime}
+                    type="text"
+                    inputMode="decimal"
+                    value={timeDrafts[segment.id]?.endTime ?? segment.endTime.toString()}
                     onChange={(event) =>
-                      updateSegment(segment.id, { endTime: Number(event.target.value) })
+                      updateTimeDraft(segment.id, "endTime", event.target.value, segment.endTime)
                     }
+                    onBlur={() => {
+                      if (!(timeDrafts[segment.id]?.endTime ?? "").trim()) {
+                        resetTimeDraft(segment.id, "endTime", segment.endTime);
+                      }
+                    }}
                     className="w-full rounded-2xl border border-pine/30 bg-white px-4 py-3 outline-none transition focus:border-pine"
                   />
                 </label>

@@ -169,6 +169,7 @@ export function generateStoryboard(
     themeId?: string;
     targetDurationSec?: number;
     beatMode?: string;
+    alignToBeat?: boolean;
     selectedTrackName?: string;
   }
 ): Promise<StoryboardBundle> {

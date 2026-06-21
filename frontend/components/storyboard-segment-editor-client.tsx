@@ -67,6 +67,8 @@ export function StoryboardSegmentEditorClient({
 }: StoryboardSegmentEditorClientProps) {
   const router = useRouter();
   const [form, setForm] = useState(segment);
+  const [startTimeText, setStartTimeText] = useState(segment.startTime.toString());
+  const [endTimeText, setEndTimeText] = useState(segment.endTime.toString());
   const [beatPointsText, setBeatPointsText] = useState(numberListToText(segment.beatPoints));
   const [assetQuery, setAssetQuery] = useState(segment.assetId);
   const [locationFilter, setLocationFilter] = useState("");
@@ -166,8 +168,19 @@ export function StoryboardSegmentEditorClient({
 
     startTransition(async () => {
       try {
+        const startTime = Number(startTimeText);
+        const endTime = Number(endTimeText);
+        if (!startTimeText.trim() || Number.isNaN(startTime)) {
+          throw new Error("请填写有效的开始时间。");
+        }
+        if (!endTimeText.trim() || Number.isNaN(endTime)) {
+          throw new Error("请填写有效的结束时间。");
+        }
+
         const payload = {
           ...form,
+          startTime,
+          endTime,
           beatPoints: parseNumberList(beatPointsText)
         };
 
@@ -203,20 +216,30 @@ export function StoryboardSegmentEditorClient({
         <label className="block">
           <span className="mb-2 block text-sm text-ink/75">开始（秒）</span>
           <input
-            type="number"
-            step={0.1}
-            value={form.startTime}
-            onChange={(event) => setForm({ ...form, startTime: Number(event.target.value) })}
+            type="text"
+            inputMode="decimal"
+            value={startTimeText}
+            onChange={(event) => {
+              const nextValue = event.target.value;
+              if (nextValue === "" || /^\d*\.?\d*$/.test(nextValue)) {
+                setStartTimeText(nextValue);
+              }
+            }}
             className="w-full rounded-2xl border border-pine/30 bg-white px-4 py-3 outline-none transition focus:border-pine"
           />
         </label>
         <label className="block">
           <span className="mb-2 block text-sm text-ink/75">结束（秒）</span>
           <input
-            type="number"
-            step={0.1}
-            value={form.endTime}
-            onChange={(event) => setForm({ ...form, endTime: Number(event.target.value) })}
+            type="text"
+            inputMode="decimal"
+            value={endTimeText}
+            onChange={(event) => {
+              const nextValue = event.target.value;
+              if (nextValue === "" || /^\d*\.?\d*$/.test(nextValue)) {
+                setEndTimeText(nextValue);
+              }
+            }}
             className="w-full rounded-2xl border border-pine/30 bg-white px-4 py-3 outline-none transition focus:border-pine"
           />
         </label>

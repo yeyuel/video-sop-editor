@@ -54,7 +54,10 @@ export type StoryboardValidation = {
   allSegmentsBoundToAsset: boolean;
   locationContinuityPassed: boolean;
   beatAlignmentPassed: boolean;
+  beatAdaptationEnabled: boolean;
   totalDurationSec: number;
+  targetDurationReached: boolean;
+  message: string;
 };
 
 export type StoryboardBundle = {

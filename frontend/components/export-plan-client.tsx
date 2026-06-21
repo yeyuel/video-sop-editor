@@ -16,15 +16,12 @@ function joinTags(tags: string[]) {
 
 function splitTags(value: string) {
   return value
-    .split(/[，,、]/)
+    .split(/[，、,]/)
     .map((item) => item.trim())
     .filter(Boolean);
 }
 
-export function ExportPlanClient({
-  projectId,
-  initialPlan
-}: ExportPlanClientProps) {
+export function ExportPlanClient({ projectId, initialPlan }: ExportPlanClientProps) {
   const [plan, setPlan] = useState(initialPlan);
   const [tagsText, setTagsText] = useState(joinTags(initialPlan.tags));
   const [preview, setPreview] = useState<ExportDocument | null>(null);
@@ -62,6 +59,30 @@ export function ExportPlanClient({
         );
       }
     });
+  }
+
+  function handleDownload() {
+    if (!preview) {
+      return;
+    }
+
+    const mimeTypeMap: Record<string, string> = {
+      markdown: "text/markdown;charset=utf-8",
+      json: "application/json;charset=utf-8",
+      yaml: "application/x-yaml;charset=utf-8"
+    };
+
+    const blob = new Blob([preview.content], {
+      type: mimeTypeMap[preview.format] ?? "text/plain;charset=utf-8"
+    });
+    const downloadUrl = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = downloadUrl;
+    anchor.download = preview.fileName;
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    URL.revokeObjectURL(downloadUrl);
   }
 
   return (
@@ -103,7 +124,7 @@ export function ExportPlanClient({
             rows={5}
             value={plan.description}
             onChange={(event) => setPlan({ ...plan, description: event.target.value })}
-            placeholder="填写最终导出时带上的描述文案，后续可替换为 LLM 建议生成。"
+            placeholder="填写最终导出时带上的描述文案，后续可以替换成 LLM 建议结果。"
             className="w-full rounded-2xl border border-pine/30 bg-white px-4 py-3 outline-none transition focus:border-pine"
           />
         </label>
@@ -117,7 +138,9 @@ export function ExportPlanClient({
             className="w-full rounded-2xl border border-pine/30 bg-white px-4 py-3 outline-none transition focus:border-pine"
           />
         </label>
-        {error ? <p className="text-sm text-red-600 md:col-span-2">{error}</p> : null}
+        {error ? (
+          <p className="text-sm text-red-600 md:col-span-2">{error}</p>
+        ) : null}
         <div className="flex flex-wrap gap-3 md:col-span-2">
           <button
             type="submit"
@@ -154,7 +177,7 @@ export function ExportPlanClient({
       </form>
 
       <div className="rounded-xl2 border border-black/5 bg-white/90 p-5 shadow-card">
-        <div className="flex items-center justify-between gap-3">
+        <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <h3 className="text-lg font-semibold text-ink">导出预览</h3>
             <p className="mt-1 text-sm text-ink/65">
@@ -162,9 +185,18 @@ export function ExportPlanClient({
             </p>
           </div>
           {preview ? (
-            <span className="rounded-full bg-mist px-3 py-1 text-xs text-pine">
-              {preview.fileName}
-            </span>
+            <div className="flex flex-wrap items-center gap-3">
+              <span className="rounded-full bg-mist px-3 py-1 text-xs text-pine">
+                {preview.fileName}
+              </span>
+              <button
+                type="button"
+                onClick={handleDownload}
+                className="inline-flex rounded-full bg-pine px-4 py-2 text-xs font-medium text-white transition hover:bg-pine/90"
+              >
+                下载当前预览
+              </button>
+            </div>
           ) : null}
         </div>
         <textarea

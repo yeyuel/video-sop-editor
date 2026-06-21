@@ -141,6 +141,7 @@ class StoryboardGenerateRequest(BaseModel):
     themeId: str | None = None
     targetDurationSec: int | None = None
     beatMode: str | None = None
+    alignToBeat: bool = True
     selectedTrackName: str | None = None
 
 
@@ -163,7 +164,10 @@ class StoryboardValidationRead(BaseModel):
     allSegmentsBoundToAsset: bool
     locationContinuityPassed: bool
     beatAlignmentPassed: bool
+    beatAdaptationEnabled: bool
     totalDurationSec: float
+    targetDurationReached: bool
+    message: str = ""
 
 
 class StoryboardBundleRead(BaseModel):
