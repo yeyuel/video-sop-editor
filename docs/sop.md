@@ -299,3 +299,52 @@
 - 分镜生成与保存可用
 - 导出信息保存与多格式预览可用
 - workflow 每个 step 都能按顺序解锁并运行
+
+## 8. 节奏字段实施边界
+
+### 8.1 一期规则生成字段
+
+一期节奏规划中，以下字段继续采用规则生成或模板占位方式：
+
+- `beatMode`
+- `beatPoints`
+- `darkCutSuggestions`
+- `photoMotionSuggestions`
+- `selectedTrackName`
+- `rhythmNotes`
+
+执行说明：
+
+- `beatMode` 按视频类型做规则映射。
+- `beatPoints` 按目标时长和固定时间间隔生成。
+- `darkCutSuggestions` 按结构比例点生成。
+- `selectedTrackName` 使用 demo 占位命名。
+- `photoMotionSuggestions` 按是否存在照片素材返回模板建议。
+- `rhythmNotes` 基于主题、素材和项目字段拼接生成。
+
+### 8.2 当前不应误判为真实分析的字段
+
+- 当前 `beatPoints` 不是从真实歌曲波形中提取。
+- 当前 `beatMode` 不是根据 BPM、downbeat 或强弱拍自动分析。
+- 当前 `darkCutSuggestions` 不是根据音乐段落识别生成。
+- 当前 `selectedTrackName` 不是实际曲库或上传音轨名称。
+- 当前 `bgmStyle` 和 `rhythmNotes` 不是 LLM 实时生成结果。
+
+### 8.3 二期升级优先级
+
+1. `beatPoints`
+2. `selectedTrackName`
+3. `darkCutSuggestions`
+4. `beatMode`
+5. `rhythmNotes`
+6. `bgmStyle`
+7. `photoMotionSuggestions`
+
+### 8.4 二期替换目标
+
+- 支持上传音频文件作为节奏参考源。
+- 自动提取真实 beat points。
+- 自动识别 BPM、强拍/弱拍和段落变化。
+- 将 `selectedTrackName` 替换为真实音轨信息。
+- 将 `rhythmNotes` 和 `bgmStyle` 升级为 LLM 辅助建议。
+- 当真实音频识别失败时，回退到一期规则生成模式。

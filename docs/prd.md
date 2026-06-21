@@ -329,3 +329,40 @@
 - 保留一期规则排序作为兜底方案；当大模型排序不可用或结果不可信时，回退到两层规则排序
 - LLM 自动生成标题、标签、文案
 - 自动粗剪
+
+## 8.1 节奏字段升级边界
+
+一期继续保留规则生成的字段：
+
+- `beatMode`
+- `beatPoints`
+- `darkCutSuggestions`
+- `photoMotionSuggestions`
+- `selectedTrackName`
+- `rhythmNotes`
+
+当前实现说明：
+
+- `beatMode` 由视频类型做规则映射，不代表真实音频分析结果。
+- `beatPoints` 由目标时长和固定时间间隔规则生成，不是从真实歌曲中识别。
+- `darkCutSuggestions` 由固定结构点推导，当前不是音乐段落识别结果。
+- `selectedTrackName` 是 demo 占位命名，不是实际歌曲名。
+- `bgmStyle` 和 `rhythmNotes` 基于主题、素材和项目字段做模板拼接，不是 LLM 实时生成。
+
+二期升级优先级：
+
+1. `beatPoints`
+2. `selectedTrackName`
+3. `darkCutSuggestions`
+4. `beatMode`
+5. `rhythmNotes`
+6. `bgmStyle`
+7. `photoMotionSuggestions`
+
+二期目标：
+
+- 支持上传音频文件并自动提取真实 beat points。
+- 将 `selectedTrackName` 替换为真实音轨名或上传文件名。
+- 将 `darkCutSuggestions` 从固定比例点升级为基于音乐段落变化点的建议。
+- 将 `beatMode` 从规则映射升级为结合真实音频结构的自动建议。
+- 将 `rhythmNotes` 和 `bgmStyle` 升级为 LLM 辅助生成的可执行建议。
