@@ -71,6 +71,9 @@ export type RhythmPlan = {
   audioFileName: string;
   analysisSource: string;
   analysisNotes: string[];
+  detectedBpm: number;
+  audioDurationSec: number;
+  rawBeatPoints: number[];
   beatMode: string;
   beatPoints: number[];
   rhythmNotes: string[];

@@ -7,7 +7,6 @@ from sqlmodel import Session
 from app.core.config import settings
 from app.db import get_session
 from app.models.schemas import ApiResponse, RhythmPlanWriteRequest
-from app.services.audio_analysis import AudioAnalysisError
 from app.services.repository import repository
 
 router = APIRouter(prefix="/projects/{project_id}", tags=["rhythm"])
@@ -62,16 +61,26 @@ async def upload_audio_for_rhythm(
     with open(stored_path, "wb") as output_file:
         output_file.write(content)
 
-    try:
-        rhythm_plan = repository.analyze_rhythm_audio(
-            session,
-            project_id,
-            audio.filename,
-            stored_path,
-        )
-    except AudioAnalysisError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-
+    rhythm_plan = repository.analyze_rhythm_audio(
+        session,
+        project_id,
+        audio.filename,
+        stored_path,
+    )
     if rhythm_plan is None:
+        if os.path.exists(stored_path):
+            os.remove(stored_path)
         raise HTTPException(status_code=404, detail="Project not found")
+    return ApiResponse(data=rhythm_plan)
+
+
+@router.delete("/rhythm-plan/audio", response_model=ApiResponse)
+def delete_rhythm_audio(project_id: str, session: Session = Depends(get_session)) -> ApiResponse:
+    project = repository.get_project(session, project_id)
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    rhythm_plan = repository.clear_rhythm_audio(session, project_id)
+    if rhythm_plan is None:
+        raise HTTPException(status_code=404, detail="Rhythm plan not found")
     return ApiResponse(data=rhythm_plan)

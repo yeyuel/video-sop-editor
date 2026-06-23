@@ -114,6 +114,9 @@ export const fallbackWorkspace: WorkspaceData = {
     audioFileName: "",
     analysisSource: "rule",
     analysisNotes: ["当前为规则生成节拍点，尚未上传真实音频。"],
+    detectedBpm: 0,
+    audioDurationSec: 0,
+    rawBeatPoints: [],
     beatMode: "beat_1",
     beatPoints: [0, 0.5, 1, 1.5, 2, 2.5],
     rhythmNotes: [

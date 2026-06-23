@@ -4,20 +4,19 @@ import type { FormEvent } from "react";
 import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { BlockingNotice, ToastNotice } from "@/components/async-status";
-import { generateRhythmPlan, saveRhythmPlan, uploadRhythmAudio } from "@/lib/browser-api";
+import { generateRhythmPlan, saveRhythmPlan, uploadRhythmAudio, deleteRhythmAudio } from "@/lib/browser-api";
+import {
+  capcutBeatModeOptions,
+  filterBeatsForCapcutMode,
+  getCapcutBeatModeDescription
+} from "@/lib/capcut-beat";
 import type { RhythmPlan } from "@/types/domain";
 
 type RhythmPlanClientProps = {
   projectId: string;
+  targetDurationSec: number;
   initialPlan: RhythmPlan;
 };
-
-const beatModeOptions = [
-  { value: "none", label: "不启用节拍" },
-  { value: "beat_1", label: "节拍 1" },
-  { value: "beat_2", label: "节拍 2" },
-  { value: "strong_weak", label: "强弱拍" }
-];
 
 function listToText(value: string[]) {
   return value.join("\n");
@@ -48,11 +47,15 @@ function getAnalysisSourceLabel(source: string) {
   if (source === "rule") {
     return "规则生成";
   }
+  if (source === "rule_fallback") {
+    return "识别失败回退";
+  }
   return "手动编辑";
 }
 
 export function RhythmPlanClient({
   projectId,
+  targetDurationSec,
   initialPlan
 }: RhythmPlanClientProps) {
   const router = useRouter();
@@ -108,6 +111,21 @@ export function RhythmPlanClient({
     });
   }
 
+  function handleBeatModeChange(nextMode: string) {
+    setPlan((current) => {
+      const nextPlan = { ...current, beatMode: nextMode };
+      if (current.rawBeatPoints.length > 0 && nextMode !== "none") {
+        const filtered = filterBeatsForCapcutMode(
+          current.rawBeatPoints,
+          nextMode,
+          targetDurationSec
+        );
+        setBeatPointsText(numberListToText(filtered));
+      }
+      return nextPlan;
+    });
+  }
+
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError("");
@@ -144,10 +162,42 @@ export function RhythmPlanClient({
         syncFromPlan(nextPlan);
         setAudioFile(null);
         router.refresh();
-        setNotice({ title: "音频识别完成", message: "节拍点已根据上传音频更新。" });
+        if (nextPlan.analysisSource === "rule_fallback") {
+          setNotice({
+            title: "已回退到规则生成",
+            message: nextPlan.analysisNotes[0] ?? "音频识别失败，已改用规则节拍点。",
+            tone: "error"
+          });
+        } else {
+          setNotice({
+            title: "音频识别完成",
+            message: `识别 BPM ${nextPlan.detectedBpm || "—"}，原始节拍 ${nextPlan.rawBeatPoints.length || nextPlan.beatPoints.length} 个，当前模式输出 ${nextPlan.beatPoints.length} 个节拍点。`
+          });
+        }
       } catch (submitError) {
         showError(
           submitError instanceof Error ? submitError.message : "音频节拍识别失败，请稍后重试。"
+        );
+      }
+    });
+  }
+
+  function handleDeleteAudio() {
+    if (!plan.audioFileName) {
+      return;
+    }
+
+    setError("");
+    startTransition(async () => {
+      try {
+        const nextPlan = await deleteRhythmAudio(projectId);
+        syncFromPlan(nextPlan);
+        setAudioFile(null);
+        router.refresh();
+        setNotice({ title: "音频已移除", message: "当前节奏规划仍保留，可继续手工编辑或重新上传。" });
+      } catch (submitError) {
+        showError(
+          submitError instanceof Error ? submitError.message : "移除音频失败，请稍后重试。"
         );
       }
     });
@@ -190,7 +240,23 @@ export function RhythmPlanClient({
         >
           {isPending ? "识别中..." : "上传音频并识别节拍"}
         </button>
+        {plan.audioFileName ? (
+          <button
+            type="button"
+            onClick={handleDeleteAudio}
+            disabled={isPending}
+            className="inline-flex rounded-full border border-clay/25 bg-white px-5 py-3 text-sm font-medium text-clay transition hover:bg-[#fff1ea] disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            移除已绑定音频
+          </button>
+        ) : null}
       </div>
+
+      {plan.analysisSource === "rule_fallback" ? (
+        <div className="rounded-2xl border border-clay/25 bg-[#fff7f2] px-4 py-3 text-sm leading-6 text-clay">
+          {plan.analysisNotes[0] ?? "音频识别失败，当前显示的是规则生成的节拍点。"}
+        </div>
+      ) : null}
 
       {error ? <p className="text-sm text-red-600">{error}</p> : null}
 
@@ -208,6 +274,9 @@ export function RhythmPlanClient({
           <p className="mt-2 text-xs text-ink/55">
             当前已绑定音频：{plan.audioFileName || "未上传"}，分析来源：
             {getAnalysisSourceLabel(plan.analysisSource)}
+            {plan.detectedBpm > 0 ? `，识别 BPM：${plan.detectedBpm}` : ""}
+            {plan.audioDurationSec > 0 ? `，音频时长：${plan.audioDurationSec}s` : ""}
+            {plan.beatPoints.length > 0 ? `，节拍点：${plan.beatPoints.length} 个` : ""}
           </p>
           {plan.analysisNotes.length > 0 ? (
             <p className="mt-1 text-xs text-ink/55">{plan.analysisNotes.join(" / ")}</p>
@@ -224,7 +293,7 @@ export function RhythmPlanClient({
             className="w-full rounded-2xl border border-pine/30 bg-white px-4 py-3 outline-none transition focus:border-pine"
           />
           <p className="mt-2 text-xs text-ink/55">
-            目前先展示中文规则建议，后续 LLM 联调完成后再补充智能推荐。
+            优先使用 librosa 识别真实节拍点；不可用时自动回退到能量起音检测。
           </p>
         </label>
 
@@ -240,18 +309,26 @@ export function RhythmPlanClient({
         </label>
 
         <label className="block">
-          <span className="mb-2 block text-sm text-ink/75">节拍模式</span>
+          <span className="mb-2 block text-sm text-ink/75">节拍模式（对标剪映）</span>
           <select
             value={plan.beatMode}
-            onChange={(event) => setPlan({ ...plan, beatMode: event.target.value })}
+            onChange={(event) => handleBeatModeChange(event.target.value)}
             className="w-full rounded-2xl border border-pine/30 bg-white px-4 py-3 outline-none transition focus:border-pine"
           >
-            {beatModeOptions.map((option) => (
+            {capcutBeatModeOptions.map((option) => (
               <option key={option.value} value={option.value}>
                 {option.label}
               </option>
             ))}
           </select>
+          {getCapcutBeatModeDescription(plan.beatMode) ? (
+            <p className="mt-2 text-xs text-ink/55">{getCapcutBeatModeDescription(plan.beatMode)}</p>
+          ) : null}
+          {plan.rawBeatPoints.length > 0 ? (
+            <p className="mt-1 text-xs text-ink/55">
+              已缓存 {plan.rawBeatPoints.length} 个原始识别节拍；切换模式会自动重新采点，保存后写入项目。
+            </p>
+          ) : null}
         </label>
 
         <label className="block">

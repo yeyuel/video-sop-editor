@@ -60,7 +60,11 @@ export default async function ProjectRhythmPage({ params }: ProjectRhythmPagePro
             title="节奏与音乐方案"
             description="这里不只是推荐歌名，而是把节奏规划成后续可执行的 beat points。"
           >
-            <RhythmPlanClient projectId={projectId} initialPlan={workspace.rhythmPlan} />
+            <RhythmPlanClient
+              projectId={projectId}
+              targetDurationSec={workspace.project.targetDurationSec}
+              initialPlan={workspace.rhythmPlan}
+            />
           </SectionCard>
         </div>
       </div>

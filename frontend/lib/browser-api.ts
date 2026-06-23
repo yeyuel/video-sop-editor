@@ -176,6 +176,12 @@ export function uploadRhythmAudio(projectId: string, file: File): Promise<Rhythm
   });
 }
 
+export function deleteRhythmAudio(projectId: string): Promise<RhythmPlan> {
+  return request<RhythmPlan>(`/projects/${projectId}/rhythm-plan/audio`, {
+    method: "DELETE"
+  });
+}
+
 export function saveRhythmPlan(projectId: string, payload: RhythmPlanPayload): Promise<RhythmPlan> {
   return request<RhythmPlan>(`/projects/${projectId}/rhythm-plan`, {
     method: "PUT",

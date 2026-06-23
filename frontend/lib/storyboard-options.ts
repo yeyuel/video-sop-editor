@@ -11,9 +11,9 @@ export const storyboardFunctionOptions = [
 
 export const storyboardBeatModeOptions = [
   { value: "none", label: "不启用节拍" },
-  { value: "beat_1", label: "节拍 1" },
-  { value: "beat_2", label: "节拍 2" },
-  { value: "strong_weak", label: "强弱拍" }
+  { value: "beat_1", label: "踩节拍1（粗密度）" },
+  { value: "beat_2", label: "踩节拍2（细密度）" },
+  { value: "strong_weak", label: "强弱拍（强拍）" }
 ];
 
 export function getStoryboardFunctionLabel(value: string) {

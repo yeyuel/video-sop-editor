@@ -181,6 +181,9 @@ class RhythmPlanRead(BaseModel):
     audioFileName: str = ""
     analysisSource: str = "manual"
     analysisNotes: list[str] = Field(default_factory=list)
+    detectedBpm: int = 0
+    audioDurationSec: float = 0.0
+    rawBeatPoints: list[float] = Field(default_factory=list)
     beatMode: str
     beatPoints: list[float]
     rhythmNotes: list[str]
@@ -194,6 +197,9 @@ class RhythmPlanWriteRequest(BaseModel):
     audioFileName: str = ""
     analysisSource: str = "manual"
     analysisNotes: list[str] = Field(default_factory=list)
+    detectedBpm: int = 0
+    audioDurationSec: float = 0.0
+    rawBeatPoints: list[float] = Field(default_factory=list)
     beatMode: str
     beatPoints: list[float] = Field(default_factory=list)
     rhythmNotes: list[str] = Field(default_factory=list)

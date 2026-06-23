@@ -28,6 +28,7 @@
 | Version | Name | 说明 |
 |---------|------|------|
 | 1 | `001_legacy_columns` | 项目 media_root、style_notes、素材 relative_path、节奏音频字段 |
+| 2 | `002_rhythm_analysis_metrics` | 节奏表 detected_bpm、audio_duration_sec |
 
 ## 5. 注意事项
 

@@ -88,8 +88,38 @@ def _migration_001_legacy_columns(session: Session) -> None:
             )
 
 
+def _migration_002_rhythm_analysis_metrics(session: Session) -> None:
+    inspector = inspect(engine)
+    if "rhythmplanentity" not in inspector.get_table_names():
+        return
+
+    rhythm_columns = {column["name"] for column in inspector.get_columns("rhythmplanentity")}
+    if "detected_bpm" not in rhythm_columns:
+        session.exec(
+            text("ALTER TABLE rhythmplanentity ADD COLUMN detected_bpm INTEGER DEFAULT 0")
+        )
+    if "audio_duration_sec" not in rhythm_columns:
+        session.exec(
+            text("ALTER TABLE rhythmplanentity ADD COLUMN audio_duration_sec REAL DEFAULT 0")
+        )
+
+
+def _migration_003_rhythm_raw_beats(session: Session) -> None:
+    inspector = inspect(engine)
+    if "rhythmplanentity" not in inspector.get_table_names():
+        return
+
+    rhythm_columns = {column["name"] for column in inspector.get_columns("rhythmplanentity")}
+    if "raw_beat_points" not in rhythm_columns:
+        session.exec(
+            text("ALTER TABLE rhythmplanentity ADD COLUMN raw_beat_points TEXT DEFAULT '[]'")
+        )
+
+
 MIGRATIONS: list[tuple[int, str, object]] = [
     (1, "001_legacy_columns", _migration_001_legacy_columns),
+    (2, "002_rhythm_analysis_metrics", _migration_002_rhythm_analysis_metrics),
+    (3, "003_rhythm_raw_beats", _migration_003_rhythm_raw_beats),
 ]
 
 

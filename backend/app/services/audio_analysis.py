@@ -8,17 +8,38 @@ import struct
 import subprocess
 import tempfile
 import wave
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+
+from app.services.beat_grid import (
+    capcut_beat_mode_description,
+    capcut_beat_mode_label,
+    filter_beats_for_capcut_mode,
+    normalize_beat_times,
+    recommend_capcut_beat_mode,
+)
+
+try:
+    import librosa
+    import numpy as np
+
+    LIBROSA_AVAILABLE = True
+except ImportError:  # pragma: no cover - optional dependency
+    librosa = None  # type: ignore[assignment]
+    np = None  # type: ignore[assignment]
+    LIBROSA_AVAILABLE = False
 
 
 @dataclass
 class BeatAnalysisResult:
     beat_mode: str
     beat_points: list[float]
-    bpm: int
-    dark_cut_suggestions: list[float]
-    bgm_style: str
-    analysis_notes: list[str]
+    raw_beat_times: list[float] = field(default_factory=list)
+    bpm: int = 0
+    dark_cut_suggestions: list[float] = field(default_factory=list)
+    bgm_style: str = ""
+    analysis_notes: list[str] = field(default_factory=list)
+    analysis_engine: str = "energy"
+    audio_duration_sec: float = 0.0
 
 
 class AudioAnalysisError(ValueError):
@@ -39,15 +60,123 @@ class AudioBeatAnalyzer:
 
         wav_path, cleanup_path = self._ensure_wav_input(file_path, extension)
         try:
-            with wave.open(wav_path, "rb") as wav_file:
-                channel_count = wav_file.getnchannels()
-                sample_width = wav_file.getsampwidth()
-                frame_rate = wav_file.getframerate()
-                frame_count = wav_file.getnframes()
-                frames = wav_file.readframes(frame_count)
+            if LIBROSA_AVAILABLE:
+                try:
+                    return self._analyze_with_librosa(wav_path, target_duration_sec)
+                except AudioAnalysisError:
+                    raise
+                except Exception:
+                    pass
+            return self._analyze_with_energy(wav_path, target_duration_sec)
         finally:
             if cleanup_path and os.path.exists(cleanup_path):
                 os.remove(cleanup_path)
+
+    def _finalize_capcut_result(
+        self,
+        *,
+        raw_beat_times: list[float],
+        target_duration_sec: int,
+        bpm: int,
+        beat_interval_sec: float | None,
+        analysis_engine: str,
+        audio_duration_sec: float,
+        analysis_window: float,
+        extra_notes: list[str],
+    ) -> BeatAnalysisResult:
+        normalized_raw = normalize_beat_times(raw_beat_times, float(target_duration_sec))
+        if len(normalized_raw) < 2:
+            raise AudioAnalysisError("未能从音频中识别到足够节拍点，请更换音频或改用规则生成。")
+
+        beat_mode = recommend_capcut_beat_mode(bpm, beat_interval_sec)
+        beat_points = filter_beats_for_capcut_mode(
+            normalized_raw,
+            beat_mode,
+            float(target_duration_sec),
+        )
+        notes = [
+            f"识别引擎：{analysis_engine}",
+            f"剪映对标模式：{capcut_beat_mode_label(beat_mode)}",
+            capcut_beat_mode_description(beat_mode),
+            f"音频时长：{audio_duration_sec} 秒，分析窗口：{analysis_window} 秒",
+            f"识别 BPM：{bpm}",
+            f"原始节拍点：{len(normalized_raw)} 个",
+            f"当前模式输出节拍点：{len(beat_points)} 个",
+            *extra_notes,
+        ]
+        return BeatAnalysisResult(
+            beat_mode=beat_mode,
+            beat_points=beat_points,
+            raw_beat_times=normalized_raw,
+            bpm=bpm,
+            dark_cut_suggestions=self._suggest_dark_cuts(target_duration_sec),
+            bgm_style=self._suggest_bgm_style(bpm),
+            analysis_notes=notes,
+            analysis_engine=analysis_engine,
+            audio_duration_sec=audio_duration_sec,
+        )
+
+    def _analyze_with_librosa(self, wav_path: str, target_duration_sec: int) -> BeatAnalysisResult:
+        assert librosa is not None and np is not None
+
+        samples, sample_rate = librosa.load(wav_path, sr=44100, mono=True)
+        if samples.size == 0:
+            raise AudioAnalysisError("音频文件没有读取到有效采样数据，请确认文件内容后重试。")
+
+        audio_duration_sec = round(float(len(samples) / sample_rate), 2)
+        analysis_window = min(float(target_duration_sec), audio_duration_sec)
+
+        onset_frames = librosa.onset.onset_detect(
+            y=samples,
+            sr=sample_rate,
+            units="frames",
+            backtrack=False,
+        )
+        onset_times = [
+            round(float(time_point), 2)
+            for time_point in librosa.frames_to_time(onset_frames, sr=sample_rate)
+            if time_point <= analysis_window
+        ]
+
+        tempo, beat_frames = librosa.beat.beat_track(y=samples, sr=sample_rate, units="frames")
+        beat_times = [
+            round(float(time_point), 2)
+            for time_point in librosa.frames_to_time(beat_frames, sr=sample_rate)
+            if time_point <= analysis_window
+        ]
+
+        raw_beats = beat_times if len(beat_times) >= 3 else onset_times
+        if len(raw_beats) < 2:
+            raise AudioAnalysisError("未能从音频中识别到足够节拍点，请更换音频或改用规则生成。")
+
+        bpm = int(round(float(tempo))) if tempo else 0
+        intervals = [
+            right - left for left, right in zip(raw_beats, raw_beats[1:]) if right > left
+        ]
+        beat_interval_sec = statistics.median(intervals) if intervals else None
+        if bpm <= 0 and beat_interval_sec:
+            bpm = max(40, min(220, round(60 / beat_interval_sec)))
+        if bpm <= 0:
+            bpm = 90
+
+        return self._finalize_capcut_result(
+            raw_beat_times=raw_beats,
+            target_duration_sec=target_duration_sec,
+            bpm=bpm,
+            beat_interval_sec=float(beat_interval_sec) if beat_interval_sec else None,
+            analysis_engine="librosa",
+            audio_duration_sec=audio_duration_sec,
+            analysis_window=analysis_window,
+            extra_notes=[f"识别起音点：{len(onset_times)} 个"],
+        )
+
+    def _analyze_with_energy(self, wav_path: str, target_duration_sec: int) -> BeatAnalysisResult:
+        with wave.open(wav_path, "rb") as wav_file:
+            channel_count = wav_file.getnchannels()
+            sample_width = wav_file.getsampwidth()
+            frame_rate = wav_file.getframerate()
+            frame_count = wav_file.getnframes()
+            frames = wav_file.readframes(frame_count)
 
         if sample_width not in {1, 2, 4}:
             raise AudioAnalysisError("当前 WAV 文件采样位深暂不支持，请更换音频文件后重试。")
@@ -57,29 +186,40 @@ class AudioBeatAnalyzer:
         if not mono_samples:
             raise AudioAnalysisError("音频文件没有读取到有效采样数据，请确认文件内容后重试。")
 
+        audio_duration_sec = round(len(mono_samples) / frame_rate, 2)
+        analysis_window = min(float(target_duration_sec), audio_duration_sec)
+
         window_size = max(frame_rate // 20, 512)
         window_duration = window_size / frame_rate
         energies = self._window_energies(mono_samples, window_size)
         onset_times = self._detect_onset_times(energies, window_duration)
+        onset_times = [point for point in onset_times if point <= analysis_window]
 
-        interval = self._estimate_interval(onset_times, target_duration_sec)
-        beat_points = self._build_uniform_beats(target_duration_sec, interval)
-        bpm = max(40, min(220, round(60 / max(interval, 0.01))))
-        beat_mode = self._classify_beat_mode(bpm)
-        dark_cuts = self._suggest_dark_cuts(target_duration_sec)
-        bgm_style = self._suggest_bgm_style(bpm)
-        notes = [
-            f"自动识别节拍间隔：{interval:.2f} 秒",
-            f"预估 BPM：{bpm}",
-            f"检测到起音点数量：{len(onset_times)}",
+        if len(onset_times) >= 3:
+            raw_beats = onset_times
+        else:
+            interval = self._estimate_interval(onset_times, target_duration_sec)
+            raw_beats = self._build_uniform_beats(int(analysis_window), interval)
+
+        intervals = [
+            right - left
+            for left, right in zip(raw_beats, raw_beats[1:])
+            if 0.25 <= right - left <= 1.5
         ]
-        return BeatAnalysisResult(
-            beat_mode=beat_mode,
-            beat_points=beat_points,
+        beat_interval_sec = statistics.median(intervals) if intervals else self._estimate_interval(
+            onset_times, target_duration_sec
+        )
+        bpm = max(40, min(220, round(60 / beat_interval_sec)))
+
+        return self._finalize_capcut_result(
+            raw_beat_times=raw_beats,
+            target_duration_sec=target_duration_sec,
             bpm=bpm,
-            dark_cut_suggestions=dark_cuts,
-            bgm_style=bgm_style,
-            analysis_notes=notes,
+            beat_interval_sec=float(beat_interval_sec),
+            analysis_engine="energy",
+            audio_duration_sec=audio_duration_sec,
+            analysis_window=analysis_window,
+            extra_notes=["librosa 不可用或识别失败时的能量起音兜底"],
         )
 
     def _ensure_wav_input(self, file_path: str, extension: str) -> tuple[str, str | None]:
@@ -200,17 +340,9 @@ class AudioBeatAnalyzer:
         while current <= float(target_duration_sec):
             beat_points.append(round(current, 2))
             current += interval
-        if beat_points[-1] < float(target_duration_sec):
+        if beat_points and beat_points[-1] < float(target_duration_sec):
             beat_points.append(float(target_duration_sec))
         return beat_points
-
-    @staticmethod
-    def _classify_beat_mode(bpm: int) -> str:
-        if bpm >= 110:
-            return "beat_1"
-        if bpm >= 80:
-            return "beat_2"
-        return "strong_weak"
 
     @staticmethod
     def _suggest_dark_cuts(target_duration_sec: int) -> list[float]:

@@ -76,6 +76,9 @@ class RhythmPlanEntity(SQLModel, table=True):
     audio_file_path: str = ""
     analysis_source: str = "manual"
     analysis_notes: str = "[]"
+    detected_bpm: int = 0
+    audio_duration_sec: float = 0.0
+    raw_beat_points: str = "[]"
     beat_mode: str
     beat_points: str
     rhythm_notes: str

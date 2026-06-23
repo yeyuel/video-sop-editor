@@ -167,6 +167,11 @@ Base URL:
 {
   "bgmStyle": "冷感氛围电子 + 轻鼓点",
   "selectedTrackName": "snow-dream-demo",
+  "audioFileName": "demo-track.mp3",
+  "analysisSource": "audio_upload",
+  "analysisNotes": ["识别引擎：librosa 节拍跟踪"],
+  "detectedBpm": 120,
+  "audioDurationSec": 180.5,
   "beatMode": "beat_1",
   "beatPoints": [0, 0.5, 1, 1.5],
   "rhythmNotes": ["前 3 秒保证强开头"],
@@ -174,6 +179,31 @@ Base URL:
   "photoMotionSuggestions": ["照片素材优先慢推"]
 }
 ```
+
+`analysisSource` 取值：
+
+- `rule`：规则生成
+- `audio_upload`：音频识别成功
+- `rule_fallback`：音频识别失败，已回退规则生成
+- `manual`：用户手工编辑后保存
+
+## 4.4 上传音频并识别节拍
+
+`POST /projects/{projectId}/rhythm-plan/audio-upload`
+
+- Content-Type: `multipart/form-data`
+- 字段名：`audio`
+- 支持 WAV / MP3 / M4A / AAC / OGG / MGG / FLAC / WMA
+- 非 WAV 格式需服务端安装 `ffmpeg`
+- 识别失败时不返回 400，而是写入 `rule_fallback` 节奏规划
+
+## 4.5 移除已绑定音频
+
+`DELETE /projects/{projectId}/rhythm-plan/audio`
+
+- 删除本地存储的音频文件
+- 清空 `audioFileName` / `detectedBpm` / `audioDurationSec`
+- 保留当前 beat points 与节奏说明，供继续手工编辑
 
 ## 5. 分镜
 

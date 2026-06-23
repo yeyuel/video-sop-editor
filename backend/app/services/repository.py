@@ -1,4 +1,5 @@
-﻿import re
+﻿import os
+import re
 from uuid import uuid4
 
 from sqlmodel import Session, delete, select
@@ -36,14 +37,19 @@ from app.models.schemas import (
     ThemeSelectRequest,
     WorkspaceDataRead,
 )
-from app.services.audio_analysis import audio_beat_analyzer
+from app.services.audio_analysis import AudioAnalysisError, audio_beat_analyzer
 from app.services.auth import verify_password
 from app.services.export_generation import (
     build_llm_export_plan,
     build_rule_export_fallback,
     render_export_content,
 )
-from app.services.rhythm_generation import build_audio_rhythm_payload, build_rule_rhythm_payload
+from app.services.rhythm_generation import (
+    build_audio_rhythm_payload,
+    build_rule_fallback_rhythm_payload,
+    build_rule_rhythm_payload,
+)
+from app.services.beat_grid import filter_beats_for_capcut_mode
 from app.services.serialization import dumps_list, loads_float_list, loads_str_list
 from app.services.storyboard_generation import (
     asset_order_key,
@@ -308,20 +314,62 @@ class SqlRepository:
 
         assets = self.list_assets(session, project_id)
         theme = self.get_selected_theme(session, project_id)
-        analysis = audio_beat_analyzer.analyze(audio_file_path, project.target_duration_sec)
-        rhythm_payload = build_audio_rhythm_payload(
-            project,
-            assets,
-            theme,
-            audio_file_name,
-            analysis,
-        )
-        return self.upsert_rhythm_plan(
-            session,
-            project_id,
-            rhythm_payload,
-            audio_file_path=audio_file_path,
-        )
+        existing_rhythm = session.exec(
+            select(RhythmPlanEntity).where(RhythmPlanEntity.project_id == project_id)
+        ).first()
+        previous_audio_path = existing_rhythm.audio_file_path if existing_rhythm else ""
+
+        try:
+            analysis = audio_beat_analyzer.analyze(audio_file_path, project.target_duration_sec)
+            rhythm_payload = build_audio_rhythm_payload(
+                project,
+                assets,
+                theme,
+                audio_file_name,
+                analysis,
+            )
+            if previous_audio_path and previous_audio_path != audio_file_path:
+                self._remove_stored_audio(previous_audio_path)
+            return self.upsert_rhythm_plan(
+                session,
+                project_id,
+                rhythm_payload,
+                audio_file_path=audio_file_path,
+            )
+        except AudioAnalysisError as exc:
+            self._remove_stored_audio(audio_file_path)
+            rhythm_payload = build_rule_fallback_rhythm_payload(
+                project,
+                assets,
+                theme,
+                audio_file_name=audio_file_name,
+                failure_reason=str(exc),
+            )
+            return self.upsert_rhythm_plan(session, project_id, rhythm_payload)
+
+    def clear_rhythm_audio(self, session: Session, project_id: str) -> RhythmPlanRead | None:
+        project = self.get_project_entity(session, project_id)
+        if not project:
+            return None
+
+        rhythm = session.exec(
+            select(RhythmPlanEntity).where(RhythmPlanEntity.project_id == project_id)
+        ).first()
+        if not rhythm:
+            return None
+
+        self._remove_stored_audio(rhythm.audio_file_path)
+        rhythm.audio_file_name = ""
+        rhythm.audio_file_path = ""
+        rhythm.detected_bpm = 0
+        rhythm.audio_duration_sec = 0.0
+        rhythm.raw_beat_points = "[]"
+        if rhythm.analysis_source == "audio_upload":
+            rhythm.analysis_source = "manual"
+        session.add(rhythm)
+        session.commit()
+        session.refresh(rhythm)
+        return self._map_rhythm(rhythm)
 
     def upsert_rhythm_plan(
         self,
@@ -347,6 +395,9 @@ class SqlRepository:
                 audio_file_path="",
                 analysis_source="manual",
                 analysis_notes="[]",
+                detected_bpm=0,
+                audio_duration_sec=0.0,
+                raw_beat_points="[]",
                 beat_mode="none",
                 beat_points="[]",
                 rhythm_notes="[]",
@@ -363,8 +414,33 @@ class SqlRepository:
             rhythm.audio_file_path = ""
         rhythm.analysis_source = payload.analysisSource
         rhythm.analysis_notes = dumps_list(payload.analysisNotes)
+        rhythm.detected_bpm = payload.detectedBpm
+        rhythm.audio_duration_sec = payload.audioDurationSec
+
+        existing_raw = loads_float_list(getattr(rhythm, "raw_beat_points", "[]") or "[]")
+        if payload.rawBeatPoints:
+            raw_beats = payload.rawBeatPoints
+        elif existing_raw:
+            raw_beats = existing_raw
+        else:
+            raw_beats = []
+
+        if raw_beats and payload.beatMode != "none":
+            beat_points = filter_beats_for_capcut_mode(
+                raw_beats,
+                payload.beatMode,
+                float(project.target_duration_sec),
+            )
+            rhythm.raw_beat_points = dumps_list(raw_beats)
+        else:
+            beat_points = payload.beatPoints
+            if payload.rawBeatPoints:
+                rhythm.raw_beat_points = dumps_list(raw_beats)
+            elif not raw_beats:
+                rhythm.raw_beat_points = "[]"
+
         rhythm.beat_mode = payload.beatMode
-        rhythm.beat_points = dumps_list(payload.beatPoints)
+        rhythm.beat_points = dumps_list(beat_points)
         rhythm.rhythm_notes = dumps_list(payload.rhythmNotes)
         rhythm.dark_cut_suggestions = dumps_list(payload.darkCutSuggestions)
         rhythm.photo_motion_suggestions = dumps_list(payload.photoMotionSuggestions)
@@ -718,6 +794,9 @@ class SqlRepository:
                 audioFileName="",
                 analysisSource="manual",
                 analysisNotes=[],
+                detectedBpm=0,
+                audioDurationSec=0.0,
+                rawBeatPoints=[],
                 beatMode="none",
                 beatPoints=[],
                 rhythmNotes=[],
@@ -820,6 +899,9 @@ class SqlRepository:
             audioFileName=item.audio_file_name,
             analysisSource=item.analysis_source,
             analysisNotes=loads_str_list(item.analysis_notes),
+            detectedBpm=item.detected_bpm,
+            audioDurationSec=item.audio_duration_sec,
+            rawBeatPoints=loads_float_list(getattr(item, "raw_beat_points", "[]") or "[]"),
             beatMode=item.beat_mode,
             beatPoints=loads_float_list(item.beat_points),
             rhythmNotes=loads_str_list(item.rhythm_notes),
@@ -934,6 +1016,12 @@ class SqlRepository:
                 )
             )
         session.commit()
+
+
+    @staticmethod
+    def _remove_stored_audio(file_path: str) -> None:
+        if file_path and os.path.exists(file_path):
+            os.remove(file_path)
 
 
 repository = SqlRepository()

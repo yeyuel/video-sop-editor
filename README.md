@@ -64,6 +64,11 @@ python -m venv .venv
 pip install -r requirements.txt
 ```
 
+音频节拍识别额外要求：
+
+- 系统 PATH 中可调用 `ffmpeg`（用于 MP3 / FLAC 等格式转 WAV）
+- `requirements.txt` 已包含 `librosa`；若安装失败，系统仍会回退到基础能量检测
+
 ## 本地调试步骤
 
 1. 启动后端
@@ -116,6 +121,7 @@ DATABASE_URL=sqlite:///./video_sop.db
 - 一期先把领域结构、数据模型、接口边界做稳。
 - 当前后端已切到 `SQLite + SQLModel`，启动时会自动建表并注入示例数据。
 - 二期新增视频分析、节拍识别、FFmpeg/MoviePy 粗剪时，优先放到 `backend/app/services/` 下的独立模块。
+- 音频节拍识别依赖 `ffmpeg`（转码）和 `librosa`（主识别引擎）；未安装 librosa 时会自动回退到能量起音检测。
 - 前端尽量只消费接口，不把业务生成逻辑写死在页面组件里。
 - 修改中文源码、文档或 PowerShell 脚本前，先看 `docs/encoding-guardrails.md`，避免 UTF-8 / GBK 误读导致乱码回流。
 - 建议首次 clone 后执行 `powershell -ExecutionPolicy Bypass -File scripts\install-git-hooks.ps1`，提交前自动扫描乱码。

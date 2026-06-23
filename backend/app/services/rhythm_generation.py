@@ -5,9 +5,11 @@ import os
 from app.models.entities import ProjectEntity
 from app.models.schemas import AssetRead, NarrativeThemeRead, RhythmPlanWriteRequest
 from app.services.audio_analysis import BeatAnalysisResult
+from app.services.beat_grid import filter_beats_for_capcut_mode, normalize_beat_times
 
 
 def recommend_beat_mode(video_type: str) -> str:
+    """规则生成时的默认踩点模式（无音频时，语义对齐剪映）。"""
     if video_type in {"guide_video", "travel_montage"}:
         return "beat_2"
     if video_type == "vlog":
@@ -65,15 +67,23 @@ def build_rule_rhythm_payload(
     theme: NarrativeThemeRead | None,
 ) -> RhythmPlanWriteRequest:
     beat_mode = recommend_beat_mode(project.video_type)
-    beat_interval = 0.5 if beat_mode in {"beat_1", "strong_weak"} else 1.0
-    beat_points = build_beat_points(project.target_duration_sec, beat_interval)
+    base_beats = build_beat_points(project.target_duration_sec, 0.25)
+    raw_beats = normalize_beat_times(base_beats, float(project.target_duration_sec))
+    beat_points = filter_beats_for_capcut_mode(
+        raw_beats,
+        beat_mode,
+        float(project.target_duration_sec),
+    )
 
     return RhythmPlanWriteRequest(
         bgmStyle=theme.rhythmProfile if theme else "快起快收，中段稳节奏",
         selectedTrackName=f"{project.id}-demo-track",
         audioFileName="",
         analysisSource="rule",
-        analysisNotes=["当前为规则生成节拍点，依据项目时长、视频类型和素材结构进行估算。"],
+        analysisNotes=["当前为规则生成节拍点，依据项目时长、视频类型和剪映踩点语义进行估算。"],
+        detectedBpm=0,
+        audioDurationSec=0.0,
+        rawBeatPoints=[],
         beatMode=beat_mode,
         beatPoints=beat_points,
         rhythmNotes=build_rhythm_notes(project, assets, theme),
@@ -95,10 +105,37 @@ def build_audio_rhythm_payload(
         audioFileName=audio_file_name,
         analysisSource="audio_upload",
         analysisNotes=analysis.analysis_notes,
+        detectedBpm=analysis.bpm,
+        audioDurationSec=analysis.audio_duration_sec,
+        rawBeatPoints=analysis.raw_beat_times,
         beatMode=analysis.beat_mode,
         beatPoints=analysis.beat_points,
         rhythmNotes=build_rhythm_notes(project, assets, theme)
-        + [f"当前节拍点来自音频分析，预估 BPM 为 {analysis.bpm}。"],
+        + [f"当前节拍点来自音频分析（{analysis.analysis_engine}），识别 BPM 为 {analysis.bpm}。"],
         darkCutSuggestions=analysis.dark_cut_suggestions,
         photoMotionSuggestions=build_photo_motion_suggestions(assets),
+    )
+
+
+def build_rule_fallback_rhythm_payload(
+    project: ProjectEntity,
+    assets: list[AssetRead],
+    theme: NarrativeThemeRead | None,
+    *,
+    audio_file_name: str = "",
+    failure_reason: str,
+) -> RhythmPlanWriteRequest:
+    payload = build_rule_rhythm_payload(project, assets, theme)
+    return payload.model_copy(
+        update={
+            "audioFileName": "",
+            "analysisSource": "rule_fallback",
+            "analysisNotes": [
+                f"音频识别失败（{audio_file_name or '未命名文件'}），已自动回退到规则生成：{failure_reason}",
+                "你可以重新上传音频，或继续手工调整节拍点。",
+            ],
+            "detectedBpm": 0,
+            "audioDurationSec": 0.0,
+            "rawBeatPoints": [],
+        }
     )
