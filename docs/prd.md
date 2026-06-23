@@ -163,9 +163,10 @@
 规则：
 
 - 分镜生成可选择是否适配节拍。
-- 当前实现是按规则生成 beat points，不是从真实歌曲文件里做音频识别。
-- 二期可以替换为真实歌曲节拍识别能力。
-- 当前不支持上传音频文件，也不做波形、BPM、强拍弱拍或 downbeat 自动分析。
+- 支持规则生成 beat points，也支持上传音频文件做基础节拍识别。
+- 音频上传支持 WAV、MP3、M4A、AAC、OGG、MGG、 FLAC、WMA；非 WAV 格式需本机安装 ffmpeg 转码。
+- 识别结果写入 `analysisSource`（`rule` / `audio_upload` / `manual`），失败时可回退规则生成。
+- 当前识别基于能量起音检测，尚未做完整 BPM / 强拍弱拍 / downbeat 分析；二期继续增强。
 
 ## 5.5 分镜生成
 

@@ -39,3 +39,6 @@ tmp/
 
 # Local uploads / media storage
 backend/storage/
+
+# Local SQLite database
+backend/video_sop.db

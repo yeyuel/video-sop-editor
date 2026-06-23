@@ -1,7 +1,8 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import { BlockingNotice, ToastNotice } from "@/components/async-status";
 import { generateThemes, generateThemesWithLlm, selectTheme } from "@/lib/browser-api";
 import type { NarrativeTheme } from "@/types/domain";
 
@@ -17,7 +18,26 @@ export function ThemeSelectorClient({
   const router = useRouter();
   const [themes, setThemes] = useState(initialThemes);
   const [error, setError] = useState("");
+  const [notice, setNotice] = useState<{
+    message: string;
+    title: string;
+    tone?: "error" | "success";
+  } | null>(null);
   const [isPending, startTransition] = useTransition();
+
+  useEffect(() => {
+    if (!notice) {
+      return;
+    }
+
+    const timer = window.setTimeout(() => setNotice(null), 2400);
+    return () => window.clearTimeout(timer);
+  }, [notice]);
+
+  function showError(message: string) {
+    setError(message);
+    setNotice({ title: "操作失败", message, tone: "error" });
+  }
 
   function handleGenerate() {
     setError("");
@@ -26,8 +46,9 @@ export function ThemeSelectorClient({
         const nextThemes = await generateThemes(projectId, 3);
         setThemes(nextThemes);
         router.refresh();
+        setNotice({ title: "主题已生成", message: "已基于当前项目和素材生成候选主题。" });
       } catch (submitError) {
-        setError(
+        showError(
           submitError instanceof Error ? submitError.message : "生成主题失败，请稍后重试。"
         );
       }
@@ -41,8 +62,9 @@ export function ThemeSelectorClient({
         const nextThemes = await selectTheme(projectId, themeId);
         setThemes(nextThemes);
         router.refresh();
+        setNotice({ title: "主题已选定", message: "当前叙事方向已保存，可继续规划节奏。" });
       } catch (submitError) {
-        setError(
+        showError(
           submitError instanceof Error ? submitError.message : "选择主题失败，请稍后重试。"
         );
       }
@@ -56,8 +78,9 @@ export function ThemeSelectorClient({
         const nextThemes = await generateThemesWithLlm(projectId, 3);
         setThemes(nextThemes);
         router.refresh();
+        setNotice({ title: "LLM 主题建议已更新", message: "已生成新的候选主题方向。" });
       } catch (submitError) {
-        setError(
+        showError(
           submitError instanceof Error ? submitError.message : "LLM 主题建议生成失败，请稍后重试。"
         );
       }
@@ -66,6 +89,17 @@ export function ThemeSelectorClient({
 
   return (
     <div className="space-y-4">
+      <BlockingNotice
+        description="正在处理主题相关操作，请稍候。"
+        title="处理中"
+        visible={isPending}
+      />
+      <ToastNotice
+        message={notice?.message ?? ""}
+        title={notice?.title ?? ""}
+        tone={notice?.tone}
+        visible={Boolean(notice)}
+      />
       <div className="flex flex-wrap gap-3">
         <button
           type="button"

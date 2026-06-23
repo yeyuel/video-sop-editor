@@ -1,8 +1,9 @@
 "use client";
 
 import type { FormEvent } from "react";
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import { BlockingNotice, ToastNotice } from "@/components/async-status";
 import { generateRhythmPlan, saveRhythmPlan, uploadRhythmAudio } from "@/lib/browser-api";
 import type { RhythmPlan } from "@/types/domain";
 
@@ -62,7 +63,26 @@ export function RhythmPlanClient({
   const [photoText, setPhotoText] = useState(listToText(initialPlan.photoMotionSuggestions));
   const [audioFile, setAudioFile] = useState<File | null>(null);
   const [error, setError] = useState("");
+  const [notice, setNotice] = useState<{
+    message: string;
+    title: string;
+    tone?: "error" | "success";
+  } | null>(null);
   const [isPending, startTransition] = useTransition();
+
+  useEffect(() => {
+    if (!notice) {
+      return;
+    }
+
+    const timer = window.setTimeout(() => setNotice(null), 2400);
+    return () => window.clearTimeout(timer);
+  }, [notice]);
+
+  function showError(message: string) {
+    setError(message);
+    setNotice({ title: "操作失败", message, tone: "error" });
+  }
 
   function syncFromPlan(nextPlan: RhythmPlan) {
     setPlan(nextPlan);
@@ -79,8 +99,9 @@ export function RhythmPlanClient({
         const nextPlan = await generateRhythmPlan(projectId);
         syncFromPlan(nextPlan);
         router.refresh();
+        setNotice({ title: "节奏规划已生成", message: "已按规则生成节拍点和节奏说明。" });
       } catch (submitError) {
-        setError(
+        showError(
           submitError instanceof Error ? submitError.message : "生成节奏规划失败，请稍后重试。"
         );
       }
@@ -101,8 +122,9 @@ export function RhythmPlanClient({
         });
         syncFromPlan(nextPlan);
         router.refresh();
+        setNotice({ title: "节奏规划已保存", message: "当前节拍设置已写入项目。" });
       } catch (submitError) {
-        setError(
+        showError(
           submitError instanceof Error ? submitError.message : "保存节奏规划失败，请稍后重试。"
         );
       }
@@ -122,8 +144,9 @@ export function RhythmPlanClient({
         syncFromPlan(nextPlan);
         setAudioFile(null);
         router.refresh();
+        setNotice({ title: "音频识别完成", message: "节拍点已根据上传音频更新。" });
       } catch (submitError) {
-        setError(
+        showError(
           submitError instanceof Error ? submitError.message : "音频节拍识别失败，请稍后重试。"
         );
       }
@@ -132,6 +155,17 @@ export function RhythmPlanClient({
 
   return (
     <form className="space-y-5" onSubmit={handleSubmit}>
+      <BlockingNotice
+        description="正在处理节奏相关操作，请稍候。"
+        title="处理中"
+        visible={isPending}
+      />
+      <ToastNotice
+        message={notice?.message ?? ""}
+        title={notice?.title ?? ""}
+        tone={notice?.tone}
+        visible={Boolean(notice)}
+      />
       <div className="flex flex-wrap gap-3">
         <button
           type="button"

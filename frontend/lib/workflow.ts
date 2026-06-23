@@ -60,6 +60,8 @@ export function getEnabledWorkflowSteps(workspace: WorkspaceData): WorkflowStepI
   }
   if (workspace.themes.length > 0 && workspace.project.selectedThemeId) {
     enabled.push("rhythm");
+  }
+  if (workspace.rhythmPlan.beatPoints.length > 0) {
     enabled.push("storyboard");
   }
   if (workspace.storyboard.length > 0) {

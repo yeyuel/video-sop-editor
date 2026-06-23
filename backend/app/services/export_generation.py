@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 
 from app.models.entities import ProjectEntity
-from app.models.schemas import AssetRead, ExportPlanRead, NarrativeThemeRead, StoryboardSegmentRead
+from app.models.schemas import AssetRead, ExportPlanRead, NarrativeThemeRead, StoryboardSegmentRead, WorkspaceDataRead
 from app.services.llm import llm_suggestion_service
 
 
@@ -66,3 +66,87 @@ def build_rule_export_fallback(
         "tags": [project.destination, project.platform, "旅行短视频"],
         "coverSuggestion": "优先选择识别度最高的地点镜头做封面，标题尽量避开主体区域，保留画面留白。",
     }
+
+
+def render_export_content(workspace: WorkspaceDataRead, fmt: str) -> str:
+    export_payload = {
+        "project": workspace.project.model_dump(),
+        "selectedTheme": next(
+            (theme.model_dump() for theme in workspace.themes if theme.isSelected),
+            None,
+        ),
+        "rhythmPlan": workspace.rhythmPlan.model_dump(),
+        "exportPlan": workspace.exportPlan.model_dump(),
+        "storyboard": [segment.model_dump() for segment in workspace.storyboard],
+        "storyboardValidation": workspace.storyboardValidation.model_dump(),
+    }
+
+    if fmt == "json":
+        return json.dumps(export_payload, ensure_ascii=False, indent=2)
+    if fmt == "yaml":
+        return to_yaml(export_payload)
+    return to_markdown(workspace)
+
+
+def to_markdown(workspace: WorkspaceDataRead) -> str:
+    lines = [
+        f"# {workspace.project.name} 导出脚本",
+        "",
+        "## 导出信息",
+        f"- 标题：{workspace.exportPlan.title}",
+        f"- 短标题：{workspace.exportPlan.shortTitle or '未填写'}",
+        f"- 标签：{', '.join(workspace.exportPlan.tags) if workspace.exportPlan.tags else '未填写'}",
+        f"- 描述：{workspace.exportPlan.description}",
+        f"- 封面建议：{workspace.exportPlan.coverSuggestion or '未填写'}",
+        "",
+        "## 节奏信息",
+        f"- BGM 风格：{workspace.rhythmPlan.bgmStyle}",
+        f"- 参考曲目：{workspace.rhythmPlan.selectedTrackName}",
+        f"- 节拍模式：{workspace.rhythmPlan.beatMode}",
+        f"- 节拍点：{', '.join(str(point) for point in workspace.rhythmPlan.beatPoints)}",
+        "",
+        "## 分镜时间线",
+        "",
+        "| 开始 | 结束 | 素材 ID | 功能标签 | 节奏 | 字幕 |",
+        "| --- | --- | --- | --- | --- | --- |",
+    ]
+    for segment in workspace.storyboard:
+        lines.append(
+            f"| {segment.startTime:.2f} | {segment.endTime:.2f} | {segment.assetId} | "
+            f"{segment.function} | {segment.rhythm} | {segment.subtitle} |"
+        )
+    return "\n".join(lines)
+
+
+def to_yaml(value: object, indent: int = 0) -> str:
+    prefix = "  " * indent
+    if isinstance(value, dict):
+        lines: list[str] = []
+        for key, item in value.items():
+            if isinstance(item, (dict, list)):
+                lines.append(f"{prefix}{key}:")
+                lines.append(to_yaml(item, indent + 1))
+            else:
+                lines.append(f"{prefix}{key}: {yaml_scalar(item)}")
+        return "\n".join(lines)
+    if isinstance(value, list):
+        lines = []
+        for item in value:
+            if isinstance(item, (dict, list)):
+                lines.append(f"{prefix}-")
+                lines.append(to_yaml(item, indent + 1))
+            else:
+                lines.append(f"{prefix}- {yaml_scalar(item)}")
+        return "\n".join(lines)
+    return f"{prefix}{yaml_scalar(value)}"
+
+
+def yaml_scalar(value: object) -> str:
+    if value is None:
+        return "null"
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    if isinstance(value, (int, float)):
+        return str(value)
+    text = str(value).replace('"', '\\"')
+    return f'"{text}"'
