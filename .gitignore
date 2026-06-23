@@ -36,3 +36,6 @@ venv/
 # Misc
 tmp/
 *.tmp
+
+# Local uploads / media storage
+backend/storage/
