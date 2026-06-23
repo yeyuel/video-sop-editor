@@ -117,6 +117,8 @@ DATABASE_URL=sqlite:///./video_sop.db
 - 当前后端已切到 `SQLite + SQLModel`，启动时会自动建表并注入示例数据。
 - 二期新增视频分析、节拍识别、FFmpeg/MoviePy 粗剪时，优先放到 `backend/app/services/` 下的独立模块。
 - 前端尽量只消费接口，不把业务生成逻辑写死在页面组件里。
+- 修改中文源码、文档或 PowerShell 脚本前，先看 `docs/encoding-guardrails.md`，避免 UTF-8 / GBK 误读导致乱码回流。
+- 建议首次 clone 后执行 `powershell -ExecutionPolicy Bypass -File scripts\install-git-hooks.ps1`，提交前自动扫描乱码。
 
 ## SQLite / SQLModel 说明
 

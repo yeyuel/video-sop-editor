@@ -36,4 +36,27 @@ def run_sqlite_migrations() -> None:
             if "relative_path" not in asset_columns:
                 session.exec(text("ALTER TABLE assetentity ADD COLUMN relative_path TEXT DEFAULT ''"))
 
+        if "rhythmplanentity" in table_names:
+            rhythm_columns = {
+                column["name"] for column in inspector.get_columns("rhythmplanentity")
+            }
+            if "audio_file_name" not in rhythm_columns:
+                session.exec(
+                    text("ALTER TABLE rhythmplanentity ADD COLUMN audio_file_name TEXT DEFAULT ''")
+                )
+            if "audio_file_path" not in rhythm_columns:
+                session.exec(
+                    text("ALTER TABLE rhythmplanentity ADD COLUMN audio_file_path TEXT DEFAULT ''")
+                )
+            if "analysis_source" not in rhythm_columns:
+                session.exec(
+                    text(
+                        "ALTER TABLE rhythmplanentity ADD COLUMN analysis_source TEXT DEFAULT 'manual'"
+                    )
+                )
+            if "analysis_notes" not in rhythm_columns:
+                session.exec(
+                    text("ALTER TABLE rhythmplanentity ADD COLUMN analysis_notes TEXT DEFAULT '[]'")
+                )
+
         session.commit()

@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { generateThemes, selectTheme } from "@/lib/browser-api";
+import { generateThemes, generateThemesWithLlm, selectTheme } from "@/lib/browser-api";
 import type { NarrativeTheme } from "@/types/domain";
 
 type ThemeSelectorClientProps = {
@@ -49,6 +49,21 @@ export function ThemeSelectorClient({
     });
   }
 
+  function handleGenerateWithLlm() {
+    setError("");
+    startTransition(async () => {
+      try {
+        const nextThemes = await generateThemesWithLlm(projectId, 3);
+        setThemes(nextThemes);
+        router.refresh();
+      } catch (submitError) {
+        setError(
+          submitError instanceof Error ? submitError.message : "LLM 主题建议生成失败，请稍后重试。"
+        );
+      }
+    });
+  }
+
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap gap-3">
@@ -59,6 +74,14 @@ export function ThemeSelectorClient({
           className="inline-flex rounded-full bg-pine px-5 py-3 text-sm font-medium text-white transition hover:bg-pine/90 disabled:cursor-not-allowed disabled:opacity-60"
         >
           {isPending ? "生成中..." : themes.length > 0 ? "重新生成主题" : "生成主题方向"}
+        </button>
+        <button
+          type="button"
+          onClick={handleGenerateWithLlm}
+          disabled={isPending}
+          className="inline-flex rounded-full border border-pine/20 bg-white px-5 py-3 text-sm font-medium text-pine transition hover:bg-mist disabled:cursor-not-allowed disabled:opacity-60"
+        >
+          {isPending ? "处理中..." : "LLM 建议主题"}
         </button>
       </div>
       {error ? <p className="text-sm text-red-600">{error}</p> : null}

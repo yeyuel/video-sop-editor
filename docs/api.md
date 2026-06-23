@@ -1,4 +1,4 @@
-# API 文档 v1.1
+﻿# API 文档 v1.1
 
 Base URL:
 
@@ -390,3 +390,83 @@ Base URL:
 - 分镜生成依赖节奏规划中的节拍点
 - 导出阶段当前由人工填写标题、标签和文案
 - 后续如接入 LLM，只需复用 `export-plan` 结构即可
+## 9. 二期 LLM Provider API 预留
+
+二期建议新增 provider 配置与授权接口，统一支持三种认证模式：
+
+- `api_key`
+- `oauth`
+- `device_code`
+
+建议接口：
+
+### 9.1 获取 provider 列表
+
+`GET /llm/providers`
+
+返回字段建议：
+
+- `providerId`
+- `providerName`
+- `authTypes`
+- `defaultBaseUrl`
+- `status`
+
+### 9.2 保存 provider 配置
+
+`POST /llm/providers/{providerId}/config`
+
+请求体建议：
+
+```json
+{
+  "authType": "api_key",
+  "baseUrl": "https://api.example.com/v1",
+  "model": "example-model",
+  "apiKey": "server-side-only"
+}
+```
+
+### 9.3 发起 OAuth 授权
+
+`POST /llm/providers/{providerId}/oauth/start`
+
+返回字段建议：
+
+- `authorizationUrl`
+- `state`
+- `codeChallenge`
+
+### 9.4 OAuth 回调
+
+`GET /llm/providers/{providerId}/oauth/callback`
+
+用途：
+
+- 接收授权码
+- 服务端换取 access token / refresh token
+- 持久化授权状态
+
+### 9.5 发起 Device Code 授权
+
+`POST /llm/providers/{providerId}/device-code/start`
+
+返回字段建议：
+
+- `deviceCode`
+- `userCode`
+- `verificationUri`
+- `expiresIn`
+- `interval`
+
+### 9.6 查询授权状态
+
+`GET /llm/providers/{providerId}/status`
+
+返回字段建议：
+
+- `authType`
+- `status`
+- `expiresAt`
+- `model`
+- `baseUrl`

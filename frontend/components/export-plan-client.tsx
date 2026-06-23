@@ -3,7 +3,11 @@
 import type { FormEvent } from "react";
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { previewExport, saveExportPlan } from "@/lib/browser-api";
+import {
+  previewExport,
+  saveExportPlan,
+  suggestExportPlanWithLlm
+} from "@/lib/browser-api";
 import type { ExportDocument, ExportPlan } from "@/types/domain";
 
 type ExportPlanClientProps = {
@@ -59,6 +63,22 @@ export function ExportPlanClient({ projectId, initialPlan }: ExportPlanClientPro
       } catch (submitError) {
         setError(
           submitError instanceof Error ? submitError.message : "生成导出预览失败，请稍后重试。"
+        );
+      }
+    });
+  }
+
+  function handleSuggestWithLlm() {
+    setError("");
+    startTransition(async () => {
+      try {
+        const nextPlan = await suggestExportPlanWithLlm(projectId);
+        setPlan(nextPlan);
+        setTagsText(joinTags(nextPlan.tags));
+        router.refresh();
+      } catch (submitError) {
+        setError(
+          submitError instanceof Error ? submitError.message : "生成导出建议失败，请稍后重试。"
         );
       }
     });
@@ -151,6 +171,14 @@ export function ExportPlanClient({ projectId, initialPlan }: ExportPlanClientPro
             className="inline-flex rounded-full bg-pine px-5 py-3 text-sm font-medium text-white transition hover:bg-pine/90 disabled:cursor-not-allowed disabled:opacity-60"
           >
             {isPending ? "保存中..." : "保存导出信息"}
+          </button>
+          <button
+            type="button"
+            onClick={handleSuggestWithLlm}
+            disabled={isPending}
+            className="inline-flex rounded-full border border-pine/20 bg-white px-5 py-3 text-sm font-medium text-pine transition hover:bg-mist disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {isPending ? "处理中..." : "LLM 建议文案"}
           </button>
           <button
             type="button"

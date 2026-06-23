@@ -18,9 +18,10 @@ type ApiEnvelope<T> = {
 };
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  const isFormData = init?.body instanceof FormData;
   const response = await fetch(`${API_BASE_URL}${path}`, {
     headers: {
-      "Content-Type": "application/json",
+      ...(isFormData ? {} : { "Content-Type": "application/json" }),
       ...(init?.headers ?? {})
     },
     ...init
@@ -143,6 +144,16 @@ export function generateThemes(projectId: string, count = 3): Promise<NarrativeT
   });
 }
 
+export function generateThemesWithLlm(
+  projectId: string,
+  count = 3
+): Promise<NarrativeTheme[]> {
+  return request<NarrativeTheme[]>(`/projects/${projectId}/themes/generate-llm`, {
+    method: "POST",
+    body: JSON.stringify({ count })
+  });
+}
+
 export function selectTheme(projectId: string, themeId: string): Promise<NarrativeTheme[]> {
   return request<NarrativeTheme[]>(`/projects/${projectId}/themes/select`, {
     method: "PUT",
@@ -153,6 +164,15 @@ export function selectTheme(projectId: string, themeId: string): Promise<Narrati
 export function generateRhythmPlan(projectId: string): Promise<RhythmPlan> {
   return request<RhythmPlan>(`/projects/${projectId}/rhythm-plan:generate`, {
     method: "POST"
+  });
+}
+
+export function uploadRhythmAudio(projectId: string, file: File): Promise<RhythmPlan> {
+  const formData = new FormData();
+  formData.append("audio", file);
+  return request<RhythmPlan>(`/projects/${projectId}/rhythm-plan/audio-upload`, {
+    method: "POST",
+    body: formData
   });
 }
 
@@ -174,6 +194,22 @@ export function generateStoryboard(
   }
 ): Promise<StoryboardBundle> {
   return request<StoryboardBundle>(`/projects/${projectId}/storyboard:generate`, {
+    method: "POST",
+    body: JSON.stringify(payload)
+  });
+}
+
+export function generateStoryboardWithLlm(
+  projectId: string,
+  payload: {
+    themeId?: string;
+    targetDurationSec?: number;
+    beatMode?: string;
+    alignToBeat?: boolean;
+    selectedTrackName?: string;
+  }
+): Promise<StoryboardBundle> {
+  return request<StoryboardBundle>(`/projects/${projectId}/storyboard:generate-llm`, {
     method: "POST",
     body: JSON.stringify(payload)
   });
@@ -236,6 +272,12 @@ export function saveExportPlan(
   return request<ExportPlan>(`/projects/${projectId}/export-plan`, {
     method: "PUT",
     body: JSON.stringify(payload)
+  });
+}
+
+export function suggestExportPlanWithLlm(projectId: string): Promise<ExportPlan> {
+  return request<ExportPlan>(`/projects/${projectId}/export-plan:suggest`, {
+    method: "POST"
   });
 }
 

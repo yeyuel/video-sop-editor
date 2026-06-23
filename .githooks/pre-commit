@@ -1,0 +1,13 @@
+#!/bin/sh
+
+echo "[pre-commit] Scanning repository for mojibake..."
+powershell -ExecutionPolicy Bypass -File scripts/scan-mojibake.ps1
+status=$?
+
+if [ $status -ne 0 ]; then
+  echo "[pre-commit] Mojibake scan failed. Commit aborted."
+  exit $status
+fi
+
+echo "[pre-commit] Mojibake scan passed."
+exit 0

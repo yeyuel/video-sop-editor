@@ -32,12 +32,16 @@ export default async function LoginPage() {
               <div className="rounded-3xl bg-mist px-5 py-5">
                 <p className="text-xs uppercase tracking-[0.2em] text-pine/65">02</p>
                 <p className="mt-3 text-lg font-medium text-ink">主题与节奏</p>
-                <p className="mt-2 text-sm leading-6 text-ink/65">用主题方向和节拍卡点把结构先站稳。</p>
+                <p className="mt-2 text-sm leading-6 text-ink/65">
+                  用叙事方向和节拍卡点先把结构站稳。
+                </p>
               </div>
               <div className="rounded-3xl bg-mist px-5 py-5">
                 <p className="text-xs uppercase tracking-[0.2em] text-pine/65">03</p>
                 <p className="mt-3 text-lg font-medium text-ink">分镜与导出</p>
-                <p className="mt-2 text-sm leading-6 text-ink/65">输出可执行时间线脚本和发布文案。</p>
+                <p className="mt-2 text-sm leading-6 text-ink/65">
+                  输出可执行时间线脚本和发布文案。
+                </p>
               </div>
             </div>
           </div>

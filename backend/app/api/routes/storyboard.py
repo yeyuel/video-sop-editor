@@ -35,6 +35,18 @@ def generate_storyboard(
     return ApiResponse(data=bundle)
 
 
+@router.post("/storyboard:generate-llm", response_model=ApiResponse)
+def generate_storyboard_with_llm(
+    project_id: str,
+    request: StoryboardGenerateRequest,
+    session: Session = Depends(get_session),
+) -> ApiResponse:
+    bundle = repository.generate_storyboard_with_llm(session, project_id, request)
+    if bundle is None:
+        raise HTTPException(status_code=404, detail="Project not found")
+    return ApiResponse(data=bundle)
+
+
 @router.put("/storyboard", response_model=ApiResponse)
 def save_storyboard(
     project_id: str,

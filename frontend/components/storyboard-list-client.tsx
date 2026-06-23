@@ -8,6 +8,7 @@ import { BlockingNotice, ToastNotice } from "@/components/async-status";
 import {
   deleteStoryboardSegment,
   generateStoryboard,
+  generateStoryboardWithLlm,
   reorderStoryboard
 } from "@/lib/browser-api";
 import {
@@ -117,6 +118,31 @@ export function StoryboardListClient({
     });
   }
 
+  function handleGenerateWithLlm() {
+    setError("");
+    startTransition(async () => {
+      try {
+        const nextBundle = await generateStoryboardWithLlm(projectId, {
+          themeId: selectedThemeId,
+          targetDurationSec,
+          beatMode,
+          alignToBeat,
+          selectedTrackName
+        });
+        setBundle(nextBundle);
+        router.refresh();
+        setNotice({
+          title: "LLM 分镜建议已更新",
+          message: nextBundle.validation.message || "当前时间线已经按 LLM 建议重新生成。"
+        });
+      } catch (submitError) {
+        showError(
+          submitError instanceof Error ? submitError.message : "LLM 分镜建议生成失败，请稍后再试。"
+        );
+      }
+    });
+  }
+
   function handleDelete(segmentId: string) {
     const confirmed = window.confirm("删除后这个镜头会从当前时间线中移除，确认继续吗？");
     if (!confirmed) {
@@ -218,6 +244,14 @@ export function StoryboardListClient({
                 className="inline-flex rounded-full bg-pine px-5 py-3 text-sm font-medium text-white transition hover:bg-pine/90 disabled:cursor-not-allowed disabled:opacity-60"
               >
                 {isPending ? "生成中..." : "生成分镜"}
+              </button>
+              <button
+                type="button"
+                onClick={handleGenerateWithLlm}
+                disabled={isPending}
+                className="inline-flex rounded-full border border-pine/20 bg-white px-5 py-3 text-sm font-medium text-pine transition hover:bg-white disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {isPending ? "处理中..." : "LLM 建议分镜"}
               </button>
               <Link
                 href={`/projects/${projectId}/storyboard/new`}

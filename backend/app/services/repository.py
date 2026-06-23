@@ -1,9 +1,10 @@
-import json
+﻿import json
 import re
 from uuid import uuid4
 
 from sqlmodel import Session, delete, select
 
+from app.core.config import settings
 from app.models.entities import (
     AssetEntity,
     ProjectEntity,
@@ -38,7 +39,12 @@ from app.models.schemas import (
     ThemeSelectRequest,
     WorkspaceDataRead,
 )
+from app.services.audio_analysis import audio_beat_analyzer
 from app.services.auth import verify_password
+from app.services.export_generation import build_llm_export_plan, build_rule_export_fallback
+from app.services.llm import llm_suggestion_service
+from app.services.rhythm_generation import build_audio_rhythm_payload, build_rule_rhythm_payload
+from app.services.theme_generation import build_llm_theme_candidates, build_rule_theme_candidates
 
 
 def _loads_str_list(value: str) -> list[str]:
@@ -244,32 +250,36 @@ class SqlRepository:
 
         assets = self.list_assets(session, project_id)
         current_selected = project.selected_theme_id
-        candidates = self._build_theme_candidates(project, assets)[: max(1, min(count, 5))]
+        candidates = build_rule_theme_candidates(project, assets)[: max(1, min(count, 5))]
 
-        session.exec(delete(ThemeEntity).where(ThemeEntity.project_id == project_id))
-        themes: list[ThemeEntity] = []
-        for index, candidate in enumerate(candidates, start=1):
-            theme = ThemeEntity(
-                id=f"theme_{uuid4().hex[:8]}",
-                project_id=project_id,
-                title=candidate["title"],
-                summary=candidate["summary"],
-                core_emotion=candidate["coreEmotion"],
-                rhythm_profile=candidate["rhythmProfile"],
-                platform_reason=candidate["platformReason"],
-            )
-            themes.append(theme)
-            session.add(theme)
+        return self._replace_theme_candidates(
+            session,
+            project=project,
+            project_id=project_id,
+            candidates=candidates,
+            current_selected=current_selected,
+        )
 
-        session.commit()
+    def generate_themes_with_llm(
+        self, session: Session, project_id: str, count: int = 3
+    ) -> list[NarrativeThemeRead] | None:
+        project = self.get_project_entity(session, project_id)
+        if not project:
+            return None
 
-        selected_theme = next((item for item in themes if item.id == current_selected), None)
-        if not selected_theme and themes:
-            selected_theme = themes[0]
-        project.selected_theme_id = selected_theme.id if selected_theme else ""
-        session.add(project)
-        session.commit()
-        return [self._map_theme(item, project.selected_theme_id) for item in themes]
+        assets = self.list_assets(session, project_id)
+        current_selected = project.selected_theme_id
+        candidates = build_llm_theme_candidates(project, assets, count)
+        if not candidates:
+            candidates = build_rule_theme_candidates(project, assets)[: max(1, min(count, 5))]
+
+        return self._replace_theme_candidates(
+            session,
+            project=project,
+            project_id=project_id,
+            candidates=candidates,
+            current_selected=current_selected,
+        )
 
     def select_theme(
         self, session: Session, project_id: str, payload: ThemeSelectRequest
@@ -302,23 +312,45 @@ class SqlRepository:
 
         assets = self.list_assets(session, project_id)
         theme = self.get_selected_theme(session, project_id)
-        beat_mode = self._recommend_beat_mode(project.video_type)
-        beat_interval = 0.5 if beat_mode in {"beat_1", "strong_weak"} else 1.0
-        beat_points = self._build_beat_points(project.target_duration_sec, beat_interval)
-
-        rhythm_payload = RhythmPlanWriteRequest(
-            bgmStyle=theme.rhythmProfile if theme else "氛围电子 + 轻鼓点",
-            selectedTrackName=f"{project.id}-demo-track",
-            beatMode=beat_mode,
-            beatPoints=beat_points,
-            rhythmNotes=self._build_rhythm_notes(project, assets, theme),
-            darkCutSuggestions=self._build_dark_cuts(project.target_duration_sec),
-            photoMotionSuggestions=self._build_photo_motion_suggestions(assets),
-        )
+        rhythm_payload = build_rule_rhythm_payload(project, assets, theme)
         return self.upsert_rhythm_plan(session, project_id, rhythm_payload)
 
+
+    def analyze_rhythm_audio(
+        self,
+        session: Session,
+        project_id: str,
+        audio_file_name: str,
+        audio_file_path: str,
+    ) -> RhythmPlanRead | None:
+        project = self.get_project_entity(session, project_id)
+        if not project:
+            return None
+
+        assets = self.list_assets(session, project_id)
+        theme = self.get_selected_theme(session, project_id)
+        analysis = audio_beat_analyzer.analyze(audio_file_path, project.target_duration_sec)
+        rhythm_payload = build_audio_rhythm_payload(
+            project,
+            assets,
+            theme,
+            audio_file_name,
+            analysis,
+        )
+        return self.upsert_rhythm_plan(
+            session,
+            project_id,
+            rhythm_payload,
+            audio_file_path=audio_file_path,
+        )
+
+
     def upsert_rhythm_plan(
-        self, session: Session, project_id: str, payload: RhythmPlanWriteRequest
+        self,
+        session: Session,
+        project_id: str,
+        payload: RhythmPlanWriteRequest,
+        audio_file_path: str | None = None,
     ) -> RhythmPlanRead | None:
         project = self.get_project_entity(session, project_id)
         if not project:
@@ -333,6 +365,10 @@ class SqlRepository:
                 project_id=project_id,
                 bgm_style="",
                 selected_track_name="",
+                audio_file_name="",
+                audio_file_path="",
+                analysis_source="manual",
+                analysis_notes="[]",
                 beat_mode="none",
                 beat_points="[]",
                 rhythm_notes="[]",
@@ -342,6 +378,13 @@ class SqlRepository:
 
         rhythm.bgm_style = payload.bgmStyle
         rhythm.selected_track_name = payload.selectedTrackName
+        rhythm.audio_file_name = payload.audioFileName
+        if audio_file_path is not None:
+            rhythm.audio_file_path = audio_file_path
+        elif not payload.audioFileName:
+            rhythm.audio_file_path = ""
+        rhythm.analysis_source = payload.analysisSource
+        rhythm.analysis_notes = _dumps(payload.analysisNotes)
         rhythm.beat_mode = payload.beatMode
         rhythm.beat_points = _dumps(payload.beatPoints)
         rhythm.rhythm_notes = _dumps(payload.rhythmNotes)
@@ -424,6 +467,64 @@ class SqlRepository:
             beat_mode=beat_mode,
             beat_points=beat_points,
         )
+        self._replace_storyboard_segments(session, project_id, theme.id, segments)
+        return self.get_storyboard_bundle(session, project_id)
+
+    def generate_storyboard_with_llm(
+        self, session: Session, project_id: str, request: StoryboardGenerateRequest
+    ) -> StoryboardBundleRead | None:
+        project = self.get_project_entity(session, project_id)
+        if not project:
+            return None
+
+        theme = self._resolve_theme(session, project_id, request.themeId)
+        assets = self.list_assets(session, project_id)
+        rhythm = self.get_rhythm_plan(session, project_id)
+        if not theme or not assets:
+            return StoryboardBundleRead(
+                segments=[],
+                validation=self._build_storyboard_validation(
+                    project,
+                    [],
+                    rhythm,
+                    assets,
+                ),
+            )
+
+        target_duration = request.targetDurationSec or project.target_duration_sec
+        align_to_beat = request.alignToBeat
+        beat_mode = (
+            request.beatMode or (rhythm.beatMode if rhythm else "none")
+            if align_to_beat
+            else "none"
+        )
+        beat_points = rhythm.beatPoints if rhythm and align_to_beat else []
+        llm_plan = self._build_llm_storyboard_plan(
+            project=project,
+            theme=theme,
+            assets=assets,
+            rhythm=rhythm,
+            target_duration_sec=target_duration,
+            beat_mode=beat_mode,
+        )
+        if llm_plan:
+            segments = self._generate_storyboard_segments_from_plan(
+                assets=assets,
+                theme_id=theme.id,
+                target_duration_sec=target_duration,
+                beat_mode=beat_mode,
+                beat_points=beat_points,
+                llm_plan=llm_plan,
+            )
+        else:
+            segments = self._generate_storyboard_segments(
+                assets=assets,
+                theme_id=theme.id,
+                target_duration_sec=target_duration,
+                beat_mode=beat_mode,
+                beat_points=beat_points,
+            )
+
         self._replace_storyboard_segments(session, project_id, theme.id, segments)
         return self.get_storyboard_bundle(session, project_id)
 
@@ -582,6 +683,37 @@ class SqlRepository:
         session.refresh(publish)
         return self._map_export_plan(publish)
 
+    def suggest_export_plan_with_llm(
+        self, session: Session, project_id: str
+    ) -> ExportPlanRead | None:
+        project = self.get_project_entity(session, project_id)
+        if not project:
+            return None
+
+        assets = self.list_assets(session, project_id)
+        theme = self.get_selected_theme(session, project_id)
+        storyboard_bundle = self.get_storyboard_bundle(session, project_id)
+        current_plan = self.get_export_plan(session, project_id)
+        suggestion = build_llm_export_plan(
+            project=project,
+            assets=assets,
+            theme=theme,
+            storyboard=storyboard_bundle.segments,
+            current_plan=current_plan,
+        )
+        if not suggestion:
+            suggestion = build_rule_export_fallback(project=project, theme=theme)
+
+        payload = ExportPlanWriteRequest(
+            title=str(suggestion.get("title", "")).strip(),
+            shortTitle=str(suggestion.get("shortTitle", "")).strip(),
+            description=str(suggestion.get("description", "")).strip(),
+            tags=self._normalize_tag_list(suggestion.get("tags")),
+            coverSuggestion=str(suggestion.get("coverSuggestion", "")).strip(),
+        )
+        return self.upsert_export_plan(session, project_id, payload)
+
+
     def build_export_document(
         self, session: Session, project_id: str, fmt: str
     ) -> ExportDocumentRead | None:
@@ -611,20 +743,19 @@ class SqlRepository:
             themes=self.list_themes(session, project_id),
             storyboard=storyboard_bundle.segments,
             storyboardValidation=storyboard_bundle.validation,
-            rhythmPlan=rhythm
-            if rhythm
-            else RhythmPlanRead(
+            rhythmPlan=rhythm if rhythm else RhythmPlanRead(
                 bgmStyle="",
                 selectedTrackName="",
+                audioFileName="",
+                analysisSource="manual",
+                analysisNotes=[],
                 beatMode="none",
                 beatPoints=[],
                 rhythmNotes=[],
                 darkCutSuggestions=[],
                 photoMotionSuggestions=[],
             ),
-            exportPlan=export_plan
-            if export_plan
-            else ExportPlanRead(
+            exportPlan=export_plan if export_plan else ExportPlanRead(
                 title="",
                 shortTitle="",
                 description="",
@@ -717,6 +848,9 @@ class SqlRepository:
         return RhythmPlanRead(
             bgmStyle=item.bgm_style,
             selectedTrackName=item.selected_track_name,
+            audioFileName=item.audio_file_name,
+            analysisSource=item.analysis_source,
+            analysisNotes=_loads_str_list(item.analysis_notes),
             beatMode=item.beat_mode,
             beatPoints=_loads_float_list(item.beat_points),
             rhythmNotes=_loads_str_list(item.rhythm_notes),
@@ -748,85 +882,41 @@ class SqlRepository:
             candidate = f"{base}_{next_index:03d}"
         return candidate
 
-    @staticmethod
-    def _recommend_beat_mode(video_type: str) -> str:
-        if video_type in {"guide_video", "travel_montage"}:
-            return "beat_2"
-        if video_type == "vlog":
-            return "strong_weak"
-        return "beat_1"
 
-    @staticmethod
-    def _build_beat_points(target_duration_sec: int, interval: float) -> list[float]:
-        beat_points: list[float] = []
-        current = 0.0
-        while current <= float(target_duration_sec):
-            beat_points.append(round(current, 2))
-            current += interval
-        if beat_points[-1] < float(target_duration_sec):
-            beat_points.append(float(target_duration_sec))
-        return beat_points
-
-    @staticmethod
-    def _build_dark_cuts(target_duration_sec: int) -> list[float]:
-        return [
-            round(target_duration_sec * 0.25, 2),
-            round(target_duration_sec * 0.5, 2),
-            round(target_duration_sec * 0.75, 2),
-        ]
-
-    @staticmethod
-    def _build_photo_motion_suggestions(assets: list[AssetRead]) -> list[str]:
-        if any(asset.mediaType == "photo" for asset in assets):
-            return [
-                "照片素材优先使用慢推、轻缩放或停留 1-2 拍，避免和视频素材同频快切。",
-                "遇到静态雪景或建筑照时，先给 0.5 秒缓入，再在下一个节拍切出。",
-            ]
-        return ["以视频素材为主，可在情绪段落加入轻微速度变化，不必额外补照片动效。"]
-
-    @staticmethod
-    def _build_rhythm_notes(
+    def _replace_theme_candidates(
+        self,
+        session: Session,
+        *,
         project: ProjectEntity,
-        assets: list[AssetRead],
-        theme: NarrativeThemeRead | None,
-    ) -> list[str]:
-        opening_asset = assets[0].scene if assets else "第一组素材"
-        climax_asset = assets[-1].scene if assets else "主高潮素材"
-        return [
-            f"前 3 秒用 {opening_asset} 作为开头钩子，优先卡前 2-4 个主拍。",
-            f"中段按 {theme.rhythmProfile if theme else '先稳后提速'} 组织节奏，避免平均分配镜头。",
-            f"在 {climax_asset} 所在段落预留 3/4 位置高潮，保证总时长接近 {project.target_duration_sec} 秒。",
-        ]
+        project_id: str,
+        candidates: list[dict[str, str]],
+        current_selected: str,
+    ) -> list[NarrativeThemeRead]:
+        session.exec(delete(ThemeEntity).where(ThemeEntity.project_id == project_id))
+        themes: list[ThemeEntity] = []
+        for candidate in candidates:
+            theme = ThemeEntity(
+                id=f"theme_{uuid4().hex[:8]}",
+                project_id=project_id,
+                title=candidate["title"],
+                summary=candidate["summary"],
+                core_emotion=candidate["coreEmotion"],
+                rhythm_profile=candidate["rhythmProfile"],
+                platform_reason=candidate["platformReason"],
+            )
+            themes.append(theme)
+            session.add(theme)
 
-    @staticmethod
-    def _build_theme_candidates(
-        project: ProjectEntity, assets: list[AssetRead]
-    ) -> list[dict[str, str]]:
-        location_text = "、".join(sorted({asset.location for asset in assets})) or project.destination
-        dominant_emotion = assets[0].emotionTags[0] if assets and assets[0].emotionTags else "沉浸"
-        return [
-            {
-                "title": f"{project.destination} 情绪氛围片",
-                "summary": f"用 {location_text} 的环境和空镜串起旅途情绪，强调 {dominant_emotion} 和沉浸感。",
-                "coreEmotion": dominant_emotion,
-                "rhythmProfile": "前段抓人，中段放缓，结尾回味",
-                "platformReason": "适合小红书、视频号等强调氛围表达的平台。",
-            },
-            {
-                "title": f"{project.destination} 路线纪实",
-                "summary": f"按 {project.route_text} 的真实路线推进，用地点切换保证叙事清楚。",
-                "coreEmotion": "纪实",
-                "rhythmProfile": "按路线推进，节点处提速",
-                "platformReason": "适合希望兼顾记录感和可看性的旅行短视频。",
-            },
-            {
-                "title": f"{project.destination} 攻略亮点版",
-                "summary": "把高信息量素材前置，用节拍节点打包亮点，适合做目的地种草。",
-                "coreEmotion": "种草",
-                "rhythmProfile": "快起快收，中段稳节奏",
-                "platformReason": "适合抖音、小红书等需要明确记忆点的平台。",
-            },
-        ]
+        session.commit()
+
+        selected_theme = next((item for item in themes if item.id == current_selected), None)
+        if not selected_theme and themes:
+            selected_theme = themes[0]
+        project.selected_theme_id = selected_theme.id if selected_theme else ""
+        session.add(project)
+        session.commit()
+        return [self._map_theme(item, project.selected_theme_id) for item in themes]
+
 
     def _resolve_theme(
         self, session: Session, project_id: str, theme_id: str | None
@@ -896,6 +986,91 @@ class SqlRepository:
         return segments
 
     @staticmethod
+    def _generate_storyboard_segments_from_plan(
+        assets: list[AssetRead],
+        theme_id: str,
+        target_duration_sec: int,
+        beat_mode: str,
+        beat_points: list[float],
+        llm_plan: list[dict[str, str]],
+    ) -> list[StoryboardSegmentWrite]:
+        asset_map = {asset.assetId: asset for asset in assets}
+        planned_assets: list[tuple[AssetRead, dict[str, str] | None]] = []
+        used_asset_ids: set[str] = set()
+
+        for item in llm_plan:
+            asset_id = str(item.get("assetId", "")).strip()
+            asset = asset_map.get(asset_id)
+            if not asset or asset.assetId in used_asset_ids:
+                continue
+            planned_assets.append((asset, item))
+            used_asset_ids.add(asset.assetId)
+
+        for asset in SqlRepository._order_assets_for_storyboard(assets):
+            if asset.assetId not in used_asset_ids:
+                planned_assets.append((asset, None))
+
+        segments: list[StoryboardSegmentWrite] = []
+        beat_index = 0
+        current_time = 0.0
+        safe_beats = beat_points if len(beat_points) >= 2 and beat_mode != "none" else []
+        for asset, plan_item in planned_assets:
+            if current_time >= float(target_duration_sec):
+                break
+
+            if safe_beats:
+                beat_index = SqlRepository._advance_beat_index(safe_beats, current_time, beat_index)
+                duration = max(asset.suggestedDurationSec, 0.5)
+                interval = safe_beats[1] - safe_beats[0]
+                beats_needed = max(1, round(duration / max(interval, 0.25)))
+                next_index = min(beat_index + beats_needed, len(safe_beats) - 1)
+                end_time = safe_beats[next_index]
+                if end_time <= current_time:
+                    end_time = min(float(target_duration_sec), current_time + duration)
+                segment_beats = [point for point in safe_beats if current_time <= point <= end_time]
+                beat_index = next_index
+            else:
+                end_time = min(float(target_duration_sec), current_time + asset.suggestedDurationSec)
+                segment_beats = [round(current_time, 2), round(end_time, 2)]
+
+            fallback_function = asset.functionTags[0] if asset.functionTags else "supporting"
+            fallback_rhythm = SqlRepository._rhythm_label(asset.informationDensity)
+            fallback_subtitle = SqlRepository._subtitle_from_asset(asset)
+            shot_description = (
+                str(plan_item.get("shotDescription", "")).strip()
+                if plan_item
+                else ""
+            ) or f"{asset.location} - {asset.scene}"
+            function_name = SqlRepository._normalize_storyboard_function(
+                str(plan_item.get("function", "")).strip() if plan_item else fallback_function,
+                fallback_function,
+            )
+            rhythm_text = (
+                str(plan_item.get("rhythm", "")).strip() if plan_item else ""
+            ) or fallback_rhythm
+            subtitle = (
+                str(plan_item.get("subtitle", "")).strip() if plan_item else ""
+            ) or fallback_subtitle
+
+            segments.append(
+                StoryboardSegmentWrite(
+                    id=f"seg_{uuid4().hex[:8]}",
+                    startTime=round(current_time, 2),
+                    endTime=round(end_time, 2),
+                    assetId=asset.assetId,
+                    shotDescription=shot_description,
+                    function=function_name,
+                    rhythm=rhythm_text,
+                    beatMode=beat_mode,
+                    beatPoints=segment_beats,
+                    subtitle=subtitle,
+                )
+            )
+            current_time = round(end_time, 2)
+
+        return segments
+
+    @staticmethod
     def _order_assets_for_storyboard(assets: list[AssetRead]) -> list[AssetRead]:
         indexed_assets = list(enumerate(assets))
         indexed_assets.sort(
@@ -951,6 +1126,25 @@ class SqlRepository:
     @staticmethod
     def _subtitle_from_asset(asset: AssetRead) -> str:
         return f"{asset.location} / {asset.scene}"
+
+    @staticmethod
+    def _normalize_storyboard_function(candidate: str, fallback: str) -> str:
+        allowed = set(SqlRepository.STORYBOARD_CHAPTER_PRIORITY) | set(
+            SqlRepository.STORYBOARD_MODIFIER_PRIORITY
+        )
+        if candidate in allowed:
+            return candidate
+        return fallback if fallback in allowed else "supporting"
+
+    @staticmethod
+    def _normalize_tag_list(value: object) -> list[str]:
+        if isinstance(value, str):
+            candidates = re.split(r"[,\uff0c\u3001#\s]+", value)
+        elif isinstance(value, list):
+            candidates = [str(item) for item in value]
+        else:
+            candidates = []
+        return [item.strip() for item in candidates if item and item.strip()]
 
     def _replace_storyboard_segments(
         self,
@@ -1062,27 +1256,14 @@ class SqlRepository:
             else False
         )
         target_duration_reached = total_duration >= float(project.target_duration_sec if project else 0)
-        if not segments:
-            message = "\u5f53\u524d\u8fd8\u6ca1\u6709\u53ef\u7528\u5206\u955c\uff0c\u8bf7\u5148\u786e\u8ba4\u7d20\u6750\u548c\u4e3b\u9898\u3002"
-        elif target_duration_reached:
-            message = "\u5df2\u751f\u6210\u5230\u76ee\u6807\u65f6\u957f\u8303\u56f4\u5185\u3002"
-        else:
-            message = "\u7d20\u6750\u5df2\u5168\u90e8\u4f7f\u7528\u5b8c\uff0c\u5f53\u524d\u603b\u65f6\u957f\u8fd8\u672a\u8fbe\u5230\u76ee\u6807\u65f6\u957f\u3002\u5efa\u8bae\u8865\u5145\u7d20\u6750\uff0c\u6216\u5148\u5c06\u957f\u7d20\u6750\u5207\u5206\u540e\u5206\u522b\u5f55\u5165\u3002"
-        return StoryboardValidationRead(
-            allSegmentsBoundToAsset=all_bound,
-            locationContinuityPassed=location_continuity,
-            beatAlignmentPassed=beat_alignment,
-            beatAdaptationEnabled=beat_adaptation_enabled,
-            totalDurationSec=total_duration,
-            targetDurationReached=target_duration_reached,
-            message=message,
-        )
+
         if not segments:
             message = "当前还没有可用分镜，请先确认素材和主题。"
         elif target_duration_reached:
-            message = "已生成到目标时长范围内。"
+            message = "当前分镜总时长已经落在目标时长范围内。"
         else:
-            message = "素材已全部使用完，当前总时长未达到目标时长。建议补充素材，或先将长素材切分后分别录入。"
+            message = "素材已全部使用完，但当前总时长还未达到目标时长。建议补充素材，或先将长素材切分后分别录入。"
+
         return StoryboardValidationRead(
             allSegmentsBoundToAsset=all_bound,
             locationContinuityPassed=location_continuity,
@@ -1101,11 +1282,6 @@ class SqlRepository:
                 r"\s*(?:->|\u2192|\u2014|-|,|\uff0c|\u3001|\r?\n)\s*",
                 route_text,
             )
-            if item.strip()
-        ]
-        return [
-            item.strip()
-            for item in re.split(r"\s*(?:->|→|—|-|,|，|、|\r?\n)\s*", route_text)
             if item.strip()
         ]
 
@@ -1205,10 +1381,10 @@ class SqlRepository:
             f"- 标题：{workspace.exportPlan.title}",
             f"- 短标题：{workspace.exportPlan.shortTitle or '未填写'}",
             f"- 标签：{', '.join(workspace.exportPlan.tags) if workspace.exportPlan.tags else '未填写'}",
-            f"- 文案：{workspace.exportPlan.description}",
+            f"- 描述：{workspace.exportPlan.description}",
             f"- 封面建议：{workspace.exportPlan.coverSuggestion or '未填写'}",
             "",
-            "## 节奏方案",
+            "## 节奏信息",
             f"- BGM 风格：{workspace.rhythmPlan.bgmStyle}",
             f"- 参考曲目：{workspace.rhythmPlan.selectedTrackName}",
             f"- 节拍模式：{workspace.rhythmPlan.beatMode}",
@@ -1225,7 +1401,6 @@ class SqlRepository:
                 f"{segment.function} | {segment.rhythm} | {segment.subtitle} |"
             )
         return "\n".join(lines)
-
     @staticmethod
     def _to_yaml(value: object, indent: int = 0) -> str:
         prefix = "  " * indent
@@ -1262,3 +1437,4 @@ class SqlRepository:
 
 
 repository = SqlRepository()
+

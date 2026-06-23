@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 
-import { AUTH_COOKIE_NAME } from "@/lib/auth-users";
+import { AUTH_COOKIE_NAME } from "@/lib/auth-constants";
 
 function isAllowedPath(pathname: string) {
   return (

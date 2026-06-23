@@ -178,6 +178,9 @@ class StoryboardBundleRead(BaseModel):
 class RhythmPlanRead(BaseModel):
     bgmStyle: str
     selectedTrackName: str
+    audioFileName: str = ""
+    analysisSource: str = "manual"
+    analysisNotes: list[str] = Field(default_factory=list)
     beatMode: str
     beatPoints: list[float]
     rhythmNotes: list[str]
@@ -188,6 +191,9 @@ class RhythmPlanRead(BaseModel):
 class RhythmPlanWriteRequest(BaseModel):
     bgmStyle: str
     selectedTrackName: str
+    audioFileName: str = ""
+    analysisSource: str = "manual"
+    analysisNotes: list[str] = Field(default_factory=list)
     beatMode: str
     beatPoints: list[float] = Field(default_factory=list)
     rhythmNotes: list[str] = Field(default_factory=list)

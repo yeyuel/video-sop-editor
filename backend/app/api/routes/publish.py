@@ -26,3 +26,11 @@ def save_export_plan(
     if export_plan is None:
         raise HTTPException(status_code=404, detail="Project not found")
     return ApiResponse(data=export_plan)
+
+
+@router.post("/export-plan:suggest", response_model=ApiResponse)
+def suggest_export_plan(project_id: str, session: Session = Depends(get_session)) -> ApiResponse:
+    export_plan = repository.suggest_export_plan_with_llm(session, project_id)
+    if export_plan is None:
+        raise HTTPException(status_code=404, detail="Project not found")
+    return ApiResponse(data=export_plan)

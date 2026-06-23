@@ -28,6 +28,18 @@ def generate_themes(
     return ApiResponse(data=themes)
 
 
+@router.post("/generate-llm", response_model=ApiResponse)
+def generate_themes_with_llm(
+    project_id: str,
+    payload: ThemeGenerateRequest,
+    session: Session = Depends(get_session),
+) -> ApiResponse:
+    themes = repository.generate_themes_with_llm(session, project_id, payload.count)
+    if themes is None:
+        raise HTTPException(status_code=404, detail="Project not found")
+    return ApiResponse(data=themes)
+
+
 @router.put("/select", response_model=ApiResponse)
 def select_theme(
     project_id: str,

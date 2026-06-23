@@ -111,6 +111,9 @@ export const fallbackWorkspace: WorkspaceData = {
   rhythmPlan: {
     bgmStyle: "冷感氛围电子 + 轻鼓点",
     selectedTrackName: "snow-dream-demo",
+    audioFileName: "",
+    analysisSource: "rule",
+    analysisNotes: ["当前为规则生成节拍点，尚未上传真实音频。"],
     beatMode: "beat_1",
     beatPoints: [0, 0.5, 1, 1.5, 2, 2.5],
     rhythmNotes: [

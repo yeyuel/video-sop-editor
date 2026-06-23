@@ -68,6 +68,9 @@ export type StoryboardBundle = {
 export type RhythmPlan = {
   bgmStyle: string;
   selectedTrackName: string;
+  audioFileName: string;
+  analysisSource: string;
+  analysisNotes: string[];
   beatMode: string;
   beatPoints: number[];
   rhythmNotes: string[];

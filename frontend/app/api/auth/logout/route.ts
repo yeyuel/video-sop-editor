@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 
-import { AUTH_COOKIE_NAME } from "@/lib/auth-users";
+import { AUTH_COOKIE_NAME } from "@/lib/auth-constants";
 
 export async function POST(request: NextRequest) {
   const response = NextResponse.redirect(new URL("/login", request.url));

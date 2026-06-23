@@ -3,7 +3,7 @@
 import { useRouter, useSearchParams } from "next/navigation";
 import { FormEvent, useState } from "react";
 
-import { DIRECTOR_UI_USERNAME } from "@/lib/auth-users";
+import { DIRECTOR_UI_USERNAME } from "@/lib/auth-constants";
 
 export function LoginForm() {
   const router = useRouter();

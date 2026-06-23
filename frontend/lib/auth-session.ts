@@ -1,6 +1,6 @@
 import { cookies } from "next/headers";
 
-import { AUTH_COOKIE_NAME, type SessionUser } from "@/lib/auth-users";
+import { AUTH_COOKIE_NAME, type SessionUser } from "@/lib/auth-constants";
 
 export async function getCurrentSessionUser(): Promise<SessionUser | null> {
   const cookieStore = await cookies();

@@ -72,6 +72,10 @@ class RhythmPlanEntity(SQLModel, table=True):
     project_id: str = Field(index=True)
     bgm_style: str
     selected_track_name: str
+    audio_file_name: str = ""
+    audio_file_path: str = ""
+    analysis_source: str = "manual"
+    analysis_notes: str = "[]"
     beat_mode: str
     beat_points: str
     rhythm_notes: str
