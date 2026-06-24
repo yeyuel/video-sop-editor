@@ -1,6 +1,9 @@
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import StreamingResponse
 from sqlmodel import Session
 
+from app.api.meta import merge_response_meta
+from app.api.sse_stream import run_streaming_task
 from app.db import get_session
 from app.models.schemas import ApiResponse, ExportPlanWriteRequest
 from app.services.repository import repository
@@ -30,7 +33,32 @@ def save_export_plan(
 
 @router.post("/export-plan:suggest", response_model=ApiResponse)
 def suggest_export_plan(project_id: str, session: Session = Depends(get_session)) -> ApiResponse:
-    export_plan = repository.suggest_export_plan_with_llm(session, project_id)
-    if export_plan is None:
+    result = repository.suggest_export_plan_with_llm(session, project_id)
+    if result is None:
         raise HTTPException(status_code=404, detail="Project not found")
-    return ApiResponse(data=export_plan)
+    export_plan, llm_meta = result
+    return ApiResponse(data=export_plan, meta=merge_response_meta(llm_meta))
+
+
+@router.post("/export-plan/suggest/stream")
+def suggest_export_plan_stream(project_id: str) -> StreamingResponse:
+    def serialize_complete(result: object) -> tuple[object, dict[str, str] | None]:
+        if result is None:
+            raise HTTPException(status_code=404, detail="Project not found")
+        export_plan, llm_meta = result  # type: ignore[misc]
+        return export_plan.model_dump(), llm_meta
+
+    def task(session: Session, report) -> object:
+        return repository.suggest_export_plan_with_llm(
+            session, project_id, on_progress=report
+        )
+
+    return StreamingResponse(
+        run_streaming_task(task, serialize_complete=serialize_complete),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )

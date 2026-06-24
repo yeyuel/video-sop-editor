@@ -34,9 +34,14 @@ class Settings(BaseSettings):
         validation_alias=AliasChoices("LLM_MODEL", "OPENAI_MODEL"),
     )
     llm_timeout_sec: int = Field(
-        default=45,
+        default=120,
         alias="LLM_TIMEOUT_SEC",
         validation_alias=AliasChoices("LLM_TIMEOUT_SEC", "OPENAI_TIMEOUT_SEC"),
+    )
+    llm_max_retries: int = Field(
+        default=0,
+        alias="LLM_MAX_RETRIES",
+        validation_alias=AliasChoices("LLM_MAX_RETRIES", "OPENAI_MAX_RETRIES"),
     )
 
     model_config = SettingsConfigDict(env_file=".env", populate_by_name=True)
@@ -66,6 +71,10 @@ class Settings(BaseSettings):
     @property
     def resolved_llm_timeout_sec(self) -> int:
         return self.llm_timeout_sec or 45
+
+    @property
+    def resolved_llm_max_retries(self) -> int:
+        return max(0, min(self.llm_max_retries or 1, 5))
 
 
 settings = Settings()

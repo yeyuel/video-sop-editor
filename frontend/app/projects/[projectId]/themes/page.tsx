@@ -3,7 +3,7 @@ import { SectionCard } from "@/components/section-card";
 import { ThemeSelectorClient } from "@/components/theme-selector-client";
 import { Topbar } from "@/components/topbar";
 import { WorkflowStepper } from "@/components/workflow-stepper";
-import { getWorkspace } from "@/lib/api";
+import { getWorkspaceStrict } from "@/lib/api";
 import { getCompletedWorkflowSteps, getEnabledWorkflowSteps } from "@/lib/workflow";
 
 type ProjectThemesPageProps = {
@@ -14,7 +14,27 @@ type ProjectThemesPageProps = {
 
 export default async function ProjectThemesPage({ params }: ProjectThemesPageProps) {
   const { projectId } = await params;
-  const workspace = await getWorkspace(projectId);
+  const workspace = await getWorkspaceStrict(projectId);
+
+  if (!workspace) {
+    return (
+      <main className="pb-12">
+        <Topbar />
+        <div className="mx-auto max-w-7xl px-6">
+          <section className="rounded-xl2 border border-clay/20 bg-[#fff5ef] p-6 text-sm leading-7 text-clay">
+            <h2 className="text-lg font-semibold">无法加载项目数据</h2>
+            <p className="mt-2">
+              后端未找到项目 <code>{projectId}</code>，或 API 服务未启动。请确认 backend 正在运行，并回到{" "}
+              <Link href="/" className="text-pine underline">
+                首页
+              </Link>{" "}
+              重新进入项目。
+            </p>
+          </section>
+        </div>
+      </main>
+    );
+  }
 
   return (
     <main className="pb-12">

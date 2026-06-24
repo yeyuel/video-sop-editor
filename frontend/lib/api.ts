@@ -1,4 +1,5 @@
 import { fallbackProjects, fallbackWorkspace } from "@/lib/mock-data";
+import { getServerApiBaseUrl } from "@/lib/api-base";
 import type {
   Asset,
   ExportDocument,
@@ -11,8 +12,7 @@ import type {
   WorkspaceData
 } from "@/types/domain";
 
-const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://127.0.0.1:8000/api/v1";
+const API_BASE_URL = getServerApiBaseUrl();
 
 async function safeFetch<T>(path: string, fallback: T): Promise<T> {
   try {
@@ -41,6 +41,21 @@ export async function getProject(projectId: string): Promise<Project> {
 
 export async function getWorkspace(projectId: string): Promise<WorkspaceData> {
   return safeFetch<WorkspaceData>(`/projects/${projectId}/workspace`, fallbackWorkspace);
+}
+
+export async function getWorkspaceStrict(projectId: string): Promise<WorkspaceData | null> {
+  try {
+    const response = await fetch(`${API_BASE_URL}/projects/${projectId}/workspace`, {
+      cache: "no-store"
+    });
+    if (!response.ok) {
+      return null;
+    }
+    const payload = (await response.json()) as { data: WorkspaceData };
+    return payload.data;
+  } catch {
+    return null;
+  }
 }
 
 export async function getAsset(projectId: string, assetId: string): Promise<Asset> {

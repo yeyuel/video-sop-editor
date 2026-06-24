@@ -13,7 +13,8 @@ from app.models.schemas import (
     StoryboardSegmentWrite,
     StoryboardValidationRead,
 )
-from app.services.llm import llm_suggestion_service
+from app.services.llm import LlmCallResult, build_llm_meta, llm_suggestion_service
+from app.services.llm.progress import ProgressReporter, emit_progress
 
 STORYBOARD_CHAPTER_PRIORITY = {
     "opening_hook": 0,
@@ -29,6 +30,62 @@ STORYBOARD_MODIFIER_PRIORITY = {
     "transition_buffer": 2,
 }
 
+STORYBOARD_LLM_BASE_MAX_TOKENS = 2000
+STORYBOARD_LLM_TOKENS_PER_ASSET = 80
+STORYBOARD_LLM_MAX_TOKENS_CAP = 8000
+
+
+def _theme_context_for_llm(theme: NarrativeThemeRead) -> dict[str, str]:
+    return {
+        "title": theme.title,
+        "summary": theme.summary,
+        "coreEmotion": theme.coreEmotion,
+        "rhythmProfile": theme.rhythmProfile,
+    }
+
+
+def _rhythm_context_for_llm(rhythm: RhythmPlanRead | None, beat_mode: str) -> dict[str, object] | None:
+    if not rhythm:
+        return None
+    notes = [note.strip() for note in rhythm.rhythmNotes if note.strip()][:3]
+    return {
+        "beatMode": beat_mode or rhythm.beatMode,
+        "detectedBpm": rhythm.detectedBpm,
+        "bgmStyle": rhythm.bgmStyle,
+        "selectedTrackName": rhythm.selectedTrackName,
+        "rhythmNotesSummary": notes,
+    }
+
+
+def _storyboard_max_tokens(asset_count: int) -> int:
+    return min(
+        STORYBOARD_LLM_MAX_TOKENS_CAP,
+        STORYBOARD_LLM_BASE_MAX_TOKENS + max(asset_count, 1) * STORYBOARD_LLM_TOKENS_PER_ASSET,
+    )
+
+
+def _align_storyboard_plan_to_assets(
+    ordered_assets: list[AssetRead],
+    plan: list[dict[str, str]],
+) -> list[dict[str, str]]:
+    plan_by_asset = {item["assetId"]: item for item in plan}
+    aligned: list[dict[str, str]] = []
+    for asset in ordered_assets:
+        item = plan_by_asset.get(asset.assetId)
+        if item:
+            aligned.append(item)
+            continue
+        aligned.append(
+            {
+                "assetId": asset.assetId,
+                "shotDescription": "",
+                "function": "",
+                "rhythm": "",
+                "subtitle": "",
+            }
+        )
+    return aligned
+
 
 def build_llm_storyboard_plan(
     *,
@@ -38,16 +95,22 @@ def build_llm_storyboard_plan(
     rhythm: RhythmPlanRead | None,
     target_duration_sec: int,
     beat_mode: str,
-) -> list[dict[str, str]] | None:
-    payload = llm_suggestion_service.generate_json(
+    on_progress: ProgressReporter | None = None,
+) -> tuple[list[dict[str, str]] | None, dict[str, str]]:
+    ordered_assets = order_assets_for_storyboard(assets)
+    emit_progress(
+        on_progress,
+        "preparing",
+        f"正在整理主题「{theme.title}」与 {len(ordered_assets)} 条素材…",
+        progress=10,
+    )
+    result = llm_suggestion_service.generate_json_result(
         system_prompt=(
             "You are a travel short-form video storyboard director. "
-            "Return JSON only with a segments array. Each segment must include "
-            "assetId, shotDescription, function, rhythm, subtitle. "
-            "Only use assetId values from the provided assets. "
-            "Do not repeat the same assetId. "
-            "function must be one of: opening_hook, supporting, slow_climax, "
-            "main_climax, ending, rhythm_hit, transition_buffer."
+            "Return JSON only with a segments array. "
+            "Each segment must include assetId, shotDescription, subtitle. "
+            "Follow orderedAssets exactly: one segment per asset, same order, no duplicates. "
+            "Do not invent assetId values outside orderedAssets."
         ),
         user_prompt=json.dumps(
             {
@@ -58,10 +121,9 @@ def build_llm_storyboard_plan(
                     "routeText": project.route_text,
                     "targetDurationSec": target_duration_sec,
                 },
-                "theme": theme.model_dump(),
-                "rhythm": rhythm.model_dump() if rhythm else None,
-                "beatMode": beat_mode,
-                "assets": [
+                "theme": _theme_context_for_llm(theme),
+                "rhythm": _rhythm_context_for_llm(rhythm, beat_mode),
+                "orderedAssets": [
                     {
                         "assetId": asset.assetId,
                         "location": asset.location,
@@ -70,13 +132,33 @@ def build_llm_storyboard_plan(
                         "emotionTags": asset.emotionTags,
                         "suggestedDurationSec": asset.suggestedDurationSec,
                     }
-                    for asset in assets
+                    for asset in ordered_assets
                 ],
             },
             ensure_ascii=False,
         ),
         temperature=0.5,
+        max_tokens=_storyboard_max_tokens(len(ordered_assets)),
+        on_progress=on_progress,
     )
+    emit_progress(on_progress, "building", "正在解析分镜脚本结构…", progress=86)
+    normalized = _normalize_storyboard_plan(result, assets)
+    plan = (
+        _align_storyboard_plan_to_assets(ordered_assets, normalized)
+        if normalized
+        else None
+    )
+    if plan is None:
+        emit_progress(on_progress, "fallback", "LLM 分镜无效，准备回退到规则生成…", progress=88)
+    meta = build_llm_meta(result, used_fallback=plan is None).as_dict()
+    return plan, meta
+
+
+def _normalize_storyboard_plan(
+    result: LlmCallResult,
+    assets: list[AssetRead],
+) -> list[dict[str, str]] | None:
+    payload = result.data if result.ok else None
     segments = payload.get("segments") if payload else None
     if not isinstance(segments, list):
         return None
@@ -121,18 +203,18 @@ def generate_storyboard_segments(
             break
 
         if safe_beats:
-            beat_index = advance_beat_index(safe_beats, current_time, beat_index)
-            duration = max(asset.suggestedDurationSec, 0.5)
-            interval = safe_beats[1] - safe_beats[0]
-            beats_needed = max(1, round(duration / max(interval, 0.25)))
-            next_index = min(beat_index + beats_needed, len(safe_beats) - 1)
-            end_time = safe_beats[next_index]
-            if end_time <= current_time:
-                end_time = min(float(target_duration_sec), current_time + duration)
-            segment_beats = [point for point in safe_beats if current_time <= point <= end_time]
-            beat_index = next_index
+            end_time, beat_index, segment_beats = resolve_segment_timing(
+                current_time=current_time,
+                suggested_duration_sec=asset.suggestedDurationSec,
+                target_duration_sec=target_duration_sec,
+                beat_points=safe_beats,
+                beat_index=beat_index,
+            )
         else:
-            end_time = min(float(target_duration_sec), current_time + asset.suggestedDurationSec)
+            end_time = min(
+                float(target_duration_sec),
+                current_time + max(asset.suggestedDurationSec, 0.5),
+            )
             segment_beats = [round(current_time, 2), round(end_time, 2)]
 
         function_name = asset.functionTags[0] if asset.functionTags else "supporting"
@@ -188,18 +270,18 @@ def generate_storyboard_segments_from_plan(
             break
 
         if safe_beats:
-            beat_index = advance_beat_index(safe_beats, current_time, beat_index)
-            duration = max(asset.suggestedDurationSec, 0.5)
-            interval = safe_beats[1] - safe_beats[0]
-            beats_needed = max(1, round(duration / max(interval, 0.25)))
-            next_index = min(beat_index + beats_needed, len(safe_beats) - 1)
-            end_time = safe_beats[next_index]
-            if end_time <= current_time:
-                end_time = min(float(target_duration_sec), current_time + duration)
-            segment_beats = [point for point in safe_beats if current_time <= point <= end_time]
-            beat_index = next_index
+            end_time, beat_index, segment_beats = resolve_segment_timing(
+                current_time=current_time,
+                suggested_duration_sec=asset.suggestedDurationSec,
+                target_duration_sec=target_duration_sec,
+                beat_points=safe_beats,
+                beat_index=beat_index,
+            )
         else:
-            end_time = min(float(target_duration_sec), current_time + asset.suggestedDurationSec)
+            end_time = min(
+                float(target_duration_sec),
+                current_time + max(asset.suggestedDurationSec, 0.5),
+            )
             segment_beats = [round(current_time, 2), round(end_time, 2)]
 
         fallback_function = asset.functionTags[0] if asset.functionTags else "supporting"
@@ -370,6 +452,56 @@ def advance_beat_index(beat_points: list[float], current_time: float, beat_index
     while beat_index < len(beat_points) - 1 and beat_points[beat_index] < current_time:
         beat_index += 1
     return beat_index
+
+
+def resolve_segment_timing(
+    *,
+    current_time: float,
+    suggested_duration_sec: float,
+    target_duration_sec: float,
+    beat_points: list[float],
+    beat_index: int,
+) -> tuple[float, int, list[float]]:
+    """分配镜头时长：不超过素材建议时长，并尽量在节拍点上切。"""
+    max_duration = max(suggested_duration_sec, 0.5)
+    hard_end = min(current_time + max_duration, float(target_duration_sec))
+
+    if not beat_points or len(beat_points) < 2:
+        end_time = hard_end
+        return (
+            round(end_time, 2),
+            beat_index,
+            [round(current_time, 2), round(end_time, 2)],
+        )
+
+    beat_index = advance_beat_index(beat_points, current_time, beat_index)
+    end_time = hard_end
+    snapped_index = beat_index
+
+    for idx in range(beat_index + 1, len(beat_points)):
+        point = beat_points[idx]
+        if point > hard_end + 0.001:
+            break
+        end_time = point
+        snapped_index = idx
+
+    if end_time <= current_time + 0.001:
+        end_time = hard_end
+
+    segment_beats = [
+        round(point, 2) for point in beat_points if current_time <= point <= end_time + 0.001
+    ]
+    start = round(current_time, 2)
+    end = round(end_time, 2)
+    if not segment_beats:
+        segment_beats = [start, end]
+    else:
+        if segment_beats[0] != start:
+            segment_beats.insert(0, start)
+        if segment_beats[-1] != end:
+            segment_beats.append(end)
+
+    return end, snapped_index, segment_beats
 
 
 def rhythm_label(information_density: str) -> str:

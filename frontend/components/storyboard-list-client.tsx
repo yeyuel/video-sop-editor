@@ -5,12 +5,20 @@ import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState, useTransition } from "react";
 
 import { BlockingNotice, ToastNotice } from "@/components/async-status";
+import { LlmProgressOverlay } from "@/components/llm-progress-overlay";
 import {
   deleteStoryboardSegment,
   generateStoryboard,
   generateStoryboardWithLlm,
   reorderStoryboard
 } from "@/lib/browser-api";
+import {
+  applyLlmProgressEvent,
+  createLlmProgressState,
+  STORYBOARD_LLM_STAGES,
+  type LlmProgressViewState
+} from "@/lib/llm-progress-stages";
+import { describeLlmStatus, llmNoticeTone } from "@/lib/llm-status";
 import {
   getStoryboardBeatModeLabel,
   getStoryboardFunctionLabel
@@ -44,6 +52,7 @@ export function StoryboardListClient({
     tone?: "error" | "success";
   } | null>(null);
   const [isPending, startTransition] = useTransition();
+  const [llmProgress, setLlmProgress] = useState<LlmProgressViewState | null>(null);
 
   useEffect(() => {
     if (!notice) {
@@ -120,25 +129,45 @@ export function StoryboardListClient({
 
   function handleGenerateWithLlm() {
     setError("");
+    setLlmProgress(createLlmProgressState("LLM 分镜建议", STORYBOARD_LLM_STAGES));
     startTransition(async () => {
       try {
-        const nextBundle = await generateStoryboardWithLlm(projectId, {
-          themeId: selectedThemeId,
-          targetDurationSec,
-          beatMode,
-          alignToBeat,
-          selectedTrackName
-        });
+        const { data: nextBundle, meta } = await generateStoryboardWithLlm(
+          projectId,
+          {
+            themeId: selectedThemeId,
+            targetDurationSec,
+            beatMode,
+            alignToBeat,
+            selectedTrackName
+          },
+          (event) => {
+            setLlmProgress((current) =>
+              current ? applyLlmProgressEvent(current, event) : current
+            );
+          }
+        );
         setBundle(nextBundle);
         router.refresh();
-        setNotice({
-          title: "LLM 分镜建议已更新",
-          message: nextBundle.validation.message || "当前时间线已经按 LLM 建议重新生成。"
-        });
+        const llmNotice = describeLlmStatus(meta);
+        if (llmNotice) {
+          setNotice({
+            title: llmNotice.title,
+            message: llmNotice.message,
+            tone: llmNoticeTone(llmNotice.tone)
+          });
+        } else {
+          setNotice({
+            title: "LLM 分镜建议已更新",
+            message: nextBundle.validation.message || "当前时间线已经按 LLM 建议重新生成。"
+          });
+        }
       } catch (submitError) {
         showError(
           submitError instanceof Error ? submitError.message : "LLM 分镜建议生成失败，请稍后再试。"
         );
+      } finally {
+        setLlmProgress(null);
       }
     });
   }
@@ -207,9 +236,13 @@ export function StoryboardListClient({
   return (
     <>
       <BlockingNotice
-        visible={isPending}
+        visible={isPending && !llmProgress}
         title="正在处理分镜"
         description="正在更新当前时间线，请稍等片刻。"
+      />
+      <LlmProgressOverlay
+        state={llmProgress ?? createLlmProgressState("", STORYBOARD_LLM_STAGES)}
+        visible={Boolean(llmProgress)}
       />
       <ToastNotice
         visible={Boolean(notice)}
@@ -240,7 +273,7 @@ export function StoryboardListClient({
               <button
                 type="button"
                 onClick={handleGenerate}
-                disabled={isPending}
+                disabled={isPending || Boolean(llmProgress)}
                 className="inline-flex rounded-full bg-pine px-5 py-3 text-sm font-medium text-white transition hover:bg-pine/90 disabled:cursor-not-allowed disabled:opacity-60"
               >
                 {isPending ? "生成中..." : "生成分镜"}
@@ -248,7 +281,7 @@ export function StoryboardListClient({
               <button
                 type="button"
                 onClick={handleGenerateWithLlm}
-                disabled={isPending}
+                disabled={isPending || Boolean(llmProgress)}
                 className="inline-flex rounded-full border border-pine/20 bg-white px-5 py-3 text-sm font-medium text-pine transition hover:bg-white disabled:cursor-not-allowed disabled:opacity-60"
               >
                 {isPending ? "处理中..." : "LLM 建议分镜"}
@@ -348,7 +381,7 @@ export function StoryboardListClient({
                         <button
                           type="button"
                           onClick={() => handleMove(segment.id, "up")}
-                          disabled={isPending || index === 0}
+                          disabled={isPending || Boolean(llmProgress) || index === 0}
                           className="inline-flex rounded-full px-3 py-1.5 text-sm font-medium text-pine transition hover:bg-mist disabled:cursor-not-allowed disabled:opacity-40"
                         >
                           上移
@@ -356,7 +389,7 @@ export function StoryboardListClient({
                         <button
                           type="button"
                           onClick={() => handleMove(segment.id, "down")}
-                          disabled={isPending || index === bundle.segments.length - 1}
+                          disabled={isPending || Boolean(llmProgress) || index === bundle.segments.length - 1}
                           className="inline-flex rounded-full px-3 py-1.5 text-sm font-medium text-pine transition hover:bg-mist disabled:cursor-not-allowed disabled:opacity-40"
                         >
                           下移

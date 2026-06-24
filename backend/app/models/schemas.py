@@ -240,3 +240,68 @@ class WorkspaceDataRead(BaseModel):
     storyboardValidation: StoryboardValidationRead
     rhythmPlan: RhythmPlanRead
     exportPlan: ExportPlanRead
+
+
+class LlmProviderRead(BaseModel):
+    providerId: str
+    providerName: str
+    authTypes: list[str]
+    defaultBaseUrl: str
+    defaultModel: str
+    openaiCompatible: bool = True
+    status: str
+    isActive: bool = False
+    models: list["LlmModelOptionRead"] = Field(default_factory=list)
+
+
+class LlmModelOptionRead(BaseModel):
+    modelId: str
+    label: str
+    description: str = ""
+    recommended: bool = False
+
+
+class LlmProviderConfigWriteRequest(BaseModel):
+    authType: str = "api_key"
+    baseUrl: str = ""
+    model: str = ""
+    apiKey: str = ""
+
+
+class LlmStatusRead(BaseModel):
+    providerId: str
+    providerName: str
+    authType: str
+    status: str
+    baseUrl: str
+    model: str
+    configured: bool
+    message: str = ""
+
+
+class LlmOAuthStartRead(BaseModel):
+    authorizationUrl: str = ""
+    state: str = ""
+    message: str = ""
+
+
+class LlmDeviceCodeStartRead(BaseModel):
+    deviceCode: str = ""
+    userCode: str = ""
+    verificationUri: str = ""
+    expiresIn: int = 0
+    interval: int = 0
+    message: str = ""
+
+
+class LlmProviderTestRead(BaseModel):
+    ok: bool
+    providerId: str
+    providerName: str
+    model: str
+    baseUrl: str
+    endpointUrl: str
+    latencyMs: int = 0
+    llmStatus: str
+    message: str
+    replyPreview: str = ""

@@ -95,3 +95,18 @@ class PublishPlanEntity(SQLModel, table=True):
     description: str
     tags: str
     cover_suggestion: str
+
+
+class LlmProviderConfigEntity(SQLModel, table=True):
+    id: str = Field(primary_key=True)
+    provider_id: str = Field(index=True, unique=True)
+    auth_type: str = "api_key"
+    base_url: str = ""
+    model: str = ""
+    api_key: str = ""
+    status: str = "not_configured"
+
+
+class AppSettingEntity(SQLModel, table=True):
+    key: str = Field(primary_key=True)
+    value: str = ""

@@ -61,6 +61,7 @@ from app.services.storyboard_generation import (
     segment_read_to_write,
 )
 from app.services.theme_generation import build_llm_theme_candidates, build_rule_theme_candidates
+from app.services.llm.progress import ProgressReporter, emit_progress
 
 
 class SqlRepository:
@@ -247,25 +248,33 @@ class SqlRepository:
         )
 
     def generate_themes_with_llm(
-        self, session: Session, project_id: str, count: int = 3
-    ) -> list[NarrativeThemeRead] | None:
+        self,
+        session: Session,
+        project_id: str,
+        count: int = 3,
+        on_progress: ProgressReporter | None = None,
+    ) -> tuple[list[NarrativeThemeRead], dict[str, str]] | None:
         project = self.get_project_entity(session, project_id)
         if not project:
             return None
 
         assets = self.list_assets(session, project_id)
         current_selected = project.selected_theme_id
-        candidates = build_llm_theme_candidates(project, assets, count)
+        candidates, meta = build_llm_theme_candidates(
+            project, assets, count, on_progress=on_progress
+        )
         if not candidates:
             candidates = build_rule_theme_candidates(project, assets)[: max(1, min(count, 5))]
 
-        return self._replace_theme_candidates(
+        emit_progress(on_progress, "saving", "正在保存候选主题…", progress=94)
+        themes = self._replace_theme_candidates(
             session,
             project=project,
             project_id=project_id,
             candidates=candidates,
             current_selected=current_selected,
         )
+        return themes, meta
 
     def select_theme(
         self, session: Session, project_id: str, payload: ThemeSelectRequest
@@ -291,15 +300,25 @@ class SqlRepository:
             return None
         return self._map_rhythm(rhythm)
 
-    def generate_rhythm_plan(self, session: Session, project_id: str) -> RhythmPlanRead | None:
+    def generate_rhythm_plan(
+        self,
+        session: Session,
+        project_id: str,
+        on_progress: ProgressReporter | None = None,
+    ) -> tuple[RhythmPlanRead, dict[str, str]] | None:
         project = self.get_project_entity(session, project_id)
         if not project:
             return None
 
+        emit_progress(on_progress, "preparing", "正在加载项目与主题…", progress=8)
         assets = self.list_assets(session, project_id)
         theme = self.get_selected_theme(session, project_id)
-        rhythm_payload = build_rule_rhythm_payload(project, assets, theme)
-        return self.upsert_rhythm_plan(session, project_id, rhythm_payload)
+        rhythm_payload, llm_meta = build_rule_rhythm_payload(
+            project, assets, theme, on_progress=on_progress
+        )
+        emit_progress(on_progress, "saving", "正在保存节奏规划…", progress=94)
+        plan = self.upsert_rhythm_plan(session, project_id, rhythm_payload)
+        return plan, llm_meta
 
     def analyze_rhythm_audio(
         self,
@@ -307,11 +326,13 @@ class SqlRepository:
         project_id: str,
         audio_file_name: str,
         audio_file_path: str,
-    ) -> RhythmPlanRead | None:
+        on_progress: ProgressReporter | None = None,
+    ) -> tuple[RhythmPlanRead, dict[str, str]] | None:
         project = self.get_project_entity(session, project_id)
         if not project:
             return None
 
+        emit_progress(on_progress, "preparing", "正在加载项目上下文…", progress=8)
         assets = self.list_assets(session, project_id)
         theme = self.get_selected_theme(session, project_id)
         existing_rhythm = session.exec(
@@ -320,32 +341,57 @@ class SqlRepository:
         previous_audio_path = existing_rhythm.audio_file_path if existing_rhythm else ""
 
         try:
+            emit_progress(
+                on_progress,
+                "analyzing_audio",
+                f"正在分析音频「{audio_file_name}」的节拍…",
+                progress=16,
+                detail="音频分析可能需要 10–30 秒",
+            )
             analysis = audio_beat_analyzer.analyze(audio_file_path, project.target_duration_sec)
-            rhythm_payload = build_audio_rhythm_payload(
+            emit_progress(
+                on_progress,
+                "building_beats",
+                f"已识别 BPM {analysis.bpm}，正在整理节拍点…",
+                progress=30,
+            )
+            rhythm_payload, llm_meta = build_audio_rhythm_payload(
                 project,
                 assets,
                 theme,
                 audio_file_name,
                 analysis,
+                on_progress=on_progress,
             )
             if previous_audio_path and previous_audio_path != audio_file_path:
                 self._remove_stored_audio(previous_audio_path)
-            return self.upsert_rhythm_plan(
+            emit_progress(on_progress, "saving", "正在保存节奏规划…", progress=94)
+            plan = self.upsert_rhythm_plan(
                 session,
                 project_id,
                 rhythm_payload,
                 audio_file_path=audio_file_path,
             )
+            return plan, llm_meta
         except AudioAnalysisError as exc:
             self._remove_stored_audio(audio_file_path)
-            rhythm_payload = build_rule_fallback_rhythm_payload(
+            emit_progress(
+                on_progress,
+                "fallback",
+                "音频识别失败，准备回退到规则生成…",
+                progress=40,
+            )
+            rhythm_payload, llm_meta = build_rule_fallback_rhythm_payload(
                 project,
                 assets,
                 theme,
                 audio_file_name=audio_file_name,
                 failure_reason=str(exc),
+                on_progress=on_progress,
             )
-            return self.upsert_rhythm_plan(session, project_id, rhythm_payload)
+            emit_progress(on_progress, "saving", "正在保存回退后的节奏规划…", progress=94)
+            plan = self.upsert_rhythm_plan(session, project_id, rhythm_payload)
+            return plan, llm_meta
 
     def clear_rhythm_audio(self, session: Session, project_id: str) -> RhythmPlanRead | None:
         project = self.get_project_entity(session, project_id)
@@ -550,8 +596,12 @@ class SqlRepository:
         return self.get_storyboard_bundle(session, project_id)
 
     def generate_storyboard_with_llm(
-        self, session: Session, project_id: str, request: StoryboardGenerateRequest
-    ) -> StoryboardBundleRead | None:
+        self,
+        session: Session,
+        project_id: str,
+        request: StoryboardGenerateRequest,
+        on_progress: ProgressReporter | None = None,
+    ) -> tuple[StoryboardBundleRead, dict[str, str]] | None:
         project = self.get_project_entity(session, project_id)
         if not project:
             return None
@@ -563,7 +613,7 @@ class SqlRepository:
             return StoryboardBundleRead(
                 segments=[],
                 validation=build_storyboard_validation(project, [], rhythm, assets),
-            )
+            ), {}
 
         target_duration = request.targetDurationSec or project.target_duration_sec
         align_to_beat = request.alignToBeat
@@ -573,14 +623,16 @@ class SqlRepository:
             else "none"
         )
         beat_points = rhythm.beatPoints if rhythm and align_to_beat else []
-        llm_plan = build_llm_storyboard_plan(
+        llm_plan, meta = build_llm_storyboard_plan(
             project=project,
             theme=theme,
             assets=assets,
             rhythm=rhythm,
             target_duration_sec=target_duration,
             beat_mode=beat_mode,
+            on_progress=on_progress,
         )
+        emit_progress(on_progress, "building", "正在组装时间线与镜头时长…", progress=90)
         if llm_plan:
             segments = generate_storyboard_segments_from_plan(
                 assets=assets,
@@ -599,8 +651,9 @@ class SqlRepository:
                 beat_points=beat_points,
             )
 
+        emit_progress(on_progress, "saving", "正在保存分镜时间线…", progress=95)
         self._replace_storyboard_segments(session, project_id, theme.id, segments)
-        return self.get_storyboard_bundle(session, project_id)
+        return self.get_storyboard_bundle(session, project_id), meta
 
     def save_storyboard(
         self, session: Session, project_id: str, payload: StoryboardSaveRequest
@@ -760,22 +813,27 @@ class SqlRepository:
         return self._map_export_plan(publish)
 
     def suggest_export_plan_with_llm(
-        self, session: Session, project_id: str
-    ) -> ExportPlanRead | None:
+        self,
+        session: Session,
+        project_id: str,
+        on_progress: ProgressReporter | None = None,
+    ) -> tuple[ExportPlanRead, dict[str, str]] | None:
         project = self.get_project_entity(session, project_id)
         if not project:
             return None
 
+        emit_progress(on_progress, "preparing", "正在加载项目、主题与分镜…", progress=8)
         assets = self.list_assets(session, project_id)
         theme = self.get_selected_theme(session, project_id)
         storyboard_bundle = self.get_storyboard_bundle(session, project_id)
         current_plan = self.get_export_plan(session, project_id)
-        suggestion = build_llm_export_plan(
+        suggestion, meta = build_llm_export_plan(
             project=project,
             assets=assets,
             theme=theme,
             storyboard=storyboard_bundle.segments,
             current_plan=current_plan,
+            on_progress=on_progress,
         )
         if not suggestion:
             suggestion = build_rule_export_fallback(project=project, theme=theme)
@@ -787,7 +845,9 @@ class SqlRepository:
             tags=self._normalize_tag_list(suggestion.get("tags")),
             coverSuggestion=str(suggestion.get("coverSuggestion", "")).strip(),
         )
-        return self.upsert_export_plan(session, project_id, payload)
+        emit_progress(on_progress, "saving", "正在保存导出文案…", progress=94)
+        plan = self.upsert_export_plan(session, project_id, payload)
+        return plan, meta
 
     def build_export_document(
         self, session: Session, project_id: str, fmt: str

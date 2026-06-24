@@ -14,7 +14,7 @@
 | Sprint 3（P0 收尾 + 文档对齐） | ✅ 已完成 | 回归测试、字段变更 SOP、文档同步 |
 | Sprint 4（节奏模块深化） | ✅ 已完成 | 暗场能量分析、细/粗踩点、LLM 节奏文案、曲名真实化 |
 | LLM 孤立能力 | 🟡 已接入、待深化 | 主题 / 分镜 / 导出 LLM 待 Sprint 6 质量增强 |
-| 二期系统化整理 | 进行中 | LLM 网关标准化（Sprint 5）待推进 |
+| 二期系统化整理 | 进行中 | LLM 业务质量（Sprint 6）待推进 |
 
 ## 3. Sprint 迭代计划
 
@@ -59,11 +59,11 @@
 
 ### Sprint 5 — LLM 网关标准化
 
-- [ ] Provider Registry（多厂商 base_url / model / timeout）
-- [ ] 统一 Auth Service（完善 API Key，预留 OAuth / Device Code）
-- [ ] LLM Gateway（超时、重试、JSON 解析失败、空响应兜底）
-- [ ] 前端区分 LLM 未配置 / 超时 / 解析失败 / 规则兜底
-- [ ] 配置管理长期方案（环境变量 → 可选 DB 配置表）
+- [x] Provider Registry（多厂商 base_url / model / timeout）
+- [x] 统一 Auth Service（完善 API Key，预留 OAuth / Device Code）
+- [x] LLM Gateway（超时、重试、JSON 解析失败、空响应兜底）
+- [x] 前端区分 LLM 未配置 / 超时 / 解析失败 / 规则兜底
+- [x] 配置管理长期方案（环境变量 → 可选 DB 配置表 migration 005）
 
 ### Sprint 6 — LLM 业务质量
 
@@ -169,10 +169,10 @@
 
 ### 5.6 LLM Provider 与鉴权标准化
 
-- [ ] 建立 Provider Registry
-- [ ] 建立统一 Auth Service
+- [x] 建立 Provider Registry
+- [x] 建立统一 Auth Service
 - [x] 支持 API Key 配置
-- [ ] 预留 OAuth / Device Code 能力
+- [x] 预留 OAuth / Device Code 能力
 - [ ] 不支持通过抓取网页登录 Cookie 作为正式方案
 
 ## 6. P2 增强项

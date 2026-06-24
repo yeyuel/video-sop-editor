@@ -315,4 +315,4 @@ def test_run_all_migrations_from_zero(tmp_path, monkeypatch) -> None:
         final_version = _current_version(session)
 
     assert final_version == len(MIGRATIONS)
-    assert final_version == 4
+    assert final_version == 6

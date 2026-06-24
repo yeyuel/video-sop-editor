@@ -128,11 +128,48 @@ def _migration_004_rhythm_coarse_beats(session: Session) -> None:
         )
 
 
+def _migration_005_llm_provider_config(session: Session) -> None:
+    inspector = inspect(engine)
+    if "llmproviderconfigentity" not in inspector.get_table_names():
+        session.exec(
+            text(
+                """
+                CREATE TABLE llmproviderconfigentity (
+                    id TEXT PRIMARY KEY,
+                    provider_id TEXT NOT NULL UNIQUE,
+                    auth_type TEXT DEFAULT 'api_key',
+                    base_url TEXT DEFAULT '',
+                    model TEXT DEFAULT '',
+                    api_key TEXT DEFAULT '',
+                    status TEXT DEFAULT 'not_configured'
+                )
+                """
+            )
+        )
+
+
+def _migration_006_app_settings(session: Session) -> None:
+    inspector = inspect(engine)
+    if "appsettingentity" not in inspector.get_table_names():
+        session.exec(
+            text(
+                """
+                CREATE TABLE appsettingentity (
+                    key TEXT PRIMARY KEY,
+                    value TEXT DEFAULT ''
+                )
+                """
+            )
+        )
+
+
 MIGRATIONS: list[tuple[int, str, object]] = [
     (1, "001_legacy_columns", _migration_001_legacy_columns),
     (2, "002_rhythm_analysis_metrics", _migration_002_rhythm_analysis_metrics),
     (3, "003_rhythm_raw_beats", _migration_003_rhythm_raw_beats),
     (4, "004_rhythm_coarse_beats", _migration_004_rhythm_coarse_beats),
+    (5, "005_llm_provider_config", _migration_005_llm_provider_config),
+    (6, "006_app_settings", _migration_006_app_settings),
 ]
 
 

@@ -422,15 +422,19 @@ Base URL:
 - 分镜生成依赖节奏规划中的节拍点
 - 导出阶段当前由人工填写标题、标签和文案
 - 后续如接入 LLM，只需复用 `export-plan` 结构即可
-## 9. 二期 LLM Provider API 预留
+## 9. 二期 LLM Provider API
 
-二期建议新增 provider 配置与授权接口，统一支持三种认证模式：
+已实现 provider 配置与授权接口，统一支持三种认证模式（OAuth / Device Code 为预留 stub）：
 
-- `api_key`
-- `oauth`
-- `device_code`
+- `api_key`（已接入）
+- `oauth`（501 / not_implemented stub）
+- `device_code`（501 / not_implemented stub）
 
-建议接口：
+LLM 业务接口（主题 / 分镜 / 导出 / 节奏文案）在 `ApiResponse.meta` 中返回：
+
+- `llmStatus`：`success` | `fallback_rule` | `not_configured` | `timeout` | ...
+- `llmMessage`：用户可读说明
+- `llmProviderId` / `llmUsedFallback`
 
 ### 9.1 获取 provider 列表
 

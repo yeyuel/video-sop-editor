@@ -4,7 +4,11 @@ import type { FormEvent } from "react";
 import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { BlockingNotice, ToastNotice } from "@/components/async-status";
+import { LlmProgressOverlay } from "@/components/llm-progress-overlay";
 import { generateRhythmPlan, saveRhythmPlan, uploadRhythmAudio, deleteRhythmAudio } from "@/lib/browser-api";
+import { describeLlmStatus, llmNoticeTone } from "@/lib/llm-status";
+import { RHYTHM_LLM_STAGES } from "@/lib/llm-progress-stages";
+import { useLlmProgress } from "@/lib/use-llm-progress";
 import {
   capcutBeatModeOptions,
   filterBeatsForCapcutMode,
@@ -72,6 +76,7 @@ export function RhythmPlanClient({
     tone?: "error" | "success";
   } | null>(null);
   const [isPending, startTransition] = useTransition();
+  const { llmProgress, isLlmRunning, start, onProgress, finish } = useLlmProgress();
 
   useEffect(() => {
     if (!notice) {
@@ -97,16 +102,28 @@ export function RhythmPlanClient({
 
   function handleGenerate() {
     setError("");
+    start("节奏规划生成", RHYTHM_LLM_STAGES);
     startTransition(async () => {
       try {
-        const nextPlan = await generateRhythmPlan(projectId);
+        const { data: nextPlan, meta } = await generateRhythmPlan(projectId, onProgress);
         syncFromPlan(nextPlan);
         router.refresh();
-        setNotice({ title: "节奏规划已生成", message: "已按规则生成节拍点和节奏说明。" });
+        const llmNotice = describeLlmStatus(meta);
+        if (llmNotice) {
+          setNotice({
+            title: llmNotice.title,
+            message: llmNotice.message,
+            tone: llmNoticeTone(llmNotice.tone)
+          });
+        } else {
+          setNotice({ title: "节奏规划已生成", message: "已生成节拍点与节奏说明。" });
+        }
       } catch (submitError) {
         showError(
           submitError instanceof Error ? submitError.message : "生成节奏规划失败，请稍后重试。"
         );
+      } finally {
+        finish();
       }
     });
   }
@@ -157,9 +174,10 @@ export function RhythmPlanClient({
     }
 
     setError("");
+    start("音频节拍识别", RHYTHM_LLM_STAGES);
     startTransition(async () => {
       try {
-        const nextPlan = await uploadRhythmAudio(projectId, audioFile);
+        const { data: nextPlan, meta } = await uploadRhythmAudio(projectId, audioFile, onProgress);
         syncFromPlan(nextPlan);
         setAudioFile(null);
         router.refresh();
@@ -170,15 +188,26 @@ export function RhythmPlanClient({
             tone: "error"
           });
         } else {
-          setNotice({
-            title: "音频识别完成",
-            message: `识别 BPM ${nextPlan.detectedBpm || "—"}，原始节拍 ${nextPlan.rawBeatPoints.length || nextPlan.beatPoints.length} 个，当前模式输出 ${nextPlan.beatPoints.length} 个节拍点。`
-          });
+          const llmNotice = describeLlmStatus(meta);
+          if (llmNotice && llmNotice.tone !== "success") {
+            setNotice({
+              title: llmNotice.title,
+              message: llmNotice.message,
+              tone: llmNoticeTone(llmNotice.tone)
+            });
+          } else {
+            setNotice({
+              title: "音频识别完成",
+              message: `识别 BPM ${nextPlan.detectedBpm || "—"}，原始节拍 ${nextPlan.rawBeatPoints.length || nextPlan.beatPoints.length} 个，当前模式输出 ${nextPlan.beatPoints.length} 个节拍点。`
+            });
+          }
         }
       } catch (submitError) {
         showError(
           submitError instanceof Error ? submitError.message : "音频节拍识别失败，请稍后重试。"
         );
+      } finally {
+        finish();
       }
     });
   }
@@ -209,7 +238,11 @@ export function RhythmPlanClient({
       <BlockingNotice
         description="正在处理节奏相关操作，请稍候。"
         title="处理中"
-        visible={isPending}
+        visible={isPending && !isLlmRunning}
+      />
+      <LlmProgressOverlay
+        state={llmProgress ?? { title: "", stages: RHYTHM_LLM_STAGES, currentStage: "preparing", message: "", detail: "", progress: 0, startedAt: Date.now() }}
+        visible={isLlmRunning}
       />
       <ToastNotice
         message={notice?.message ?? ""}
@@ -221,14 +254,14 @@ export function RhythmPlanClient({
         <button
           type="button"
           onClick={handleGenerate}
-          disabled={isPending}
+          disabled={isPending || isLlmRunning}
           className="inline-flex rounded-full bg-pine px-5 py-3 text-sm font-medium text-white transition hover:bg-pine/90 disabled:cursor-not-allowed disabled:opacity-60"
         >
           {isPending ? "生成中..." : "根据项目生成节奏规划"}
         </button>
         <button
           type="submit"
-          disabled={isPending}
+          disabled={isPending || isLlmRunning}
           className="inline-flex rounded-full border border-pine/20 bg-white px-5 py-3 text-sm font-medium text-pine transition hover:bg-mist disabled:cursor-not-allowed disabled:opacity-60"
         >
           {isPending ? "保存中..." : "保存节奏规划"}
@@ -236,7 +269,7 @@ export function RhythmPlanClient({
         <button
           type="button"
           onClick={handleAudioUpload}
-          disabled={isPending || !audioFile}
+          disabled={isPending || isLlmRunning || !audioFile}
           className="inline-flex rounded-full border border-pine/20 bg-white px-5 py-3 text-sm font-medium text-pine transition hover:bg-mist disabled:cursor-not-allowed disabled:opacity-60"
         >
           {isPending ? "识别中..." : "上传音频并识别节拍"}
@@ -245,7 +278,7 @@ export function RhythmPlanClient({
           <button
             type="button"
             onClick={handleDeleteAudio}
-            disabled={isPending}
+            disabled={isPending || isLlmRunning}
             className="inline-flex rounded-full border border-clay/25 bg-white px-5 py-3 text-sm font-medium text-clay transition hover:bg-[#fff1ea] disabled:cursor-not-allowed disabled:opacity-60"
           >
             移除已绑定音频

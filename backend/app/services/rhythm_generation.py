@@ -7,6 +7,7 @@ from app.services.audio_structure import suggest_dark_cuts_from_energy
 from app.services.beat_grid import filter_beats_for_capcut_mode, normalize_beat_times
 from app.services.rhythm_copy import resolve_rhythm_copy
 from app.services.rhythm_track import resolve_selected_track_name
+from app.services.llm.progress import ProgressReporter, emit_progress
 
 
 def recommend_beat_mode(video_type: str) -> str:
@@ -62,7 +63,9 @@ def build_rule_rhythm_payload(
     project: ProjectEntity,
     assets: list[AssetRead],
     theme: NarrativeThemeRead | None,
-) -> RhythmPlanWriteRequest:
+    on_progress: ProgressReporter | None = None,
+) -> tuple[RhythmPlanWriteRequest, dict[str, str]]:
+    emit_progress(on_progress, "building_beats", "正在按项目时长生成节拍点…", progress=18)
     beat_mode = recommend_beat_mode(project.video_type)
     fine_beats = normalize_beat_times(
         build_beat_points(project.target_duration_sec, 0.25),
@@ -80,7 +83,7 @@ def build_rule_rhythm_payload(
     )
     bgm_style_fallback = theme.rhythmProfile if theme else "快起快收，中段稳节奏"
     rhythm_notes_fallback = build_rhythm_notes(project, assets, theme)
-    bgm_style, rhythm_notes = resolve_rhythm_copy(
+    bgm_style, rhythm_notes, llm_meta = resolve_rhythm_copy(
         project,
         assets,
         theme,
@@ -90,6 +93,7 @@ def build_rule_rhythm_payload(
         analysis_source="rule",
         bgm_style_fallback=bgm_style_fallback,
         rhythm_notes_fallback=rhythm_notes_fallback,
+        on_progress=on_progress,
     )
 
     return RhythmPlanWriteRequest(
@@ -107,7 +111,7 @@ def build_rule_rhythm_payload(
         rhythmNotes=rhythm_notes,
         darkCutSuggestions=build_rule_dark_cuts(project.target_duration_sec),
         photoMotionSuggestions=build_photo_motion_suggestions(assets),
-    )
+    ), llm_meta
 
 
 def build_audio_rhythm_payload(
@@ -116,8 +120,9 @@ def build_audio_rhythm_payload(
     theme: NarrativeThemeRead | None,
     audio_file_name: str,
     analysis: BeatAnalysisResult,
-) -> RhythmPlanWriteRequest:
-    bgm_style, rhythm_notes = resolve_rhythm_copy(
+    on_progress: ProgressReporter | None = None,
+) -> tuple[RhythmPlanWriteRequest, dict[str, str]]:
+    bgm_style, rhythm_notes, llm_meta = resolve_rhythm_copy(
         project,
         assets,
         theme,
@@ -127,6 +132,7 @@ def build_audio_rhythm_payload(
         analysis_source="audio_upload",
         bgm_style_fallback=analysis.bgm_style,
         rhythm_notes_fallback=build_rhythm_notes(project, assets, theme),
+        on_progress=on_progress,
     )
 
     return RhythmPlanWriteRequest(
@@ -149,7 +155,7 @@ def build_audio_rhythm_payload(
         + [f"当前节拍点来自音频分析（{analysis.analysis_engine}），识别 BPM 为 {analysis.bpm}。"],
         darkCutSuggestions=analysis.dark_cut_suggestions,
         photoMotionSuggestions=build_photo_motion_suggestions(assets),
-    )
+    ), llm_meta
 
 
 def build_rule_fallback_rhythm_payload(
@@ -159,8 +165,11 @@ def build_rule_fallback_rhythm_payload(
     *,
     audio_file_name: str = "",
     failure_reason: str,
-) -> RhythmPlanWriteRequest:
-    payload = build_rule_rhythm_payload(project, assets, theme)
+    on_progress: ProgressReporter | None = None,
+) -> tuple[RhythmPlanWriteRequest, dict[str, str]]:
+    payload, llm_meta = build_rule_rhythm_payload(
+        project, assets, theme, on_progress=on_progress
+    )
     return payload.model_copy(
         update={
             "selectedTrackName": resolve_selected_track_name(
@@ -180,4 +189,4 @@ def build_rule_fallback_rhythm_payload(
             "rawBeatPoints": [],
             "coarseBeatPoints": [],
         }
-    )
+    ), llm_meta

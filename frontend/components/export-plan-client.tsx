@@ -4,11 +4,15 @@ import type { FormEvent } from "react";
 import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { BlockingNotice, ToastNotice } from "@/components/async-status";
+import { LlmProgressOverlay } from "@/components/llm-progress-overlay";
 import {
   previewExport,
   saveExportPlan,
   suggestExportPlanWithLlm
 } from "@/lib/browser-api";
+import { describeLlmStatus, llmNoticeTone } from "@/lib/llm-status";
+import { EXPORT_LLM_STAGES } from "@/lib/llm-progress-stages";
+import { useLlmProgress } from "@/lib/use-llm-progress";
 import type { ExportDocument, ExportPlan } from "@/types/domain";
 
 type ExportPlanClientProps = {
@@ -39,6 +43,7 @@ export function ExportPlanClient({ projectId, initialPlan }: ExportPlanClientPro
     tone?: "error" | "success";
   } | null>(null);
   const [isPending, startTransition] = useTransition();
+  const { llmProgress, isLlmRunning, start, onProgress, finish } = useLlmProgress();
 
   useEffect(() => {
     if (!notice) {
@@ -92,17 +97,29 @@ export function ExportPlanClient({ projectId, initialPlan }: ExportPlanClientPro
 
   function handleSuggestWithLlm() {
     setError("");
+    start("导出文案建议", EXPORT_LLM_STAGES);
     startTransition(async () => {
       try {
-        const nextPlan = await suggestExportPlanWithLlm(projectId);
+        const { data: nextPlan, meta } = await suggestExportPlanWithLlm(projectId, onProgress);
         setPlan(nextPlan);
         setTagsText(joinTags(nextPlan.tags));
         router.refresh();
-        setNotice({ title: "LLM 文案建议已更新", message: "已填入建议的标题、标签和描述。" });
+        const llmNotice = describeLlmStatus(meta);
+        if (llmNotice) {
+          setNotice({
+            title: llmNotice.title,
+            message: llmNotice.message,
+            tone: llmNoticeTone(llmNotice.tone)
+          });
+        } else {
+          setNotice({ title: "LLM 文案建议已更新", message: "已填入建议的标题、标签和描述。" });
+        }
       } catch (submitError) {
         showError(
           submitError instanceof Error ? submitError.message : "生成导出建议失败，请稍后重试。"
         );
+      } finally {
+        finish();
       }
     });
   }
@@ -136,7 +153,11 @@ export function ExportPlanClient({ projectId, initialPlan }: ExportPlanClientPro
       <BlockingNotice
         description="正在处理导出相关操作，请稍候。"
         title="处理中"
-        visible={isPending}
+        visible={isPending && !isLlmRunning}
+      />
+      <LlmProgressOverlay
+        state={llmProgress ?? { title: "", stages: EXPORT_LLM_STAGES, currentStage: "preparing", message: "", detail: "", progress: 0, startedAt: Date.now() }}
+        visible={isLlmRunning}
       />
       <ToastNotice
         message={notice?.message ?? ""}
@@ -201,7 +222,7 @@ export function ExportPlanClient({ projectId, initialPlan }: ExportPlanClientPro
         <div className="flex flex-wrap gap-3 md:col-span-2">
           <button
             type="submit"
-            disabled={isPending}
+            disabled={isPending || isLlmRunning}
             className="inline-flex rounded-full bg-pine px-5 py-3 text-sm font-medium text-white transition hover:bg-pine/90 disabled:cursor-not-allowed disabled:opacity-60"
           >
             {isPending ? "保存中..." : "保存导出信息"}
@@ -209,7 +230,7 @@ export function ExportPlanClient({ projectId, initialPlan }: ExportPlanClientPro
           <button
             type="button"
             onClick={handleSuggestWithLlm}
-            disabled={isPending}
+            disabled={isPending || isLlmRunning}
             className="inline-flex rounded-full border border-pine/20 bg-white px-5 py-3 text-sm font-medium text-pine transition hover:bg-mist disabled:cursor-not-allowed disabled:opacity-60"
           >
             {isPending ? "处理中..." : "LLM 建议文案"}
@@ -217,7 +238,7 @@ export function ExportPlanClient({ projectId, initialPlan }: ExportPlanClientPro
           <button
             type="button"
             onClick={() => handlePreview("markdown")}
-            disabled={isPending}
+            disabled={isPending || isLlmRunning}
             className="inline-flex rounded-full border border-pine/20 bg-white px-5 py-3 text-sm font-medium text-pine transition hover:bg-mist disabled:cursor-not-allowed disabled:opacity-60"
           >
             预览 Markdown
@@ -225,7 +246,7 @@ export function ExportPlanClient({ projectId, initialPlan }: ExportPlanClientPro
           <button
             type="button"
             onClick={() => handlePreview("json")}
-            disabled={isPending}
+            disabled={isPending || isLlmRunning}
             className="inline-flex rounded-full border border-pine/20 bg-white px-5 py-3 text-sm font-medium text-pine transition hover:bg-mist disabled:cursor-not-allowed disabled:opacity-60"
           >
             预览 JSON
@@ -233,7 +254,7 @@ export function ExportPlanClient({ projectId, initialPlan }: ExportPlanClientPro
           <button
             type="button"
             onClick={() => handlePreview("yaml")}
-            disabled={isPending}
+            disabled={isPending || isLlmRunning}
             className="inline-flex rounded-full border border-pine/20 bg-white px-5 py-3 text-sm font-medium text-pine transition hover:bg-mist disabled:cursor-not-allowed disabled:opacity-60"
           >
             预览 YAML

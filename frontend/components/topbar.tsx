@@ -8,13 +8,15 @@ type TopbarProps = {
     label: string;
     href: string;
   };
+  settingsHref?: string;
 };
 
 export function Topbar({
   allowLogout = true,
   eyebrow = "Travel Edit OS",
   title = "旅行短视频剪辑导演助手",
-  action
+  action,
+  settingsHref = "/settings/llm"
 }: TopbarProps) {
   return (
     <header className="mx-auto flex w-full max-w-7xl items-start justify-between gap-4 px-6 py-6">
@@ -25,6 +27,14 @@ export function Topbar({
         </h1>
       </div>
       <div className="flex items-center gap-3">
+        {settingsHref ? (
+          <Link
+            href={settingsHref}
+            className="inline-flex rounded-full border border-pine/15 bg-white/85 px-5 py-3 text-sm font-medium text-pine transition hover:border-pine/30 hover:bg-mist"
+          >
+            LLM 配置
+          </Link>
+        ) : null}
         {action ? (
           <Link
             href={action.href}

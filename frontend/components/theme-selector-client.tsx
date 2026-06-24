@@ -3,7 +3,15 @@
 import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { BlockingNotice, ToastNotice } from "@/components/async-status";
+import { LlmProgressOverlay } from "@/components/llm-progress-overlay";
 import { generateThemes, generateThemesWithLlm, selectTheme } from "@/lib/browser-api";
+import {
+  applyLlmProgressEvent,
+  createLlmProgressState,
+  THEME_LLM_STAGES,
+  type LlmProgressViewState
+} from "@/lib/llm-progress-stages";
+import { describeLlmStatus, llmNoticeTone } from "@/lib/llm-status";
 import type { NarrativeTheme } from "@/types/domain";
 
 type ThemeSelectorClientProps = {
@@ -24,6 +32,7 @@ export function ThemeSelectorClient({
     tone?: "error" | "success";
   } | null>(null);
   const [isPending, startTransition] = useTransition();
+  const [llmProgress, setLlmProgress] = useState<LlmProgressViewState | null>(null);
 
   useEffect(() => {
     if (!notice) {
@@ -73,16 +82,41 @@ export function ThemeSelectorClient({
 
   function handleGenerateWithLlm() {
     setError("");
+    const progressState = createLlmProgressState("LLM 主题建议", THEME_LLM_STAGES);
+    setLlmProgress(progressState);
     startTransition(async () => {
       try {
-        const nextThemes = await generateThemesWithLlm(projectId, 3);
+        const { data: nextThemes, meta } = await generateThemesWithLlm(
+          projectId,
+          3,
+          (event) => {
+            setLlmProgress((current) =>
+              current ? applyLlmProgressEvent(current, event) : current
+            );
+          }
+        );
         setThemes(nextThemes);
         router.refresh();
-        setNotice({ title: "LLM 主题建议已更新", message: "已生成新的候选主题方向。" });
+        const llmNotice = describeLlmStatus(meta);
+        if (llmNotice) {
+          setNotice({
+            title: llmNotice.title,
+            message: llmNotice.message,
+            tone: llmNoticeTone(llmNotice.tone)
+          });
+        } else {
+          setNotice({ title: "LLM 主题建议已更新", message: "已生成新的候选主题方向。" });
+        }
       } catch (submitError) {
+        const message =
+          submitError instanceof Error ? submitError.message : "LLM 主题建议生成失败，请稍后重试。";
         showError(
-          submitError instanceof Error ? submitError.message : "LLM 主题建议生成失败，请稍后重试。"
+          message.includes("404") || message.includes("Project not found")
+            ? "项目不存在或后端未同步，请返回首页重新进入项目后再试。"
+            : message
         );
+      } finally {
+        setLlmProgress(null);
       }
     });
   }
@@ -92,8 +126,9 @@ export function ThemeSelectorClient({
       <BlockingNotice
         description="正在处理主题相关操作，请稍候。"
         title="处理中"
-        visible={isPending}
+        visible={isPending && !llmProgress}
       />
+      <LlmProgressOverlay state={llmProgress ?? createLlmProgressState("", THEME_LLM_STAGES)} visible={Boolean(llmProgress)} />
       <ToastNotice
         message={notice?.message ?? ""}
         title={notice?.title ?? ""}
@@ -104,7 +139,7 @@ export function ThemeSelectorClient({
         <button
           type="button"
           onClick={handleGenerate}
-          disabled={isPending}
+          disabled={isPending || Boolean(llmProgress)}
           className="inline-flex rounded-full bg-pine px-5 py-3 text-sm font-medium text-white transition hover:bg-pine/90 disabled:cursor-not-allowed disabled:opacity-60"
         >
           {isPending ? "生成中..." : themes.length > 0 ? "重新生成主题" : "生成主题方向"}
@@ -112,7 +147,7 @@ export function ThemeSelectorClient({
         <button
           type="button"
           onClick={handleGenerateWithLlm}
-          disabled={isPending}
+          disabled={isPending || Boolean(llmProgress)}
           className="inline-flex rounded-full border border-pine/20 bg-white px-5 py-3 text-sm font-medium text-pine transition hover:bg-mist disabled:cursor-not-allowed disabled:opacity-60"
         >
           {isPending ? "处理中..." : "LLM 建议主题"}
@@ -150,7 +185,7 @@ export function ThemeSelectorClient({
               <button
                 type="button"
                 onClick={() => handleSelect(theme.id)}
-                disabled={isPending}
+                disabled={isPending || Boolean(llmProgress)}
                 className={[
                   "mt-5 inline-flex rounded-full px-4 py-2 text-sm font-medium transition disabled:cursor-not-allowed disabled:opacity-60",
                   theme.isSelected

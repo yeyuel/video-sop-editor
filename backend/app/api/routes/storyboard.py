@@ -1,6 +1,9 @@
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import StreamingResponse
 from sqlmodel import Session
 
+from app.api.meta import merge_response_meta
+from app.api.sse_stream import run_streaming_task
 from app.db import get_session
 from app.models.schemas import (
     ApiResponse,
@@ -41,10 +44,41 @@ def generate_storyboard_with_llm(
     request: StoryboardGenerateRequest,
     session: Session = Depends(get_session),
 ) -> ApiResponse:
-    bundle = repository.generate_storyboard_with_llm(session, project_id, request)
-    if bundle is None:
+    result = repository.generate_storyboard_with_llm(session, project_id, request)
+    if result is None:
         raise HTTPException(status_code=404, detail="Project not found")
-    return ApiResponse(data=bundle)
+    bundle, llm_meta = result
+    return ApiResponse(data=bundle, meta=merge_response_meta(llm_meta))
+
+
+@router.post("/storyboard/generate-llm/stream")
+def generate_storyboard_with_llm_stream(
+    project_id: str,
+    request: StoryboardGenerateRequest,
+) -> StreamingResponse:
+    def serialize_complete(result: object) -> tuple[dict, dict[str, str] | None]:
+        if result is None:
+            raise HTTPException(status_code=404, detail="Project not found")
+        bundle, llm_meta = result  # type: ignore[misc]
+        return bundle.model_dump(), llm_meta
+
+    def task(session: Session, report) -> object:
+        return repository.generate_storyboard_with_llm(
+            session,
+            project_id,
+            request,
+            on_progress=report,
+        )
+
+    return StreamingResponse(
+        run_streaming_task(task, serialize_complete=serialize_complete),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
 
 
 @router.put("/storyboard", response_model=ApiResponse)

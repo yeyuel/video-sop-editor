@@ -4,7 +4,8 @@ import json
 
 from app.models.entities import ProjectEntity
 from app.models.schemas import AssetRead
-from app.services.llm import llm_suggestion_service
+from app.services.llm import LlmCallResult, build_llm_meta, llm_suggestion_service
+from app.services.llm.progress import ProgressReporter, emit_progress
 
 
 def build_rule_theme_candidates(
@@ -49,8 +50,15 @@ def build_llm_theme_candidates(
     project: ProjectEntity,
     assets: list[AssetRead],
     count: int,
-) -> list[dict[str, str]]:
-    payload = llm_suggestion_service.generate_json(
+    on_progress: ProgressReporter | None = None,
+) -> tuple[list[dict[str, str]], dict[str, str]]:
+    emit_progress(
+        on_progress,
+        "preparing",
+        f"正在整理「{project.destination}」项目与 {len(assets)} 条素材…",
+        progress=10,
+    )
+    result = llm_suggestion_service.generate_json_result(
         system_prompt=(
             "You are a short-form travel video narrative director. "
             "Return JSON only with a themes array. Each theme must include "
@@ -83,7 +91,19 @@ def build_llm_theme_candidates(
             ensure_ascii=False,
         ),
         temperature=0.7,
+        max_tokens=1200,
+        on_progress=on_progress,
     )
+    emit_progress(on_progress, "building", "正在整理候选主题结构…", progress=86)
+    normalized = _normalize_theme_payload(result, count)
+    if not normalized:
+        emit_progress(on_progress, "fallback", "LLM 结果无效，准备回退到规则生成…", progress=88)
+    meta = build_llm_meta(result, used_fallback=not normalized).as_dict()
+    return normalized, meta
+
+
+def _normalize_theme_payload(result: LlmCallResult, count: int) -> list[dict[str, str]]:
+    payload = result.data if result.ok else None
     themes = payload.get("themes") if payload else None
     if not isinstance(themes, list):
         return []
