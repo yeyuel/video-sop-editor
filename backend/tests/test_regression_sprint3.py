@@ -152,7 +152,12 @@ def test_rhythm_beat_mode_refilter_on_save(regression_env) -> None:
 
     with Session(engine) as session:
         dense = filter_beats_for_capcut_mode(raw_beats, "beat_2", target_duration_sec)
-        coarse = filter_beats_for_capcut_mode(raw_beats, "beat_1", target_duration_sec)
+        coarse = filter_beats_for_capcut_mode(
+            raw_beats,
+            "beat_1",
+            target_duration_sec,
+            coarse_beats=[raw_beats[index] for index in range(0, len(raw_beats), 2)],
+        )
         assert len(dense) > len(coarse)
 
         payload = RhythmPlanWriteRequest(
@@ -163,6 +168,7 @@ def test_rhythm_beat_mode_refilter_on_save(regression_env) -> None:
             detectedBpm=120,
             audioDurationSec=4.0,
             rawBeatPoints=raw_beats,
+            coarseBeatPoints=[raw_beats[index] for index in range(0, len(raw_beats), 2)],
             beatMode="beat_2",
             beatPoints=dense,
             rhythmNotes=["regression"],
@@ -309,3 +315,4 @@ def test_run_all_migrations_from_zero(tmp_path, monkeypatch) -> None:
         final_version = _current_version(session)
 
     assert final_version == len(MIGRATIONS)
+    assert final_version == 4

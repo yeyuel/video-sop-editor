@@ -117,6 +117,7 @@ export const fallbackWorkspace: WorkspaceData = {
     detectedBpm: 0,
     audioDurationSec: 0,
     rawBeatPoints: [],
+    coarseBeatPoints: [],
     beatMode: "beat_1",
     beatPoints: [0, 0.5, 1, 1.5, 2, 2.5],
     rhythmNotes: [

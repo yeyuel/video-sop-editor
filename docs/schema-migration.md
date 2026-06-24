@@ -31,7 +31,8 @@
 |---------|------|------|
 | 1 | `001_legacy_columns` | 项目 media_root、style_notes、素材 relative_path、节奏音频字段 |
 | 2 | `002_rhythm_analysis_metrics` | 节奏表 detected_bpm、audio_duration_sec |
-| 3 | `003_rhythm_raw_beats` | 节奏表 raw_beat_points（原始识别节拍，供踩点模式切换重采点） |
+| 3 | `003_rhythm_raw_beats` | 节奏表 raw_beat_points（细粒度节拍） |
+| 4 | `004_rhythm_coarse_beats` | 节奏表 coarse_beat_points（粗粒度/强拍序列） |
 
 ## 5. 注意事项
 

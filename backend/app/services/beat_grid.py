@@ -1,9 +1,9 @@
 """
 剪映（CapCut）音频踩点语义对齐。
 
-- beat_1 / 踩节拍1：标记较稀疏（粗密度），适合慢歌、重拍明显的音乐。
-- beat_2 / 踩节拍2：标记较稠密（细密度），捕捉更多细碎节奏点，适合快切。
-- strong_weak / 强弱拍：仅保留强拍，比踩节拍1更稀疏。
+- beat_1 / 踩节拍1：粗密度，优先使用强拍/beat_track 或强起音序列。
+- beat_2 / 踩节拍2：细密度，使用全量起音/细粒度节拍序列。
+- strong_weak / 强弱拍：在粗密度基础上再稀疏，保留强拍。
 """
 
 from __future__ import annotations
@@ -36,25 +36,44 @@ def normalize_beat_times(
 
 
 def filter_beats_for_capcut_mode(
-    all_beats: list[float],
+    fine_beats: list[float],
     beat_mode: str,
     target_duration_sec: float,
+    *,
+    coarse_beats: list[float] | None = None,
 ) -> list[float]:
-    if beat_mode == "none" or not all_beats:
+    if beat_mode == "none" or not fine_beats:
         return [0.0, float(target_duration_sec)]
 
     if beat_mode not in CAPCUT_BEAT_MODES:
         beat_mode = "beat_1"
 
-    sorted_beats = normalize_beat_times(all_beats, target_duration_sec)
+    normalized_fine = normalize_beat_times(fine_beats, target_duration_sec)
+    normalized_coarse = (
+        normalize_beat_times(coarse_beats, target_duration_sec)
+        if coarse_beats
+        else normalized_fine
+    )
+
     if beat_mode == "beat_2":
-        return sorted_beats
+        return normalized_fine
 
-    stride = 2 if beat_mode == "beat_1" else 4
-    filtered = [sorted_beats[index] for index in range(0, len(sorted_beats), stride)]
-    if beat_mode == "strong_weak" and len(filtered) < 2:
-        filtered = [sorted_beats[index] for index in range(0, len(sorted_beats), 2)]
+    if beat_mode == "beat_1":
+        if coarse_beats and len(normalized_coarse) >= 2:
+            return normalized_coarse
+        stride = 2
+        filtered = [
+            normalized_fine[index] for index in range(0, len(normalized_fine), stride)
+        ]
+        return normalize_beat_times(filtered, target_duration_sec)
 
+    source = normalized_coarse if coarse_beats else normalized_fine
+    if coarse_beats:
+        filtered = [source[index] for index in range(0, len(source), 2)]
+    else:
+        filtered = [source[index] for index in range(0, len(source), 4)]
+        if len(filtered) < 2:
+            filtered = [source[index] for index in range(0, len(source), 2)]
     return normalize_beat_times(filtered, target_duration_sec)
 
 
@@ -81,8 +100,8 @@ def capcut_beat_mode_label(beat_mode: str) -> str:
 
 def capcut_beat_mode_description(beat_mode: str) -> str:
     descriptions = {
-        "beat_1": "对齐剪映「踩节拍1」：标记较稀疏，适合慢歌或只需跟重拍切镜。",
-        "beat_2": "对齐剪映「踩节拍2」：标记较稠密，捕捉更多细碎节奏点，适合快切。",
+        "beat_1": "对齐剪映「踩节拍1」：标记较稀疏，优先使用强拍/beat_track 序列。",
+        "beat_2": "对齐剪映「踩节拍2」：标记较稠密，使用全量起音/细粒度节拍序列。",
         "strong_weak": "对齐剪映「强弱拍」：只保留强拍/重拍位置，密度低于踩节拍1。",
     }
     return descriptions.get(beat_mode, "")

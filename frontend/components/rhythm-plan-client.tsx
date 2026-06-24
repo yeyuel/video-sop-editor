@@ -118,7 +118,8 @@ export function RhythmPlanClient({
         const filtered = filterBeatsForCapcutMode(
           current.rawBeatPoints,
           nextMode,
-          targetDurationSec
+          targetDurationSec,
+          current.coarseBeatPoints
         );
         setBeatPointsText(numberListToText(filtered));
       }
@@ -326,7 +327,11 @@ export function RhythmPlanClient({
           ) : null}
           {plan.rawBeatPoints.length > 0 ? (
             <p className="mt-1 text-xs text-ink/55">
-              已缓存 {plan.rawBeatPoints.length} 个原始识别节拍；切换模式会自动重新采点，保存后写入项目。
+              已缓存细粒度 {plan.rawBeatPoints.length} 个
+              {plan.coarseBeatPoints.length > 0
+                ? `、粗粒度 ${plan.coarseBeatPoints.length} 个`
+                : ""}
+              节拍；切换模式会自动重新采点，保存后写入项目。
             </p>
           ) : null}
         </label>

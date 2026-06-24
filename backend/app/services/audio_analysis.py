@@ -10,6 +10,7 @@ import tempfile
 import wave
 from dataclasses import dataclass, field
 
+from app.services.audio_structure import suggest_dark_cuts_from_energy
 from app.services.beat_grid import (
     capcut_beat_mode_description,
     capcut_beat_mode_label,
@@ -34,6 +35,7 @@ class BeatAnalysisResult:
     beat_mode: str
     beat_points: list[float]
     raw_beat_times: list[float] = field(default_factory=list)
+    coarse_beat_times: list[float] = field(default_factory=list)
     bpm: int = 0
     dark_cut_suggestions: list[float] = field(default_factory=list)
     bgm_style: str = ""
@@ -75,24 +77,31 @@ class AudioBeatAnalyzer:
     def _finalize_capcut_result(
         self,
         *,
-        raw_beat_times: list[float],
+        fine_beat_times: list[float],
+        coarse_beat_times: list[float],
         target_duration_sec: int,
         bpm: int,
         beat_interval_sec: float | None,
         analysis_engine: str,
         audio_duration_sec: float,
         analysis_window: float,
+        dark_cut_suggestions: list[float],
         extra_notes: list[str],
     ) -> BeatAnalysisResult:
-        normalized_raw = normalize_beat_times(raw_beat_times, float(target_duration_sec))
-        if len(normalized_raw) < 2:
+        normalized_fine = normalize_beat_times(fine_beat_times, float(target_duration_sec))
+        normalized_coarse = normalize_beat_times(
+            coarse_beat_times or fine_beat_times,
+            float(target_duration_sec),
+        )
+        if len(normalized_fine) < 2:
             raise AudioAnalysisError("未能从音频中识别到足够节拍点，请更换音频或改用规则生成。")
 
         beat_mode = recommend_capcut_beat_mode(bpm, beat_interval_sec)
         beat_points = filter_beats_for_capcut_mode(
-            normalized_raw,
+            normalized_fine,
             beat_mode,
             float(target_duration_sec),
+            coarse_beats=normalized_coarse if coarse_beat_times else None,
         )
         notes = [
             f"识别引擎：{analysis_engine}",
@@ -100,16 +109,18 @@ class AudioBeatAnalyzer:
             capcut_beat_mode_description(beat_mode),
             f"音频时长：{audio_duration_sec} 秒，分析窗口：{analysis_window} 秒",
             f"识别 BPM：{bpm}",
-            f"原始节拍点：{len(normalized_raw)} 个",
+            f"细粒度节拍点：{len(normalized_fine)} 个",
+            f"粗粒度节拍点：{len(normalized_coarse)} 个",
             f"当前模式输出节拍点：{len(beat_points)} 个",
             *extra_notes,
         ]
         return BeatAnalysisResult(
             beat_mode=beat_mode,
             beat_points=beat_points,
-            raw_beat_times=normalized_raw,
+            raw_beat_times=normalized_fine,
+            coarse_beat_times=normalized_coarse,
             bpm=bpm,
-            dark_cut_suggestions=self._suggest_dark_cuts(target_duration_sec),
+            dark_cut_suggestions=dark_cut_suggestions,
             bgm_style=self._suggest_bgm_style(bpm),
             analysis_notes=notes,
             analysis_engine=analysis_engine,
@@ -145,13 +156,14 @@ class AudioBeatAnalyzer:
             if time_point <= analysis_window
         ]
 
-        raw_beats = beat_times if len(beat_times) >= 3 else onset_times
-        if len(raw_beats) < 2:
+        fine_beats = onset_times if len(onset_times) >= 3 else beat_times
+        coarse_beats = beat_times if len(beat_times) >= 2 else fine_beats
+        if len(fine_beats) < 2:
             raise AudioAnalysisError("未能从音频中识别到足够节拍点，请更换音频或改用规则生成。")
 
         bpm = int(round(float(tempo))) if tempo else 0
         intervals = [
-            right - left for left, right in zip(raw_beats, raw_beats[1:]) if right > left
+            right - left for left, right in zip(coarse_beats, coarse_beats[1:]) if right > left
         ]
         beat_interval_sec = statistics.median(intervals) if intervals else None
         if bpm <= 0 and beat_interval_sec:
@@ -159,15 +171,20 @@ class AudioBeatAnalyzer:
         if bpm <= 0:
             bpm = 90
 
+        energy_points = self._librosa_energy_points(samples, sample_rate, analysis_window)
+        dark_cuts = suggest_dark_cuts_from_energy(energy_points, float(target_duration_sec))
+
         return self._finalize_capcut_result(
-            raw_beat_times=raw_beats,
+            fine_beat_times=fine_beats,
+            coarse_beat_times=coarse_beats,
             target_duration_sec=target_duration_sec,
             bpm=bpm,
             beat_interval_sec=float(beat_interval_sec) if beat_interval_sec else None,
             analysis_engine="librosa",
             audio_duration_sec=audio_duration_sec,
             analysis_window=analysis_window,
-            extra_notes=[f"识别起音点：{len(onset_times)} 个"],
+            dark_cut_suggestions=dark_cuts,
+            extra_notes=[f"识别起音点：{len(onset_times)} 个，beat_track：{len(beat_times)} 个"],
         )
 
     def _analyze_with_energy(self, wav_path: str, target_duration_sec: int) -> BeatAnalysisResult:
@@ -195,33 +212,46 @@ class AudioBeatAnalyzer:
         window_size = max(frame_rate // 20, 512)
         window_duration = window_size / frame_rate
         energies = self._window_energies(mono_samples, window_size)
-        onset_times = self._detect_onset_times(energies, window_duration)
-        onset_times = [point for point in onset_times if point <= analysis_window]
+        fine_onsets = self._detect_onset_times(energies, window_duration, strength_multiplier=1.35)
+        coarse_onsets = self._detect_onset_times(energies, window_duration, strength_multiplier=1.75)
+        fine_onsets = [point for point in fine_onsets if point <= analysis_window]
+        coarse_onsets = [point for point in coarse_onsets if point <= analysis_window]
 
-        if len(onset_times) >= 3:
-            raw_beats = onset_times
+        if len(fine_onsets) >= 3:
+            fine_beats = fine_onsets
+            coarse_beats = coarse_onsets if len(coarse_onsets) >= 2 else fine_onsets
         else:
-            interval = self._estimate_interval(onset_times, target_duration_sec)
-            raw_beats = self._build_uniform_beats(int(analysis_window), interval)
+            interval = self._estimate_interval(fine_onsets, target_duration_sec)
+            fine_beats = self._build_uniform_beats(int(analysis_window), interval)
+            coarse_beats = fine_beats
 
         intervals = [
             right - left
-            for left, right in zip(raw_beats, raw_beats[1:])
+            for left, right in zip(coarse_beats, coarse_beats[1:])
             if 0.25 <= right - left <= 1.5
         ]
         beat_interval_sec = statistics.median(intervals) if intervals else self._estimate_interval(
-            onset_times, target_duration_sec
+            fine_onsets, target_duration_sec
         )
         bpm = max(40, min(220, round(60 / beat_interval_sec)))
 
+        energy_points = [
+            (round(index * window_duration, 2), value)
+            for index, value in enumerate(energies)
+            if index * window_duration <= analysis_window
+        ]
+        dark_cuts = suggest_dark_cuts_from_energy(energy_points, float(target_duration_sec))
+
         return self._finalize_capcut_result(
-            raw_beat_times=raw_beats,
+            fine_beat_times=fine_beats,
+            coarse_beat_times=coarse_beats,
             target_duration_sec=target_duration_sec,
             bpm=bpm,
             beat_interval_sec=float(beat_interval_sec),
             analysis_engine="energy",
             audio_duration_sec=audio_duration_sec,
             analysis_window=analysis_window,
+            dark_cut_suggestions=dark_cuts,
             extra_notes=["librosa 不可用或识别失败时的能量起音兜底"],
         )
 
@@ -303,7 +333,12 @@ class AudioBeatAnalyzer:
         return energies
 
     @staticmethod
-    def _detect_onset_times(energies: list[float], window_duration: float) -> list[float]:
+    def _detect_onset_times(
+        energies: list[float],
+        window_duration: float,
+        *,
+        strength_multiplier: float = 1.35,
+    ) -> list[float]:
         onset_times: list[float] = []
         lookback = 8
         min_gap_windows = 4
@@ -314,11 +349,28 @@ class AudioBeatAnalyzer:
             history = energies[index - lookback : index]
             average = sum(history) / max(len(history), 1)
             local_peak = current >= max(energies[index - 1], energies[index - 2], average)
-            is_onset = average > 0 and current > average * 1.35 and local_peak
+            is_onset = average > 0 and current > average * strength_multiplier and local_peak
             if is_onset and index - last_onset_index >= min_gap_windows:
                 onset_times.append(round(index * window_duration, 2))
                 last_onset_index = index
         return onset_times
+
+    @staticmethod
+    def _librosa_energy_points(
+        samples: object,
+        sample_rate: int,
+        analysis_window: float,
+    ) -> list[tuple[float, float]]:
+        assert np is not None and librosa is not None
+        frame_length = 2048
+        hop_length = 512
+        rms = librosa.feature.rms(y=samples, frame_length=frame_length, hop_length=hop_length)[0]
+        times = librosa.frames_to_time(range(len(rms)), sr=sample_rate, hop_length=hop_length)
+        return [
+            (round(float(time_point), 2), float(value))
+            for time_point, value in zip(times, rms)
+            if time_point <= analysis_window
+        ]
 
     @staticmethod
     def _estimate_interval(onset_times: list[float], target_duration_sec: int) -> float:
@@ -346,11 +398,6 @@ class AudioBeatAnalyzer:
         if beat_points and beat_points[-1] < float(target_duration_sec):
             beat_points.append(float(target_duration_sec))
         return beat_points
-
-    @staticmethod
-    def _suggest_dark_cuts(target_duration_sec: int) -> list[float]:
-        checkpoints = {round(target_duration_sec * ratio, 2) for ratio in (0.25, 0.5, 0.75)}
-        return sorted(point for point in checkpoints if 0 < point < target_duration_sec)
 
     @staticmethod
     def _suggest_bgm_style(bpm: int) -> str:

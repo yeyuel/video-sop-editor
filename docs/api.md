@@ -173,6 +173,7 @@ Base URL:
   "detectedBpm": 120,
   "audioDurationSec": 180.5,
   "rawBeatPoints": [0, 0.5, 1, 1.5, 2, 2.5],
+  "coarseBeatPoints": [0, 1, 2],
   "beatMode": "beat_2",
   "beatPoints": [0, 0.5, 1, 1.5],
   "rhythmNotes": ["前 3 秒保证强开头"],

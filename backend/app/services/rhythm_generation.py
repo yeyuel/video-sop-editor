@@ -1,11 +1,12 @@
 from __future__ import annotations
 
-import os
-
 from app.models.entities import ProjectEntity
 from app.models.schemas import AssetRead, NarrativeThemeRead, RhythmPlanWriteRequest
 from app.services.audio_analysis import BeatAnalysisResult
+from app.services.audio_structure import suggest_dark_cuts_from_energy
 from app.services.beat_grid import filter_beats_for_capcut_mode, normalize_beat_times
+from app.services.rhythm_copy import resolve_rhythm_copy
+from app.services.rhythm_track import resolve_selected_track_name
 
 
 def recommend_beat_mode(video_type: str) -> str:
@@ -28,12 +29,8 @@ def build_beat_points(target_duration_sec: int, interval: float) -> list[float]:
     return beat_points or [0.0, float(target_duration_sec)]
 
 
-def build_dark_cuts(target_duration_sec: int) -> list[float]:
-    return [
-        round(target_duration_sec * 0.25, 2),
-        round(target_duration_sec * 0.5, 2),
-        round(target_duration_sec * 0.75, 2),
-    ]
+def build_rule_dark_cuts(target_duration_sec: int) -> list[float]:
+    return suggest_dark_cuts_from_energy([], float(target_duration_sec))
 
 
 def build_photo_motion_suggestions(assets: list[AssetRead]) -> list[str]:
@@ -67,27 +64,48 @@ def build_rule_rhythm_payload(
     theme: NarrativeThemeRead | None,
 ) -> RhythmPlanWriteRequest:
     beat_mode = recommend_beat_mode(project.video_type)
-    base_beats = build_beat_points(project.target_duration_sec, 0.25)
-    raw_beats = normalize_beat_times(base_beats, float(project.target_duration_sec))
+    fine_beats = normalize_beat_times(
+        build_beat_points(project.target_duration_sec, 0.25),
+        float(project.target_duration_sec),
+    )
+    coarse_beats = normalize_beat_times(
+        [fine_beats[index] for index in range(0, len(fine_beats), 2)],
+        float(project.target_duration_sec),
+    )
     beat_points = filter_beats_for_capcut_mode(
-        raw_beats,
+        fine_beats,
         beat_mode,
         float(project.target_duration_sec),
+        coarse_beats=coarse_beats,
+    )
+    bgm_style_fallback = theme.rhythmProfile if theme else "快起快收，中段稳节奏"
+    rhythm_notes_fallback = build_rhythm_notes(project, assets, theme)
+    bgm_style, rhythm_notes = resolve_rhythm_copy(
+        project,
+        assets,
+        theme,
+        bpm=0,
+        beat_mode=beat_mode,
+        beat_point_count=len(beat_points),
+        analysis_source="rule",
+        bgm_style_fallback=bgm_style_fallback,
+        rhythm_notes_fallback=rhythm_notes_fallback,
     )
 
     return RhythmPlanWriteRequest(
-        bgmStyle=theme.rhythmProfile if theme else "快起快收，中段稳节奏",
-        selectedTrackName=f"{project.id}-demo-track",
+        bgmStyle=bgm_style,
+        selectedTrackName=resolve_selected_track_name(project, theme),
         audioFileName="",
         analysisSource="rule",
         analysisNotes=["当前为规则生成节拍点，依据项目时长、视频类型和剪映踩点语义进行估算。"],
         detectedBpm=0,
         audioDurationSec=0.0,
-        rawBeatPoints=[],
+        rawBeatPoints=fine_beats,
+        coarseBeatPoints=coarse_beats,
         beatMode=beat_mode,
         beatPoints=beat_points,
-        rhythmNotes=build_rhythm_notes(project, assets, theme),
-        darkCutSuggestions=build_dark_cuts(project.target_duration_sec),
+        rhythmNotes=rhythm_notes,
+        darkCutSuggestions=build_rule_dark_cuts(project.target_duration_sec),
         photoMotionSuggestions=build_photo_motion_suggestions(assets),
     )
 
@@ -99,18 +117,35 @@ def build_audio_rhythm_payload(
     audio_file_name: str,
     analysis: BeatAnalysisResult,
 ) -> RhythmPlanWriteRequest:
+    bgm_style, rhythm_notes = resolve_rhythm_copy(
+        project,
+        assets,
+        theme,
+        bpm=analysis.bpm,
+        beat_mode=analysis.beat_mode,
+        beat_point_count=len(analysis.beat_points),
+        analysis_source="audio_upload",
+        bgm_style_fallback=analysis.bgm_style,
+        rhythm_notes_fallback=build_rhythm_notes(project, assets, theme),
+    )
+
     return RhythmPlanWriteRequest(
-        bgmStyle=analysis.bgm_style,
-        selectedTrackName=os.path.splitext(audio_file_name)[0],
+        bgmStyle=bgm_style,
+        selectedTrackName=resolve_selected_track_name(
+            project,
+            theme,
+            audio_file_name=audio_file_name,
+        ),
         audioFileName=audio_file_name,
         analysisSource="audio_upload",
         analysisNotes=analysis.analysis_notes,
         detectedBpm=analysis.bpm,
         audioDurationSec=analysis.audio_duration_sec,
         rawBeatPoints=analysis.raw_beat_times,
+        coarseBeatPoints=analysis.coarse_beat_times,
         beatMode=analysis.beat_mode,
         beatPoints=analysis.beat_points,
-        rhythmNotes=build_rhythm_notes(project, assets, theme)
+        rhythmNotes=rhythm_notes
         + [f"当前节拍点来自音频分析（{analysis.analysis_engine}），识别 BPM 为 {analysis.bpm}。"],
         darkCutSuggestions=analysis.dark_cut_suggestions,
         photoMotionSuggestions=build_photo_motion_suggestions(assets),
@@ -128,6 +163,12 @@ def build_rule_fallback_rhythm_payload(
     payload = build_rule_rhythm_payload(project, assets, theme)
     return payload.model_copy(
         update={
+            "selectedTrackName": resolve_selected_track_name(
+                project,
+                theme,
+                audio_file_name=audio_file_name,
+                existing_name=payload.selectedTrackName,
+            ),
             "audioFileName": "",
             "analysisSource": "rule_fallback",
             "analysisNotes": [
@@ -137,5 +178,6 @@ def build_rule_fallback_rhythm_payload(
             "detectedBpm": 0,
             "audioDurationSec": 0.0,
             "rawBeatPoints": [],
+            "coarseBeatPoints": [],
         }
     )

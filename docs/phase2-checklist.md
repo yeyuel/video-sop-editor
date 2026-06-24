@@ -12,7 +12,8 @@
 | Sprint 1（P0 工程收口） | ✅ 已完成 | 服务拆分、migration 001、workflow 联动、提示统一 |
 | Sprint 2（音频节拍） | ✅ 已完成 | librosa + 能量兜底、剪映踩点语义、rawBeatPoints、migration 002/003 |
 | Sprint 3（P0 收尾 + 文档对齐） | ✅ 已完成 | 回归测试、字段变更 SOP、文档同步 |
-| LLM 孤立能力 | 🟡 已接入、待深化 | 主题 / 分镜 / 导出有 LLM 入口 + 规则兜底，质量与工程化不足 |
+| Sprint 4（节奏模块深化） | ✅ 已完成 | 暗场能量分析、细/粗踩点、LLM 节奏文案、曲名真实化 |
+| LLM 孤立能力 | 🟡 已接入、待深化 | 主题 / 分镜 / 导出 LLM 待 Sprint 6 质量增强 |
 | 二期系统化整理 | 进行中 | LLM 网关标准化（Sprint 5）待推进 |
 
 ## 3. Sprint 迭代计划
@@ -48,13 +49,13 @@
 - [x] `.gitignore` 补 `*.tsbuildinfo`
 - [x] `docs/api.md` 补 `rawBeatPoints` 字段说明
 
-### Sprint 4 — 节奏模块深化
+### Sprint 4 — 节奏模块深化 ✅
 
-- [ ] **暗场建议 `darkCutSuggestions`**：固定 25%/50%/75% → 音频能量段落 / 结构变化点
-- [ ] **`selectedTrackName` 真实化**：统一为上传文件名 / 用户填写 / 曲库名
-- [ ] **剪映点位更接近**：stride 近似 → 粗/细两档 onset 检测（强 onset vs 全 onset）
-- [ ] **`rhythmNotes` / `bgmStyle` LLM 化**：模板拼接 → 基于 BPM、踩点模式、主题的可执行说明
-- [ ] **旧节奏计划补 raw**：无 `rawBeatPoints` 的历史数据在保存/重上传时补缓存
+- [x] **暗场建议 `darkCutSuggestions`**：能量局部低谷 + 固定比例兜底
+- [x] **`selectedTrackName` 真实化**：上传文件名 / 用户填写 / 主题参考曲名
+- [x] **剪映点位更接近**：细/粗两档 onset（librosa onset + beat_track / 能量双阈值）
+- [x] **`rhythmNotes` / `bgmStyle` LLM 化**：LLM 生成 + 模板兜底（`rhythm_copy.py`）
+- [x] **旧节奏计划补 raw**：保存时从 beatPoints 回填 raw/coarse 缓存
 
 ### Sprint 5 — LLM 网关标准化
 
@@ -136,9 +137,10 @@
 - [x] 识别失败时自动回退规则生成
 - [x] 支持移除已绑定音频 / 重新上传时清理旧文件
 - [x] 剪映踩点语义（踩节拍1 粗 / 踩节拍2 细 / 强弱拍）
-- [x] 原始节拍缓存（`rawBeatPoints`）与模式切换重采点
-- [ ] 暗场建议基于音频结构（Sprint 4）
-- [ ] 剪映点位算法逼近（Sprint 4）
+- [x] 原始节拍缓存（`rawBeatPoints` / `coarseBeatPoints`）与模式切换重采点
+- [x] 暗场建议基于音频能量结构（Sprint 4）
+- [x] 剪映点位细/粗两档 onset（Sprint 4）
+- [x] rhythmNotes / bgmStyle LLM 化（Sprint 4）
 
 ### 5.2 LLM 主题建议
 
@@ -232,9 +234,9 @@ node scripts/verify-workflow.mjs
 
 ## 9. 推荐推进顺序
 
-1. ~~**Sprint 3**~~：文档对齐 + 回归清单 + 字段变更 SOP ✅
-2. **Sprint 4**：节奏字段剩余升级（暗场、音轨名、LLM 节奏说明）
-3. **Sprint 5**：LLM Gateway 骨架（后续 LLM 增强的前置依赖）
+1. ~~Sprint 3~~：文档对齐 + 回归清单 + 字段变更 SOP ✅
+2. ~~Sprint 4~~：节奏字段剩余升级 ✅
+3. **Sprint 5**：LLM Gateway 标准化
 4. **Sprint 6**：主题 / 分镜 / 导出 LLM 质量
 5. **Sprint 7**：用户鉴权收尾
 6. **Sprint 8**：P2 增强与远期 AI 能力

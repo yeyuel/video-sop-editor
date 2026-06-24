@@ -74,6 +74,7 @@ export type RhythmPlan = {
   detectedBpm: number;
   audioDurationSec: number;
   rawBeatPoints: number[];
+  coarseBeatPoints: number[];
   beatMode: string;
   beatPoints: number[];
   rhythmNotes: string[];

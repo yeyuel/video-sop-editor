@@ -49,7 +49,7 @@ from app.services.rhythm_generation import (
     build_rule_fallback_rhythm_payload,
     build_rule_rhythm_payload,
 )
-from app.services.beat_grid import filter_beats_for_capcut_mode
+from app.services.beat_grid import filter_beats_for_capcut_mode, normalize_beat_times
 from app.services.serialization import dumps_list, loads_float_list, loads_str_list
 from app.services.storyboard_generation import (
     asset_order_key,
@@ -364,6 +364,7 @@ class SqlRepository:
         rhythm.detected_bpm = 0
         rhythm.audio_duration_sec = 0.0
         rhythm.raw_beat_points = "[]"
+        rhythm.coarse_beat_points = "[]"
         if rhythm.analysis_source == "audio_upload":
             rhythm.analysis_source = "manual"
         session.add(rhythm)
@@ -398,6 +399,7 @@ class SqlRepository:
                 detected_bpm=0,
                 audio_duration_sec=0.0,
                 raw_beat_points="[]",
+                coarse_beat_points="[]",
                 beat_mode="none",
                 beat_points="[]",
                 rhythm_notes="[]",
@@ -418,26 +420,54 @@ class SqlRepository:
         rhythm.audio_duration_sec = payload.audioDurationSec
 
         existing_raw = loads_float_list(getattr(rhythm, "raw_beat_points", "[]") or "[]")
+        existing_coarse = loads_float_list(getattr(rhythm, "coarse_beat_points", "[]") or "[]")
         if payload.rawBeatPoints:
             raw_beats = payload.rawBeatPoints
         elif existing_raw:
             raw_beats = existing_raw
+        elif payload.beatPoints and payload.beatMode != "none":
+            raw_beats = normalize_beat_times(
+                payload.beatPoints,
+                float(project.target_duration_sec),
+            )
         else:
             raw_beats = []
+
+        if payload.coarseBeatPoints:
+            coarse_beats = payload.coarseBeatPoints
+        elif existing_coarse:
+            coarse_beats = existing_coarse
+        elif raw_beats:
+            coarse_beats = normalize_beat_times(
+                [raw_beats[index] for index in range(0, len(raw_beats), 2)],
+                float(project.target_duration_sec),
+            )
+        else:
+            coarse_beats = []
 
         if raw_beats and payload.beatMode != "none":
             beat_points = filter_beats_for_capcut_mode(
                 raw_beats,
                 payload.beatMode,
                 float(project.target_duration_sec),
+                coarse_beats=coarse_beats or None,
             )
             rhythm.raw_beat_points = dumps_list(raw_beats)
+            rhythm.coarse_beat_points = dumps_list(coarse_beats)
         else:
             beat_points = payload.beatPoints
             if payload.rawBeatPoints:
                 rhythm.raw_beat_points = dumps_list(raw_beats)
-            elif not raw_beats:
+            elif raw_beats:
+                rhythm.raw_beat_points = dumps_list(raw_beats)
+            elif not existing_raw:
                 rhythm.raw_beat_points = "[]"
+            if payload.coarseBeatPoints:
+                rhythm.coarse_beat_points = dumps_list(coarse_beats)
+            elif coarse_beats:
+                rhythm.coarse_beat_points = dumps_list(coarse_beats)
+            elif not existing_coarse:
+                rhythm.coarse_beat_points = "[]"
 
         rhythm.beat_mode = payload.beatMode
         rhythm.beat_points = dumps_list(beat_points)
@@ -797,6 +827,7 @@ class SqlRepository:
                 detectedBpm=0,
                 audioDurationSec=0.0,
                 rawBeatPoints=[],
+                coarseBeatPoints=[],
                 beatMode="none",
                 beatPoints=[],
                 rhythmNotes=[],
@@ -902,6 +933,7 @@ class SqlRepository:
             detectedBpm=item.detected_bpm,
             audioDurationSec=item.audio_duration_sec,
             rawBeatPoints=loads_float_list(getattr(item, "raw_beat_points", "[]") or "[]"),
+            coarseBeatPoints=loads_float_list(getattr(item, "coarse_beat_points", "[]") or "[]"),
             beatMode=item.beat_mode,
             beatPoints=loads_float_list(item.beat_points),
             rhythmNotes=loads_str_list(item.rhythm_notes),

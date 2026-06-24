@@ -344,32 +344,30 @@
 - `selectedTrackName`
 - `rhythmNotes`
 
-当前实现说明（Sprint 2 后）：
+当前实现说明（Sprint 4 后）：
 
 - `beatPoints`：音频上传时由 librosa / 能量检测识别；规则生成时由目标时长 + 剪映踩点语义估算；识别失败回退规则生成。
-- `beatMode`：音频上传时按 BPM 与节拍间隔推荐（快歌 → 踩节拍2 细密度，中速 → 踩节拍1 粗密度，慢歌 → 强弱拍）；规则生成时按视频类型映射；语义对齐剪映（1 粗 / 2 细）。
-- `rawBeatPoints`：缓存完整识别节拍，切换 `beatMode` 时不需重新上传音频。
-- `selectedTrackName`：音频上传时部分使用文件名；规则生成仍为 demo 占位，待 Sprint 4 统一。
-- `darkCutSuggestions`：仍由固定结构点（25%/50%/75%）推导，待 Sprint 4 升级为音频段落识别。
-- `bgmStyle` 和 `rhythmNotes`：仍基于主题、素材和项目字段做模板拼接，待 Sprint 4 LLM 化。
+- `beatMode`：音频上传时按 BPM 与节拍间隔推荐；语义对齐剪映（踩节拍1 粗 / 踩节拍2 细 / 强弱拍）。
+- `rawBeatPoints` / `coarseBeatPoints`：分别缓存细粒度起音与粗粒度强拍序列；切换 `beatMode` 时不需重新上传音频。
+- `selectedTrackName`：优先使用上传音频文件名；否则保留用户填写值；规则生成时使用「主题名-参考曲」。
+- `darkCutSuggestions`：音频上传时基于能量局部低谷推断；无音频时回退 25%/50%/75% 结构点。
+- `bgmStyle` 和 `rhythmNotes`：配置 LLM 时优先生成；失败回退模板/规则文案。
 
 二期升级优先级（剩余）：
 
 1. ~~`beatPoints`~~（已完成）
-2. `selectedTrackName`（部分完成）
-3. `darkCutSuggestions`
+2. ~~`selectedTrackName`~~（已完成）
+3. ~~`darkCutSuggestions`~~（已完成）
 4. ~~`beatMode`~~（已完成）
-5. `rhythmNotes`
-6. `bgmStyle`
+5. ~~`rhythmNotes`~~（已完成）
+6. ~~`bgmStyle`~~（已完成）
 7. `photoMotionSuggestions`
 
 二期目标（剩余）：
 
-- ~~支持上传音频文件并自动提取真实 beat points。~~
-- ~~将 `beatMode` 升级为结合真实音频结构的自动建议。~~
-- 将 `selectedTrackName` 完全替换为真实音轨名或上传文件名。
-- 将 `darkCutSuggestions` 从固定比例点升级为基于音乐段落变化点的建议。
-- 将 `rhythmNotes` 和 `bgmStyle` 升级为 LLM 辅助生成的可执行建议。
+- ~~将 `selectedTrackName` 完全替换为真实音轨名或上传文件名。~~
+- ~~将 `darkCutSuggestions` 从固定比例点升级为基于音乐段落变化点的建议。~~
+- ~~将 `rhythmNotes` 和 `bgmStyle` 升级为 LLM 辅助生成的可执行建议。~~
 ## 8.2 二期 LLM 接入要求
 
 二期中，LLM 接入必须设计为“厂商无关配置 + 多认证模式兼容”，不能把产品能力绑定为单一 OpenAI 命名体系。

@@ -9,7 +9,7 @@
 截至 2026-06-23：
 
 - 一期主工作流已经可以完整跑通
-- Sprint 1～3 已完成（工程收口、音频节拍、文档对齐与回归测试）
+- Sprint 1～4 已完成（工程收口、音频节拍、文档回归、节奏模块深化）
 - 二期中 LLM 孤立能力已接入，待 Sprint 5/6 标准化与质量增强
 - 执行清单见 `phase2-checklist.md` §3 Sprint 迭代计划
 
@@ -112,12 +112,11 @@
 
 建议按 Sprint 迭代推进（详见 `phase2-checklist.md` §3）：
 
-1. ~~Sprint 3~~：P0 收尾 + 文档对齐 + 回归清单 ✅
-2. Sprint 4：节奏模块剩余字段升级
-3. Sprint 5：LLM Gateway 标准化
-4. Sprint 6：LLM 主题 / 分镜 / 导出质量增强
-5. Sprint 7：用户鉴权收尾
-6. Sprint 8：P2 增强与远期 AI 能力
+1. ~~Sprint 4~~：节奏模块剩余字段升级 ✅
+2. Sprint 5：LLM Gateway 标准化
+3. Sprint 6：LLM 主题 / 分镜 / 导出质量增强
+4. Sprint 7：用户鉴权收尾
+5. Sprint 8：P2 增强与远期 AI 能力
 
 ## 11. 与其他文档的关系
 

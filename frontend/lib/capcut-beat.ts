@@ -5,12 +5,12 @@ export const capcutBeatModeOptions = [
   {
     value: "beat_1",
     label: "踩节拍1（粗密度）",
-    description: "对齐剪映「踩节拍1」：标记较稀疏，适合慢歌或只需跟重拍切镜。"
+    description: "对齐剪映「踩节拍1」：优先使用粗粒度/强拍序列，适合慢歌或跟重拍切镜。"
   },
   {
     value: "beat_2",
     label: "踩节拍2（细密度）",
-    description: "对齐剪映「踩节拍2」：标记较稠密，捕捉更多细碎节奏点，适合快切。"
+    description: "对齐剪映「踩节拍2」：使用全量细粒度起音序列，适合快切。"
   },
   {
     value: "strong_weak",
@@ -53,24 +53,41 @@ function normalizeBeatTimes(candidateTimes: number[], targetDurationSec: number)
 }
 
 export function filterBeatsForCapcutMode(
-  allBeats: number[],
+  fineBeats: number[],
   beatMode: string,
-  targetDurationSec: number
+  targetDurationSec: number,
+  coarseBeats: number[] = []
 ) {
-  if (beatMode === "none" || !allBeats.length) {
+  if (beatMode === "none" || !fineBeats.length) {
     return [0, targetDurationSec];
   }
 
-  const sortedBeats = normalizeBeatTimes(allBeats, targetDurationSec);
+  const normalizedFine = normalizeBeatTimes(fineBeats, targetDurationSec);
+  const normalizedCoarse = coarseBeats.length
+    ? normalizeBeatTimes(coarseBeats, targetDurationSec)
+    : normalizedFine;
+
   if (beatMode === "beat_2") {
-    return sortedBeats;
+    return normalizedFine;
   }
 
-  const stride = beatMode === "beat_1" ? 2 : 4;
-  let filtered = sortedBeats.filter((_, index) => index % stride === 0);
-  if (beatMode === "strong_weak" && filtered.length < 2) {
-    filtered = sortedBeats.filter((_, index) => index % 2 === 0);
+  if (beatMode === "beat_1") {
+    if (coarseBeats.length >= 2) {
+      return normalizedCoarse;
+    }
+    const filtered = normalizedFine.filter((_, index) => index % 2 === 0);
+    return normalizeBeatTimes(filtered, targetDurationSec);
   }
 
+  const source = coarseBeats.length ? normalizedCoarse : normalizedFine;
+  if (coarseBeats.length) {
+    const filtered = source.filter((_, index) => index % 2 === 0);
+    return normalizeBeatTimes(filtered, targetDurationSec);
+  }
+
+  let filtered = source.filter((_, index) => index % 4 === 0);
+  if (filtered.length < 2) {
+    filtered = source.filter((_, index) => index % 2 === 0);
+  }
   return normalizeBeatTimes(filtered, targetDurationSec);
 }
