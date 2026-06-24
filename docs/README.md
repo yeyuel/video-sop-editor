@@ -12,7 +12,9 @@
 
 - `phase1-context.md`：一期当前实现状态压缩版，方便二期开发快速接入上下文。
 - `phase2-master.md`：二期主控文档，定义目标、边界、优先级和实施顺序。
-- `phase2-checklist.md`：二期执行检查清单，按 P0 / P1 / P2 跟踪落地。
+- `phase2-checklist.md`：二期执行检查清单，按 P0 / P1 / P2 与 Sprint 迭代跟踪落地。
+- `regression-sprint3.md`：Sprint 3 关键路径回归测试说明与运行命令。
+- `schema-migration.md`：数据库 migration 规范与字段变更检查清单。
 
 ## 能力专项
 

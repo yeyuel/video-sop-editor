@@ -171,12 +171,15 @@ class AudioBeatAnalyzer:
         )
 
     def _analyze_with_energy(self, wav_path: str, target_duration_sec: int) -> BeatAnalysisResult:
-        with wave.open(wav_path, "rb") as wav_file:
-            channel_count = wav_file.getnchannels()
-            sample_width = wav_file.getsampwidth()
-            frame_rate = wav_file.getframerate()
-            frame_count = wav_file.getnframes()
-            frames = wav_file.readframes(frame_count)
+        try:
+            with wave.open(wav_path, "rb") as wav_file:
+                channel_count = wav_file.getnchannels()
+                sample_width = wav_file.getsampwidth()
+                frame_rate = wav_file.getframerate()
+                frame_count = wav_file.getnframes()
+                frames = wav_file.readframes(frame_count)
+        except wave.Error as exc:
+            raise AudioAnalysisError("音频文件无法解析，请确认文件格式后重试。") from exc
 
         if sample_width not in {1, 2, 4}:
             raise AudioAnalysisError("当前 WAV 文件采样位深暂不支持，请更换音频文件后重试。")

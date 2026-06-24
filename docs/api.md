@@ -172,7 +172,8 @@ Base URL:
   "analysisNotes": ["识别引擎：librosa 节拍跟踪"],
   "detectedBpm": 120,
   "audioDurationSec": 180.5,
-  "beatMode": "beat_1",
+  "rawBeatPoints": [0, 0.5, 1, 1.5, 2, 2.5],
+  "beatMode": "beat_2",
   "beatPoints": [0, 0.5, 1, 1.5],
   "rhythmNotes": ["前 3 秒保证强开头"],
   "darkCutSuggestions": [15, 30, 45],
@@ -202,7 +203,7 @@ Base URL:
 `DELETE /projects/{projectId}/rhythm-plan/audio`
 
 - 删除本地存储的音频文件
-- 清空 `audioFileName` / `detectedBpm` / `audioDurationSec`
+- 清空 `audioFileName` / `detectedBpm` / `audioDurationSec` / `rawBeatPoints`
 - 保留当前 beat points 与节奏说明，供继续手工编辑
 
 ## 5. 分镜

@@ -144,3 +144,16 @@ cd backend
 del video_sop.db
 python init_db.py
 ```
+
+## 回归测试（Sprint 3）
+
+```powershell
+cd backend
+pip install -r requirements.txt
+python -m pytest tests/ -q
+
+cd ..
+node scripts/verify-workflow.mjs
+```
+
+详见 `docs/regression-sprint3.md`。
