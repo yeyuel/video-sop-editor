@@ -3,9 +3,43 @@ from __future__ import annotations
 import json
 
 from app.models.entities import ProjectEntity
-from app.models.schemas import AssetRead, ExportPlanRead, NarrativeThemeRead, StoryboardSegmentRead, WorkspaceDataRead
+from app.models.schemas import AssetRead, ExportPlanRead, NarrativeThemeRead, StoryboardSegmentRead, StoryboardSegmentWrite, WorkspaceDataRead
 from app.services.llm import LlmCallResult, build_llm_meta, llm_suggestion_service
 from app.services.llm.progress import ProgressReporter, emit_progress
+from app.services.storyboard_generation import segment_read_to_write
+
+PLATFORM_EXPORT_GUIDES: dict[str, dict[str, str]] = {
+    "xiaohongshu": {
+        "label": "小红书",
+        "titleStyle": "情绪种草 + 轻攻略，标题 18 字内，可带 1 个情绪词",
+        "tagStyle": "3-5 个话题标签，偏目的地、季节、氛围、旅行体验",
+        "descriptionStyle": "第一人称或陪伴感叙述，强调画面感与可收藏价值",
+        "coverStyle": "封面留标题安全区，优先高识别度空镜或人物情绪瞬间",
+    },
+    "douyin": {
+        "label": "抖音",
+        "titleStyle": "强钩子开头，标题 15 字内，突出反差、速度感或第一秒信息",
+        "tagStyle": "2-4 个短标签，偏热点场景、目的地、旅行 vlog",
+        "descriptionStyle": "短句口播感，前两句给出观看理由，结尾可留互动提问",
+        "coverStyle": "封面主体居中，标题短且对比强，避免遮挡人物面部",
+    },
+    "default": {
+        "label": "通用短视频",
+        "titleStyle": "简洁明确，突出目的地与核心情绪",
+        "tagStyle": "3-5 个短标签",
+        "descriptionStyle": "说明视频看点与适合平台",
+        "coverStyle": "优先使用识别度最高的镜头，标题避开主体",
+    },
+}
+
+
+def resolve_platform_export_guide(platform: str) -> dict[str, str]:
+    normalized = platform.strip().lower()
+    if "douyin" in normalized or "抖音" in normalized:
+        return PLATFORM_EXPORT_GUIDES["douyin"]
+    if "xiaohongshu" in normalized or "小红书" in normalized:
+        return PLATFORM_EXPORT_GUIDES["xiaohongshu"]
+    return PLATFORM_EXPORT_GUIDES["default"]
 
 
 def build_llm_export_plan(
@@ -23,11 +57,16 @@ def build_llm_export_plan(
         f"正在整理「{project.destination}」导出上下文（{len(storyboard)} 个镜头）…",
         progress=10,
     )
+    platform_guide = resolve_platform_export_guide(project.platform)
     result = llm_suggestion_service.generate_json_result(
         system_prompt=(
             "You are a release-copy assistant for travel short videos. "
             "Return JSON only with title, shortTitle, description, tags, coverSuggestion. "
-            "Tags must be an array of short strings."
+            "Optionally include segmentCaptions: an array of {segmentId, subtitle} to refine "
+            "on-screen copy for storyboard segments that match the export description. "
+            "Only use segmentId values from storyboardSummary. "
+            "Tags must be an array of short strings. "
+            f"Write for platform style: {platform_guide['label']}."
         ),
         user_prompt=json.dumps(
             {
@@ -39,8 +78,19 @@ def build_llm_export_plan(
                     "stylePreference": project.style_preference,
                     "styleNotes": project.style_notes,
                 },
+                "platformGuide": platform_guide,
                 "theme": theme.model_dump() if theme else None,
-                "storyboard": [segment.model_dump() for segment in storyboard],
+                "storyboardSummary": [
+                    {
+                        "segmentId": segment.id,
+                        "startTime": segment.startTime,
+                        "endTime": segment.endTime,
+                        "assetId": segment.assetId,
+                        "function": segment.function,
+                        "subtitle": segment.subtitle,
+                    }
+                    for segment in storyboard
+                ],
                 "assets": [
                     {
                         "assetId": asset.assetId,
@@ -54,6 +104,7 @@ def build_llm_export_plan(
             ensure_ascii=False,
         ),
         temperature=0.7,
+        max_tokens=1600,
         on_progress=on_progress,
     )
     emit_progress(on_progress, "building", "正在整理导出文案字段…", progress=86)
@@ -71,7 +122,60 @@ def _normalize_export_payload(result: LlmCallResult) -> dict[str, object] | None
     tags = payload.get("tags")
     if tags is not None and not isinstance(tags, list):
         return None
+    captions = payload.get("segmentCaptions")
+    if captions is not None:
+        if not isinstance(captions, list):
+            return None
+        normalized_captions: list[dict[str, str]] = []
+        for item in captions:
+            if not isinstance(item, dict):
+                continue
+            segment_id = str(item.get("segmentId", "")).strip()
+            subtitle = str(item.get("subtitle", "")).strip()
+            if segment_id and subtitle:
+                normalized_captions.append({"segmentId": segment_id, "subtitle": subtitle})
+        payload = {**payload, "segmentCaptions": normalized_captions}
     return payload
+
+
+def apply_export_captions_to_segments(
+    segments: list[StoryboardSegmentRead],
+    captions: list[object],
+) -> tuple[list[StoryboardSegmentWrite], int]:
+    caption_map: dict[str, str] = {}
+    for item in captions:
+        if not isinstance(item, dict):
+            continue
+        segment_id = str(item.get("segmentId", "")).strip()
+        subtitle = str(item.get("subtitle", "")).strip()
+        if segment_id and subtitle:
+            caption_map[segment_id] = subtitle
+
+    if not caption_map:
+        return [], 0
+
+    updated_segments: list[StoryboardSegmentWrite] = []
+    updated_count = 0
+    for segment in segments:
+        next_subtitle = caption_map.get(segment.id)
+        if not next_subtitle or next_subtitle == segment.subtitle:
+            continue
+        write = segment_read_to_write(segment)
+        write.subtitle = next_subtitle
+        updated_segments.append(write)
+        updated_count += 1
+    return updated_segments, updated_count
+
+
+def merge_storyboard_subtitle_updates(
+    segments: list[StoryboardSegmentRead],
+    updates: list[StoryboardSegmentWrite],
+) -> list[StoryboardSegmentWrite]:
+    update_map = {item.id: item for item in updates}
+    merged: list[StoryboardSegmentWrite] = []
+    for segment in segments:
+        merged.append(update_map.get(segment.id, segment_read_to_write(segment)))
+    return merged
 
 
 def build_rule_export_fallback(
@@ -79,17 +183,25 @@ def build_rule_export_fallback(
     project: ProjectEntity,
     theme: NarrativeThemeRead | None,
 ) -> dict[str, object]:
+    guide = resolve_platform_export_guide(project.platform)
     fallback_title = (
         f"{project.destination} {theme.title}"
         if theme
         else f"{project.destination} 旅行短视频导出方案"
     )
+    if guide["label"] == "抖音":
+        fallback_title = f"{project.destination}，这一趟真的值得"
+    elif guide["label"] == "小红书":
+        fallback_title = f"原来{project.destination}可以这么拍"
     return {
         "title": fallback_title,
         "shortTitle": project.destination,
-        "description": "围绕当前项目地点、节奏和分镜结构整理导出文案，便于后续直接发布或继续微调。",
-        "tags": [project.destination, project.platform, "旅行短视频"],
-        "coverSuggestion": "优先选择识别度最高的地点镜头做封面，标题尽量避开主体区域，保留画面留白。",
+        "description": (
+            f"围绕{project.destination}的路线与分镜结构整理{guide['label']}发布文案，"
+            f"{guide['descriptionStyle']}。"
+        ),
+        "tags": [project.destination, guide["label"], "旅行短视频"],
+        "coverSuggestion": guide["coverStyle"],
     }
 
 

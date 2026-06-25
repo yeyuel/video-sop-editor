@@ -163,6 +163,18 @@ def _migration_006_app_settings(session: Session) -> None:
         )
 
 
+def _migration_007_theme_evidence(session: Session) -> None:
+    inspector = inspect(engine)
+    if "themeentity" not in inspector.get_table_names():
+        return
+
+    theme_columns = {column["name"] for column in inspector.get_columns("themeentity")}
+    if "used_locations" not in theme_columns:
+        session.exec(text("ALTER TABLE themeentity ADD COLUMN used_locations TEXT DEFAULT '[]'"))
+    if "used_asset_ids" not in theme_columns:
+        session.exec(text("ALTER TABLE themeentity ADD COLUMN used_asset_ids TEXT DEFAULT '[]'"))
+
+
 MIGRATIONS: list[tuple[int, str, object]] = [
     (1, "001_legacy_columns", _migration_001_legacy_columns),
     (2, "002_rhythm_analysis_metrics", _migration_002_rhythm_analysis_metrics),
@@ -170,6 +182,7 @@ MIGRATIONS: list[tuple[int, str, object]] = [
     (4, "004_rhythm_coarse_beats", _migration_004_rhythm_coarse_beats),
     (5, "005_llm_provider_config", _migration_005_llm_provider_config),
     (6, "006_app_settings", _migration_006_app_settings),
+    (7, "007_theme_evidence", _migration_007_theme_evidence),
 ]
 
 

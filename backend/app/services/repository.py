@@ -40,8 +40,10 @@ from app.models.schemas import (
 from app.services.audio_analysis import AudioAnalysisError, audio_beat_analyzer
 from app.services.auth import verify_password
 from app.services.export_generation import (
+    apply_export_captions_to_segments,
     build_llm_export_plan,
     build_rule_export_fallback,
+    merge_storyboard_subtitle_updates,
     render_export_content,
 )
 from app.services.rhythm_generation import (
@@ -58,6 +60,7 @@ from app.services.storyboard_generation import (
     generate_storyboard_segments,
     generate_storyboard_segments_from_plan,
     normalize_storyboard_segments,
+    resolve_storyboard_beat_points,
     segment_read_to_write,
 )
 from app.services.theme_generation import build_llm_theme_candidates, build_rule_theme_candidates
@@ -583,7 +586,12 @@ class SqlRepository:
             if align_to_beat
             else "none"
         )
-        beat_points = rhythm.beatPoints if rhythm and align_to_beat else []
+        beat_points = resolve_storyboard_beat_points(
+            rhythm,
+            beat_mode=beat_mode,
+            target_duration_sec=target_duration,
+            align_to_beat=align_to_beat,
+        )
 
         segments = generate_storyboard_segments(
             assets=assets,
@@ -622,7 +630,12 @@ class SqlRepository:
             if align_to_beat
             else "none"
         )
-        beat_points = rhythm.beatPoints if rhythm and align_to_beat else []
+        beat_points = resolve_storyboard_beat_points(
+            rhythm,
+            beat_mode=beat_mode,
+            target_duration_sec=target_duration,
+            align_to_beat=align_to_beat,
+        )
         llm_plan, meta = build_llm_storyboard_plan(
             project=project,
             theme=theme,
@@ -838,6 +851,7 @@ class SqlRepository:
         if not suggestion:
             suggestion = build_rule_export_fallback(project=project, theme=theme)
 
+        segment_captions = suggestion.get("segmentCaptions") or []
         payload = ExportPlanWriteRequest(
             title=str(suggestion.get("title", "")).strip(),
             shortTitle=str(suggestion.get("shortTitle", "")).strip(),
@@ -847,6 +861,19 @@ class SqlRepository:
         )
         emit_progress(on_progress, "saving", "正在保存导出文案…", progress=94)
         plan = self.upsert_export_plan(session, project_id, payload)
+
+        caption_updates, caption_count = apply_export_captions_to_segments(
+            storyboard_bundle.segments,
+            segment_captions if isinstance(segment_captions, list) else [],
+        )
+        if caption_updates:
+            theme_id = theme.id if theme else project.selected_theme_id
+            merged_segments = merge_storyboard_subtitle_updates(
+                storyboard_bundle.segments,
+                caption_updates,
+            )
+            self._replace_storyboard_segments(session, project_id, theme_id, merged_segments)
+            meta = {**meta, "storyboardCaptionsUpdated": str(caption_count)}
         return plan, meta
 
     def build_export_document(
@@ -964,6 +991,8 @@ class SqlRepository:
             coreEmotion=item.core_emotion,
             rhythmProfile=item.rhythm_profile,
             platformReason=item.platform_reason,
+            usedLocations=loads_str_list(getattr(item, "used_locations", "[]") or "[]"),
+            usedAssetIds=loads_str_list(getattr(item, "used_asset_ids", "[]") or "[]"),
             isSelected=item.id == selected_theme_id,
         )
 
@@ -1031,7 +1060,7 @@ class SqlRepository:
         *,
         project: ProjectEntity,
         project_id: str,
-        candidates: list[dict[str, str]],
+        candidates: list[dict],
         current_selected: str,
     ) -> list[NarrativeThemeRead]:
         session.exec(delete(ThemeEntity).where(ThemeEntity.project_id == project_id))
@@ -1045,6 +1074,8 @@ class SqlRepository:
                 core_emotion=candidate["coreEmotion"],
                 rhythm_profile=candidate["rhythmProfile"],
                 platform_reason=candidate["platformReason"],
+                used_locations=dumps_list(candidate.get("usedLocations", [])),
+                used_asset_ids=dumps_list(candidate.get("usedAssetIds", [])),
             )
             themes.append(theme)
             session.add(theme)

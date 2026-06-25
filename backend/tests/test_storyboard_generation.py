@@ -6,7 +6,9 @@ from app.services.storyboard_generation import (
     _storyboard_max_tokens,
     generate_storyboard_segments,
     generate_storyboard_segments_from_plan,
+    merge_asset_order,
     resolve_segment_timing,
+    resolve_storyboard_beat_points,
 )
 from app.services.llm.types import LlmCallResult
 
@@ -176,6 +178,64 @@ def test_normalize_storyboard_plan_accepts_copy_only_segments() -> None:
             "subtitle": "像童话一样",
         }
     ]
+
+
+def test_merge_asset_order_prefers_llm_sequence() -> None:
+    assets = [
+        _asset("HEMU_002", 1.0),
+        _asset("GENERAL_003", 1.2),
+        _asset("KANAS_001", 1.5),
+    ]
+
+    merged = merge_asset_order(["KANAS_001", "HEMU_002"], assets)
+
+    assert [asset.assetId for asset in merged] == ["KANAS_001", "HEMU_002", "GENERAL_003"]
+
+
+def test_resolve_storyboard_beat_points_uses_raw_beats_for_capcut_mode() -> None:
+    rhythm = RhythmPlanRead(
+        bgmStyle="氛围电子",
+        selectedTrackName="demo-track",
+        beatMode="beat_1",
+        beatPoints=[0.0, 2.0, 4.0],
+        rawBeatPoints=[0.0, 0.5, 1.0, 1.5, 2.0, 2.5, 3.0, 3.5, 4.0],
+        coarseBeatPoints=[0.0, 1.0, 2.0, 3.0, 4.0],
+        rhythmNotes=[],
+        darkCutSuggestions=[],
+        photoMotionSuggestions=[],
+    )
+
+    beat_points = resolve_storyboard_beat_points(
+        rhythm,
+        beat_mode="beat_2",
+        target_duration_sec=4,
+        align_to_beat=True,
+    )
+
+    assert beat_points == [0.0, 0.5, 1.0, 1.5, 2.0, 2.5, 3.0, 3.5, 4.0]
+
+
+def test_resolve_storyboard_beat_points_disabled_when_not_aligned() -> None:
+    rhythm = RhythmPlanRead(
+        bgmStyle="氛围电子",
+        selectedTrackName="demo-track",
+        beatMode="beat_1",
+        beatPoints=[0.0, 2.0, 4.0],
+        rawBeatPoints=[0.0, 0.5, 1.0, 1.5, 2.0],
+        coarseBeatPoints=[],
+        rhythmNotes=[],
+        darkCutSuggestions=[],
+        photoMotionSuggestions=[],
+    )
+
+    beat_points = resolve_storyboard_beat_points(
+        rhythm,
+        beat_mode="beat_1",
+        target_duration_sec=4,
+        align_to_beat=False,
+    )
+
+    assert beat_points == []
 
 
 def test_align_storyboard_plan_preserves_asset_order() -> None:

@@ -78,6 +78,8 @@ export const fallbackWorkspace: WorkspaceData = {
       coreEmotion: "沉浸",
       rhythmProfile: "前段抓人，中段放缓，结尾回味",
       platformReason: "适合小红书做氛围种草，也方便后续扩展成口播版。",
+      usedLocations: ["禾木"],
+      usedAssetIds: ["HEMU_002"],
       isSelected: true
     }
   ],

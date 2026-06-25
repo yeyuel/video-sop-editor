@@ -105,14 +105,20 @@ export function ExportPlanClient({ projectId, initialPlan }: ExportPlanClientPro
         setTagsText(joinTags(nextPlan.tags));
         router.refresh();
         const llmNotice = describeLlmStatus(meta);
+        const captionCount = Number(meta?.storyboardCaptionsUpdated ?? 0);
+        const captionHint =
+          captionCount > 0 ? ` 已同步更新 ${captionCount} 条分镜字幕。` : "";
         if (llmNotice) {
           setNotice({
             title: llmNotice.title,
-            message: llmNotice.message,
+            message: `${llmNotice.message}${captionHint}`,
             tone: llmNoticeTone(llmNotice.tone)
           });
         } else {
-          setNotice({ title: "LLM 文案建议已更新", message: "已填入建议的标题、标签和描述。" });
+          setNotice({
+            title: "LLM 文案建议已更新",
+            message: `已填入建议的标题、标签和描述。${captionHint}`.trim()
+          });
         }
       } catch (submitError) {
         showError(

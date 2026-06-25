@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from typing import Any
 
 from app.models.entities import ProjectEntity
 from app.models.schemas import AssetRead
@@ -8,14 +9,91 @@ from app.services.llm import LlmCallResult, build_llm_meta, llm_suggestion_servi
 from app.services.llm.progress import ProgressReporter, emit_progress
 
 
+def _all_asset_ids(assets: list[AssetRead]) -> list[str]:
+    return [asset.assetId for asset in assets]
+
+
+def _all_locations(assets: list[AssetRead]) -> list[str]:
+    return sorted({asset.location for asset in assets if asset.location.strip()})
+
+
+def _locations_for_asset_ids(assets: list[AssetRead], asset_ids: list[str]) -> list[str]:
+    asset_map = {asset.assetId: asset for asset in assets}
+    locations: list[str] = []
+    seen: set[str] = set()
+    for asset_id in asset_ids:
+        location = asset_map.get(asset_id, None)
+        if not location or not location.location.strip():
+            continue
+        if location.location in seen:
+            continue
+        seen.add(location.location)
+        locations.append(location.location)
+    return locations
+
+
+def _sanitize_asset_ids(raw_ids: object, assets: list[AssetRead]) -> list[str]:
+    if not isinstance(raw_ids, list):
+        return []
+    allowed = {asset.assetId for asset in assets}
+    sanitized: list[str] = []
+    for item in raw_ids:
+        asset_id = str(item).strip()
+        if asset_id and asset_id in allowed and asset_id not in sanitized:
+            sanitized.append(asset_id)
+    return sanitized
+
+
+def _theme_evidence(
+    assets: list[AssetRead],
+    *,
+    asset_ids: list[str] | None = None,
+    locations: list[str] | None = None,
+) -> tuple[list[str], list[str]]:
+    used_asset_ids = asset_ids or _all_asset_ids(assets)
+    used_locations = locations or _locations_for_asset_ids(assets, used_asset_ids)
+    if not used_locations:
+        used_locations = _all_locations(assets)
+    return used_asset_ids, used_locations
+
+
+def _enforce_theme_diversity(themes: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    seen_emotions: set[str] = set()
+    diversified: list[dict[str, Any]] = []
+    for theme in themes:
+        emotion = str(theme.get("coreEmotion", "")).strip().lower()
+        if emotion and emotion in seen_emotions:
+            continue
+        if emotion:
+            seen_emotions.add(emotion)
+        diversified.append(theme)
+    return diversified
+
+
 def build_rule_theme_candidates(
     project: ProjectEntity,
     assets: list[AssetRead],
-) -> list[dict[str, str]]:
-    location_text = " / ".join(sorted({asset.location for asset in assets})) or project.destination
+) -> list[dict[str, Any]]:
+    locations = _all_locations(assets)
+    location_text = " / ".join(locations) or project.destination
     dominant_emotion = assets[0].emotionTags[0] if assets and assets[0].emotionTags else "沉浸"
+    route_locations = [
+        item.strip()
+        for item in project.route_text.replace("->", "-").replace("—", "-").split("-")
+        if item.strip()
+    ]
+    route_asset_ids = [
+        asset.assetId
+        for asset in assets
+        if asset.location in route_locations
+    ] or _all_asset_ids(assets)
+    people_asset_ids = [
+        asset.assetId
+        for asset in assets
+        if any(tag in asset.functionTags for tag in ("opening_hook", "transition_buffer", "supporting"))
+    ] or _all_asset_ids(assets)
 
-    return [
+    candidates: list[dict[str, Any]] = [
         {
             "title": f"{project.destination} 情绪氛围片",
             "summary": (
@@ -45,13 +123,28 @@ def build_rule_theme_candidates(
         },
     ]
 
+    evidence_specs = [
+        (_all_asset_ids(assets), locations),
+        (route_asset_ids, route_locations or locations),
+        (people_asset_ids, _locations_for_asset_ids(assets, people_asset_ids) or locations),
+    ]
+    for candidate, (asset_ids, locs) in zip(candidates, evidence_specs, strict=False):
+        used_asset_ids, used_locations = _theme_evidence(
+            assets,
+            asset_ids=asset_ids,
+            locations=locs,
+        )
+        candidate["usedAssetIds"] = used_asset_ids
+        candidate["usedLocations"] = used_locations
+    return candidates
+
 
 def build_llm_theme_candidates(
     project: ProjectEntity,
     assets: list[AssetRead],
     count: int,
     on_progress: ProgressReporter | None = None,
-) -> tuple[list[dict[str, str]], dict[str, str]]:
+) -> tuple[list[dict[str, Any]], dict[str, str]]:
     emit_progress(
         on_progress,
         "preparing",
@@ -62,7 +155,11 @@ def build_llm_theme_candidates(
         system_prompt=(
             "You are a short-form travel video narrative director. "
             "Return JSON only with a themes array. Each theme must include "
-            "title, summary, coreEmotion, rhythmProfile, platformReason. "
+            "title, summary, coreEmotion, rhythmProfile, platformReason, "
+            "usedAssetIds, usedLocations. "
+            "usedAssetIds must only contain assetId values from the provided assets. "
+            "usedLocations must only contain locations present in those assets. "
+            "Each theme must use a distinct coreEmotion and a distinct narrative angle. "
             "Do not invent locations outside the provided assets."
         ),
         user_prompt=json.dumps(
@@ -95,20 +192,24 @@ def build_llm_theme_candidates(
         on_progress=on_progress,
     )
     emit_progress(on_progress, "building", "正在整理候选主题结构…", progress=86)
-    normalized = _normalize_theme_payload(result, count)
+    normalized = _normalize_theme_payload(result, assets, count)
     if not normalized:
         emit_progress(on_progress, "fallback", "LLM 结果无效，准备回退到规则生成…", progress=88)
     meta = build_llm_meta(result, used_fallback=not normalized).as_dict()
     return normalized, meta
 
 
-def _normalize_theme_payload(result: LlmCallResult, count: int) -> list[dict[str, str]]:
+def _normalize_theme_payload(
+    result: LlmCallResult,
+    assets: list[AssetRead],
+    count: int,
+) -> list[dict[str, Any]]:
     payload = result.data if result.ok else None
     themes = payload.get("themes") if payload else None
     if not isinstance(themes, list):
         return []
 
-    normalized: list[dict[str, str]] = []
+    normalized: list[dict[str, Any]] = []
     for item in themes[: max(1, min(count, 5))]:
         if not isinstance(item, dict):
             continue
@@ -116,6 +217,21 @@ def _normalize_theme_payload(result: LlmCallResult, count: int) -> list[dict[str
         summary = str(item.get("summary", "")).strip()
         if not title or not summary:
             continue
+
+        used_asset_ids = _sanitize_asset_ids(item.get("usedAssetIds"), assets)
+        raw_locations = item.get("usedLocations")
+        used_locations = (
+            [str(value).strip() for value in raw_locations if str(value).strip()]
+            if isinstance(raw_locations, list)
+            else []
+        )
+        allowed_locations = set(_all_locations(assets))
+        used_locations = [loc for loc in used_locations if loc in allowed_locations]
+        used_asset_ids, used_locations = _theme_evidence(
+            assets,
+            asset_ids=used_asset_ids or None,
+            locations=used_locations or None,
+        )
 
         normalized.append(
             {
@@ -130,6 +246,8 @@ def _normalize_theme_payload(result: LlmCallResult, count: int) -> list[dict[str
                     str(item.get("platformReason", "")).strip()
                     or "适合当前平台的旅行短视频表达方式。"
                 ),
+                "usedAssetIds": used_asset_ids,
+                "usedLocations": used_locations,
             }
         )
-    return normalized
+    return _enforce_theme_diversity(normalized)

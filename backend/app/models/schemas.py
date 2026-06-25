@@ -100,6 +100,8 @@ class NarrativeThemeRead(BaseModel):
     coreEmotion: str
     rhythmProfile: str
     platformReason: str
+    usedLocations: list[str] = Field(default_factory=list)
+    usedAssetIds: list[str] = Field(default_factory=list)
     isSelected: bool = False
 
 

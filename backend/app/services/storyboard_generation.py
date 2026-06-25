@@ -13,6 +13,7 @@ from app.models.schemas import (
     StoryboardSegmentWrite,
     StoryboardValidationRead,
 )
+from app.services.beat_grid import filter_beats_for_capcut_mode, normalize_beat_times
 from app.services.llm import LlmCallResult, build_llm_meta, llm_suggestion_service
 from app.services.llm.progress import ProgressReporter, emit_progress
 
@@ -64,6 +65,51 @@ def _storyboard_max_tokens(asset_count: int) -> int:
     )
 
 
+def merge_asset_order(
+    llm_asset_ids: list[str],
+    rule_ordered_assets: list[AssetRead],
+) -> list[AssetRead]:
+    """LLM 排序优先，缺失素材按规则顺序补齐。"""
+    asset_map = {asset.assetId: asset for asset in rule_ordered_assets}
+    merged: list[AssetRead] = []
+    seen: set[str] = set()
+
+    for asset_id in llm_asset_ids:
+        asset = asset_map.get(asset_id)
+        if not asset or asset.assetId in seen:
+            continue
+        merged.append(asset)
+        seen.add(asset.assetId)
+
+    for asset in rule_ordered_assets:
+        if asset.assetId in seen:
+            continue
+        merged.append(asset)
+        seen.add(asset.assetId)
+    return merged
+
+
+def resolve_storyboard_beat_points(
+    rhythm: RhythmPlanRead | None,
+    *,
+    beat_mode: str,
+    target_duration_sec: int,
+    align_to_beat: bool,
+) -> list[float]:
+    if not align_to_beat or beat_mode == "none" or not rhythm:
+        return []
+
+    raw_source = rhythm.rawBeatPoints or rhythm.beatPoints
+    if raw_source:
+        return filter_beats_for_capcut_mode(
+            normalize_beat_times(raw_source, float(target_duration_sec)),
+            beat_mode,
+            float(target_duration_sec),
+            coarse_beats=rhythm.coarseBeatPoints or None,
+        )
+    return rhythm.beatPoints
+
+
 def _align_storyboard_plan_to_assets(
     ordered_assets: list[AssetRead],
     plan: list[dict[str, str]],
@@ -109,8 +155,10 @@ def build_llm_storyboard_plan(
             "You are a travel short-form video storyboard director. "
             "Return JSON only with a segments array. "
             "Each segment must include assetId, shotDescription, subtitle. "
-            "Follow orderedAssets exactly: one segment per asset, same order, no duplicates. "
-            "Do not invent assetId values outside orderedAssets."
+            "Use ruleOrderedAssetIds as the baseline order, but you may reorder segments "
+            "when narrative flow improves. Include every asset exactly once. "
+            "The segments array order is your preferred timeline order. "
+            "Do not invent assetId values outside ruleOrderedAssetIds."
         ),
         user_prompt=json.dumps(
             {
@@ -123,7 +171,8 @@ def build_llm_storyboard_plan(
                 },
                 "theme": _theme_context_for_llm(theme),
                 "rhythm": _rhythm_context_for_llm(rhythm, beat_mode),
-                "orderedAssets": [
+                "ruleOrderedAssetIds": [asset.assetId for asset in ordered_assets],
+                "assets": [
                     {
                         "assetId": asset.assetId,
                         "location": asset.location,
@@ -143,11 +192,12 @@ def build_llm_storyboard_plan(
     )
     emit_progress(on_progress, "building", "正在解析分镜脚本结构…", progress=86)
     normalized = _normalize_storyboard_plan(result, assets)
-    plan = (
-        _align_storyboard_plan_to_assets(ordered_assets, normalized)
-        if normalized
-        else None
-    )
+    if normalized:
+        llm_order = [item["assetId"] for item in normalized]
+        merged_assets = merge_asset_order(llm_order, ordered_assets)
+        plan = _align_storyboard_plan_to_assets(merged_assets, normalized)
+    else:
+        plan = None
     if plan is None:
         emit_progress(on_progress, "fallback", "LLM 分镜无效，准备回退到规则生成…", progress=88)
     meta = build_llm_meta(result, used_fallback=plan is None).as_dict()
@@ -386,6 +436,12 @@ def build_storyboard_validation(
 
     if not segments:
         message = "当前还没有可用分镜，请先确认素材和主题。"
+    elif not all_bound:
+        message = "存在未绑定素材的镜头，请检查每个分镜是否都关联了有效素材。"
+    elif not location_continuity:
+        message = "地点顺序未通过连续性校验，建议按路线或地点递进重新调整镜头顺序。"
+    elif beat_adaptation_enabled and not beat_alignment:
+        message = "镜头起止点未完全落在节拍点上，可关闭「适配节拍」重生成，或手动微调时间。"
     elif target_duration_reached:
         message = "当前分镜总时长已经落在目标时长范围内。"
     else:

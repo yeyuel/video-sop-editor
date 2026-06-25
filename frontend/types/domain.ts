@@ -34,6 +34,8 @@ export type NarrativeTheme = {
   coreEmotion: string;
   rhythmProfile: string;
   platformReason: string;
+  usedLocations: string[];
+  usedAssetIds: string[];
   isSelected: boolean;
 };
 

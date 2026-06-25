@@ -14,7 +14,7 @@
 | Sprint 3（P0 收尾 + 文档对齐） | ✅ 已完成 | 回归测试、字段变更 SOP、文档同步 |
 | Sprint 4（节奏模块深化） | ✅ 已完成 | 暗场能量分析、细/粗踩点、LLM 节奏文案、曲名真实化 |
 | Sprint 5（LLM 网关标准化） | ✅ 已完成 | Gateway、Provider 配置页、SSE 进度、Kimi 兼容、stream 回归 |
-| Sprint 6（LLM 业务质量） | 🔜 待启动 | 主题 / 分镜 / 导出 LLM 质量增强 |
+| Sprint 6（LLM 业务质量） | ✅ 已完成 | 主题证据字段、导出平台化、rawBeat 切镜、LLM 二层排序、字幕写回 |
 
 ## 3. Sprint 迭代计划
 
@@ -72,25 +72,25 @@
 - [x] LLM 流式接口回归：`regression-sprint5.md` + `test_llm_stream.py`
 - [ ] OAuth / Device Code 实装（预留至后续 Sprint，非 Sprint 5 阻塞项）
 
-### Sprint 6 — LLM 业务质量
+### Sprint 6 — LLM 业务质量 ✅
 
 **主题建议**
 
-- [ ] 候选间差异度控制（情绪轴 / 叙事结构不重复）
-- [ ] 可解释性：标注用了哪些素材 / 地点
+- [x] 候选间差异度控制（`_enforce_theme_diversity` + prompt 约束）
+- [x] 可解释性：标注用了哪些素材 / 地点（`usedAssetIds` / `usedLocations` + migration 007）
 - [x] 失败兜底策略文档化（`regression-sprint5.md` §5）+ 前端提示（`describeLlmStatus`）
 
 **分镜建议**
 
-- [ ] 结合 `rawBeatPoints` + 踩点模式做 beat 对齐切镜
-- [ ] 地点连续性校验强化
-- [ ] LLM 排序作为二层来源，保留规则排序兜底
-- [ ] 「适配节拍」开关与 validation 结果联动
+- [x] 结合 `rawBeatPoints` + 踩点模式做 beat 对齐切镜（`resolve_storyboard_beat_points`）
+- [x] 地点连续性校验强化（validation 文案 + 前端 toast 联动）
+- [x] LLM 排序作为二层来源，保留规则排序兜底（`merge_asset_order`）
+- [x] 「适配节拍」开关与 validation 结果联动（生成后校验提示）
 
 **导出建议**
 
-- [ ] 按平台差异化标题、标签、文案风格
-- [ ] 导出结果更完整写回时间线脚本
+- [x] 按平台差异化标题、标签、文案风格（小红书 / 抖音 guide）
+- [x] 导出结果写回时间线字幕（`segmentCaptions` → 分镜 subtitle）
 
 ### Sprint 7 — 用户与鉴权
 
@@ -151,20 +151,20 @@
 
 ### 5.2 LLM 主题建议
 
-- [ ] 强化主题候选的可解释性
-- [ ] 增加候选间差异度控制
+- [x] 强化主题候选的可解释性（usedLocations / usedAssetIds）
+- [x] 增加候选间差异度控制
 - [x] 明确失败兜底和超时兜底策略（`regression-sprint5.md` §5 + 前端 `describeLlmStatus`）
 
 ### 5.3 LLM 分镜建议
 
 - [ ] 在现有节奏、素材、主题基础上输出更可信的分镜建议
 - [ ] 后续支持“大模型建议顺序”作为二层排序来源之一
-- [ ] 强化素材绑定和地点连续性校验
+- [x] 强化素材绑定和地点连续性校验（validation 文案 + 前端提示）
 
 ### 5.4 LLM 导出建议
 
-- [ ] 让标题、标签、文案建议更贴近平台风格
-- [ ] 预留后续多平台差异化策略
+- [x] 让标题、标签、文案建议更贴近平台风格
+- [x] 预留后续多平台差异化策略（platformGuide 结构）
 - [ ] 将最终导出结果更完整写回时间线脚本
 
 ### 5.5 用户与鉴权

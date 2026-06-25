@@ -102,6 +102,32 @@ export function StoryboardListClient({
     });
   }
 
+  function showValidationNotice(nextBundle: StoryboardBundle, alignToBeatEnabled: boolean) {
+    const validation = nextBundle.validation;
+    const warnings: string[] = [];
+    if (!validation.allSegmentsBoundToAsset) {
+      warnings.push("存在未绑定素材的镜头");
+    }
+    if (!validation.locationContinuityPassed) {
+      warnings.push("地点顺序未通过连续性校验");
+    }
+    if (
+      alignToBeatEnabled &&
+      validation.beatAdaptationEnabled &&
+      !validation.beatAlignmentPassed
+    ) {
+      warnings.push("镜头起止点未完全落在节拍点上");
+    }
+    if (warnings.length === 0) {
+      return null;
+    }
+    return {
+      title: "分镜校验提示",
+      message: `${warnings.join("；")}。${validation.message}`,
+      tone: "warning" as const
+    };
+  }
+
   function handleGenerate() {
     setError("");
     startTransition(async () => {
@@ -115,10 +141,15 @@ export function StoryboardListClient({
         });
         setBundle(nextBundle);
         router.refresh();
-        setNotice({
-          title: "分镜已更新",
-          message: nextBundle.validation.message || "当前时间线已经重新生成。"
-        });
+        const validationNotice = showValidationNotice(nextBundle, alignToBeat);
+        if (validationNotice) {
+          setNotice(validationNotice);
+        } else {
+          setNotice({
+            title: "分镜已更新",
+            message: nextBundle.validation.message || "当前时间线已经重新生成。"
+          });
+        }
       } catch (submitError) {
         showError(
           submitError instanceof Error ? submitError.message : "生成分镜失败，请稍后再试。"
@@ -149,13 +180,18 @@ export function StoryboardListClient({
         );
         setBundle(nextBundle);
         router.refresh();
+        const validationNotice = showValidationNotice(nextBundle, alignToBeat);
         const llmNotice = describeLlmStatus(meta);
         if (llmNotice) {
           setNotice({
             title: llmNotice.title,
-            message: llmNotice.message,
+            message: validationNotice
+              ? `${llmNotice.message} ${validationNotice.message}`
+              : llmNotice.message,
             tone: llmNoticeTone(llmNotice.tone)
           });
+        } else if (validationNotice) {
+          setNotice(validationNotice);
         } else {
           setNotice({
             title: "LLM 分镜建议已更新",

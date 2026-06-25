@@ -50,6 +50,8 @@ class ThemeEntity(SQLModel, table=True):
     core_emotion: str
     rhythm_profile: str
     platform_reason: str
+    used_locations: str = "[]"
+    used_asset_ids: str = "[]"
 
 
 class StoryboardSegmentEntity(SQLModel, table=True):

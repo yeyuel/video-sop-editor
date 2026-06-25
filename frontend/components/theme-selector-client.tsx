@@ -181,6 +181,12 @@ export function ThemeSelectorClient({
               <div className="mt-4 space-y-2 text-sm text-ink/70">
                 <p>预期节奏：{theme.rhythmProfile}</p>
                 <p>平台理由：{theme.platformReason}</p>
+                {theme.usedLocations.length > 0 ? (
+                  <p>主要地点：{theme.usedLocations.join("、")}</p>
+                ) : null}
+                {theme.usedAssetIds.length > 0 ? (
+                  <p>参考素材：{theme.usedAssetIds.join("、")}</p>
+                ) : null}
               </div>
               <button
                 type="button"
