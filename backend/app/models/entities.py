@@ -30,10 +30,11 @@ class ProjectEntity(SQLModel, table=True):
     video_type: str
     style_preference: str
     style_notes: str = ""
-    route_text: str
+    route_text: str = ""
     media_root: str = ""
     status: str
     selected_theme_id: str = ""
+    validate_location_order: bool = False
 
 
 class AssetEntity(SQLModel, table=True):

@@ -18,18 +18,32 @@ export const fallbackProjects: Project[] = [
     routeText: "将军山 - 喀纳斯 - 禾木",
     mediaRoot: "D:\\素材库\\阿勒泰项目",
     status: "draft",
-    selectedThemeId: "theme_001"
+    selectedThemeId: "theme_001",
+    validateLocationOrder: false
   }
 ];
 
 const fallbackValidation: StoryboardValidation = {
   allSegmentsBoundToAsset: true,
   locationContinuityPassed: true,
+  locationOrderValidationEnabled: false,
   beatAlignmentPassed: true,
   beatAdaptationEnabled: true,
   totalDurationSec: 2.5,
+  targetDurationSec: 60,
+  durationDeltaSec: -57.5,
+  durationWithinTolerance: false,
   targetDurationReached: false,
-  message: "素材已全部使用完，当前总时长未达到目标时长。建议补充素材，或先将长素材切分后分别录入。"
+  unboundSegmentCount: 0,
+  issues: ["总时长 2.5s 低于目标 60s（差 57.5s）"],
+  message: "总时长 2.5s 低于目标 60s（差 57.5s）"
+};
+
+const fallbackExportValidation = {
+  destinationMentioned: true,
+  themeConsistencyPassed: true,
+  message: "导出文案与项目目的地、主题一致。",
+  issues: [] as string[]
 };
 
 const fallbackExportPlan: ExportPlan = {
@@ -110,6 +124,7 @@ export const fallbackWorkspace: WorkspaceData = {
     }
   ],
   storyboardValidation: fallbackValidation,
+  exportValidation: fallbackExportValidation,
   rhythmPlan: {
     bgmStyle: "冷感氛围电子 + 轻鼓点",
     selectedTrackName: "snow-dream-demo",

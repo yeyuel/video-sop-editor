@@ -216,6 +216,20 @@ def _migration_009_encrypt_llm_api_keys(session: Session) -> None:
             session.add(row)
 
 
+def _migration_010_project_location_validation(session: Session) -> None:
+    inspector = inspect(engine)
+    if "projectentity" not in inspector.get_table_names():
+        return
+
+    project_columns = {column["name"] for column in inspector.get_columns("projectentity")}
+    if "validate_location_order" not in project_columns:
+        session.exec(
+            text(
+                "ALTER TABLE projectentity ADD COLUMN validate_location_order INTEGER NOT NULL DEFAULT 0"
+            )
+        )
+
+
 MIGRATIONS: list[tuple[int, str, object]] = [
     (1, "001_legacy_columns", _migration_001_legacy_columns),
     (2, "002_rhythm_analysis_metrics", _migration_002_rhythm_analysis_metrics),
@@ -226,6 +240,7 @@ MIGRATIONS: list[tuple[int, str, object]] = [
     (7, "007_theme_evidence", _migration_007_theme_evidence),
     (8, "008_auth_sessions", _migration_008_auth_sessions),
     (9, "009_encrypt_llm_api_keys", _migration_009_encrypt_llm_api_keys),
+    (10, "010_project_location_validation", _migration_010_project_location_validation),
 ]
 
 

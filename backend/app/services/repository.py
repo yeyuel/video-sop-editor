@@ -49,6 +49,7 @@ from app.services.export_generation import (
     merge_storyboard_subtitle_updates,
     render_export_content,
 )
+from app.services.export_validation import build_export_validation
 from app.services.rhythm_generation import (
     build_audio_rhythm_payload,
     build_rule_fallback_rhythm_payload,
@@ -203,10 +204,11 @@ class SqlRepository:
             video_type=payload.videoType,
             style_preference=payload.stylePreference,
             style_notes=payload.styleNotes,
-            route_text=payload.routeText,
+            route_text=payload.routeText.strip(),
             media_root=payload.mediaRoot,
             status=payload.status,
             selected_theme_id="",
+            validate_location_order=payload.validateLocationOrder,
         )
         session.add(project)
         session.commit()
@@ -236,9 +238,10 @@ class SqlRepository:
         project.video_type = payload.videoType
         project.style_preference = payload.stylePreference
         project.style_notes = payload.styleNotes
-        project.route_text = payload.routeText
+        project.route_text = payload.routeText.strip()
         project.media_root = payload.mediaRoot
         project.status = payload.status
+        project.validate_location_order = payload.validateLocationOrder
 
         session.add(project)
         session.commit()
@@ -995,7 +998,7 @@ class SqlRepository:
             return None
 
         content = render_export_content(workspace, fmt)
-        extension = "md" if fmt == "markdown" else fmt
+        extension = {"markdown": "md", "csv": "csv"}.get(fmt, fmt)
         return ExportDocumentRead(
             projectId=project_id,
             format=fmt,
@@ -1010,12 +1013,26 @@ class SqlRepository:
         rhythm = self.get_rhythm_plan(session, project_id)
         export_plan = self.get_export_plan(session, project_id)
         storyboard_bundle = self.get_storyboard_bundle(session, project_id)
+        themes = self.list_themes(session, project_id)
+        export_plan_value = export_plan if export_plan else ExportPlanRead(
+            title="",
+            shortTitle="",
+            description="",
+            tags=[],
+            coverSuggestion="",
+        )
+        selected_theme = next((theme for theme in themes if theme.isSelected), None)
         return WorkspaceDataRead(
             project=project,
             assets=self.list_assets(session, project_id),
-            themes=self.list_themes(session, project_id),
+            themes=themes,
             storyboard=storyboard_bundle.segments,
             storyboardValidation=storyboard_bundle.validation,
+            exportValidation=build_export_validation(
+                project=project,
+                theme=selected_theme,
+                export_plan=export_plan_value,
+            ),
             rhythmPlan=rhythm if rhythm else RhythmPlanRead(
                 bgmStyle="",
                 selectedTrackName="",
@@ -1032,13 +1049,7 @@ class SqlRepository:
                 darkCutSuggestions=[],
                 photoMotionSuggestions=[],
             ),
-            exportPlan=export_plan if export_plan else ExportPlanRead(
-                title="",
-                shortTitle="",
-                description="",
-                tags=[],
-                coverSuggestion="",
-            ),
+            exportPlan=export_plan_value,
         )
 
     def get_selected_theme(self, session: Session, project_id: str) -> NarrativeThemeRead | None:
@@ -1065,6 +1076,7 @@ class SqlRepository:
             mediaRoot=item.media_root,
             status=item.status,
             selectedThemeId=item.selected_theme_id,
+            validateLocationOrder=bool(getattr(item, "validate_location_order", False)),
         )
 
     @staticmethod

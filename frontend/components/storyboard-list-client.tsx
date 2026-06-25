@@ -71,7 +71,11 @@ export function StoryboardListClient({
       },
       {
         label: "地点连续性",
-        value: bundle.validation.locationContinuityPassed ? "通过" : "未通过"
+        value: bundle.validation.locationOrderValidationEnabled
+          ? bundle.validation.locationContinuityPassed
+            ? "通过"
+            : "未通过"
+          : "未启用"
       },
       {
         label: "节拍适配",
@@ -83,11 +87,26 @@ export function StoryboardListClient({
       },
       {
         label: "目标时长",
-        value: bundle.validation.targetDurationReached ? "已达到" : "素材不足"
+        value: bundle.validation.durationWithinTolerance
+          ? "在容差内"
+          : bundle.validation.targetDurationReached
+            ? "已达到"
+            : "素材不足"
+      },
+      {
+        label: "时长偏差",
+        value: `${bundle.validation.durationDeltaSec >= 0 ? "+" : ""}${bundle.validation.durationDeltaSec}s`
+      },
+      {
+        label: "未绑定镜头",
+        value:
+          bundle.validation.unboundSegmentCount === 0
+            ? "无"
+            : `${bundle.validation.unboundSegmentCount} 个`
       },
       {
         label: "当前总时长",
-        value: `${bundle.validation.totalDurationSec}s`
+        value: `${bundle.validation.totalDurationSec}s / ${bundle.validation.targetDurationSec}s`
       }
     ],
     [bundle.validation]
@@ -108,7 +127,10 @@ export function StoryboardListClient({
     if (!validation.allSegmentsBoundToAsset) {
       warnings.push("存在未绑定素材的镜头");
     }
-    if (!validation.locationContinuityPassed) {
+    if (
+      validation.locationOrderValidationEnabled &&
+      !validation.locationContinuityPassed
+    ) {
       warnings.push("地点顺序未通过连续性校验");
     }
     if (

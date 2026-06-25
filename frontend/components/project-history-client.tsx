@@ -114,7 +114,8 @@ export function ProjectHistoryClient({
                 </div>
                 <h2 className="mt-3 text-2xl font-semibold text-ink">{project.name}</h2>
                 <p className="mt-2 text-sm leading-6 text-ink/70">
-                  {project.destination} · {project.routeText}
+                  {project.destination}
+                  {project.routeText ? ` · ${project.routeText}` : ""}
                 </p>
                 <div className="mt-4 grid gap-3 text-sm text-ink/70 md:grid-cols-3">
                   <div className="rounded-2xl bg-sand/70 px-4 py-3">

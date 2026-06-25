@@ -89,6 +89,7 @@ export type ProjectPayload = {
   routeText: string;
   mediaRoot: string;
   status?: string;
+  validateLocationOrder?: boolean;
 };
 
 export type AssetPayload = {
@@ -464,7 +465,7 @@ export function getLlmStatus(): Promise<LlmStatus> {
 
 export function previewExport(
   projectId: string,
-  format: "markdown" | "json" | "yaml"
+  format: "markdown" | "json" | "yaml" | "csv"
 ): Promise<ExportDocument> {
   return request<ExportDocument>(`/projects/${projectId}/exports/${format}`, {
     method: "POST"

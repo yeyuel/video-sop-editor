@@ -216,16 +216,21 @@ def render_export_content(workspace: WorkspaceDataRead, fmt: str) -> str:
         "exportPlan": workspace.exportPlan.model_dump(),
         "storyboard": [segment.model_dump() for segment in workspace.storyboard],
         "storyboardValidation": workspace.storyboardValidation.model_dump(),
+        "exportValidation": workspace.exportValidation.model_dump(),
     }
 
     if fmt == "json":
         return json.dumps(export_payload, ensure_ascii=False, indent=2)
     if fmt == "yaml":
         return to_yaml(export_payload)
+    if fmt == "csv":
+        return to_csv(workspace)
     return to_markdown(workspace)
 
 
 def to_markdown(workspace: WorkspaceDataRead) -> str:
+    storyboard_validation = workspace.storyboardValidation
+    export_validation = workspace.exportValidation
     lines = [
         f"# {workspace.project.name} 导出脚本",
         "",
@@ -235,6 +240,14 @@ def to_markdown(workspace: WorkspaceDataRead) -> str:
         f"- 标签：{', '.join(workspace.exportPlan.tags) if workspace.exportPlan.tags else '未填写'}",
         f"- 描述：{workspace.exportPlan.description}",
         f"- 封面建议：{workspace.exportPlan.coverSuggestion or '未填写'}",
+        "",
+        "## 校验摘要",
+        f"- 分镜绑定：{'通过' if storyboard_validation.allSegmentsBoundToAsset else '未通过'}",
+        f"- 地点连续性：{'通过' if storyboard_validation.locationContinuityPassed else '未通过'}",
+        f"- 时长：{storyboard_validation.totalDurationSec}s / 目标 {storyboard_validation.targetDurationSec}s"
+        f"（偏差 {storyboard_validation.durationDeltaSec:+.2f}s）",
+        f"- 导出目的地提及：{'是' if export_validation.destinationMentioned else '否'}",
+        f"- 导出主题一致：{'通过' if export_validation.themeConsistencyPassed else '未通过'}",
         "",
         "## 节奏信息",
         f"- BGM 风格：{workspace.rhythmPlan.bgmStyle}",
@@ -252,7 +265,46 @@ def to_markdown(workspace: WorkspaceDataRead) -> str:
             f"| {segment.startTime:.2f} | {segment.endTime:.2f} | {segment.assetId} | "
             f"{segment.function} | {segment.rhythm} | {segment.subtitle} |"
         )
+
+    if storyboard_validation.issues or export_validation.issues:
+        lines.extend(["", "## 待处理项", ""])
+        for issue in storyboard_validation.issues + export_validation.issues:
+            lines.append(f"- {issue}")
     return "\n".join(lines)
+
+
+def to_csv(workspace: WorkspaceDataRead) -> str:
+    import csv
+    from io import StringIO
+
+    buffer = StringIO()
+    writer = csv.writer(buffer)
+    writer.writerow(
+        [
+            "segmentId",
+            "startTime",
+            "endTime",
+            "assetId",
+            "function",
+            "rhythm",
+            "beatMode",
+            "subtitle",
+        ]
+    )
+    for segment in workspace.storyboard:
+        writer.writerow(
+            [
+                segment.id,
+                f"{segment.startTime:.2f}",
+                f"{segment.endTime:.2f}",
+                segment.assetId,
+                segment.function,
+                segment.rhythm,
+                segment.beatMode,
+                segment.subtitle,
+            ]
+        )
+    return buffer.getvalue()
 
 
 def to_yaml(value: object, indent: int = 0) -> str:

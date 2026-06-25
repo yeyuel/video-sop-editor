@@ -31,6 +31,9 @@ STORYBOARD_MODIFIER_PRIORITY = {
     "transition_buffer": 2,
 }
 
+DURATION_TOLERANCE_RATIO = 0.15
+DURATION_TOLERANCE_MIN_SEC = 3.0
+
 STORYBOARD_LLM_BASE_MAX_TOKENS = 2000
 STORYBOARD_LLM_TOKENS_PER_ASSET = 80
 STORYBOARD_LLM_MAX_TOKENS_CAP = 8000
@@ -415,6 +418,17 @@ def normalize_storyboard_segments(
     return normalized
 
 
+def dedupe_issue_messages(issues: list[str]) -> list[str]:
+    seen: set[str] = set()
+    deduped: list[str] = []
+    for issue in issues:
+        if issue in seen:
+            continue
+        seen.add(issue)
+        deduped.append(issue)
+    return deduped
+
+
 def build_storyboard_validation(
     project: ProjectEntity | None,
     segments: list[StoryboardSegmentRead],
@@ -422,27 +436,56 @@ def build_storyboard_validation(
     assets: list[AssetRead],
 ) -> StoryboardValidationRead:
     asset_map = {asset.assetId: asset for asset in assets}
-    all_bound = all(bool(segment.assetId) and segment.assetId in asset_map for segment in segments)
+    unbound_segment_count = sum(
+        1 for segment in segments if not segment.assetId or segment.assetId not in asset_map
+    )
+    all_bound = unbound_segment_count == 0
     total_duration = round(segments[-1].endTime if segments else 0.0, 2)
+    target_duration = float(project.target_duration_sec if project else 0)
+    duration_delta = round(total_duration - target_duration, 2)
+    duration_within_tolerance = duration_within_target_tolerance(total_duration, target_duration)
     beat_adaptation_enabled = any(segment.beatMode != "none" for segment in segments)
-    route_locations = parse_route_locations(project.route_text) if project and project.route_text else []
-    location_continuity = check_location_continuity(segments, asset_map, route_locations)
+    validate_location_order = bool(project and project.validate_location_order)
+    if validate_location_order:
+        route_locations = parse_route_locations(project.route_text) if project and project.route_text else []
+        location_continuity = check_location_continuity(segments, asset_map, route_locations)
+        location_jump_issues = find_location_jump_issues(segments, asset_map, route_locations)
+    else:
+        location_continuity = True
+        location_jump_issues = []
     beat_alignment = (
         check_beat_alignment(segments, rhythm.beatPoints if rhythm else [])
         if beat_adaptation_enabled
         else False
     )
-    target_duration_reached = total_duration >= float(project.target_duration_sec if project else 0)
+    target_duration_reached = total_duration >= target_duration
+    issues: list[str] = []
+
+    if not segments:
+        issues.append("当前还没有可用分镜")
+    if unbound_segment_count:
+        issues.append(f"有 {unbound_segment_count} 个镜头未绑定有效素材")
+    if location_jump_issues:
+        issues.extend(location_jump_issues)
+    if beat_adaptation_enabled and not beat_alignment:
+        issues.append("镜头起止点未完全落在节拍点上")
+    if target_duration > 0 and not duration_within_tolerance:
+        if duration_delta < 0:
+            issues.append(
+                f"总时长 {total_duration}s 低于目标 {target_duration}s（差 {abs(duration_delta)}s）"
+            )
+        else:
+            issues.append(
+                f"总时长 {total_duration}s 超出目标 {target_duration}s（多 {duration_delta}s）"
+            )
+
+    issues = dedupe_issue_messages(issues)
 
     if not segments:
         message = "当前还没有可用分镜，请先确认素材和主题。"
-    elif not all_bound:
-        message = "存在未绑定素材的镜头，请检查每个分镜是否都关联了有效素材。"
-    elif not location_continuity:
-        message = "地点顺序未通过连续性校验，建议按路线或地点递进重新调整镜头顺序。"
-    elif beat_adaptation_enabled and not beat_alignment:
-        message = "镜头起止点未完全落在节拍点上，可关闭「适配节拍」重生成，或手动微调时间。"
-    elif target_duration_reached:
+    elif issues:
+        message = "；".join(issues)
+    elif target_duration_reached or duration_within_tolerance:
         message = "当前分镜总时长已经落在目标时长范围内。"
     else:
         message = "素材已全部使用完，但当前总时长还未达到目标时长。建议补充素材，或先将长素材切分后分别录入。"
@@ -450,10 +493,16 @@ def build_storyboard_validation(
     return StoryboardValidationRead(
         allSegmentsBoundToAsset=all_bound,
         locationContinuityPassed=location_continuity,
+        locationOrderValidationEnabled=validate_location_order,
         beatAlignmentPassed=beat_alignment,
         beatAdaptationEnabled=beat_adaptation_enabled,
         totalDurationSec=total_duration,
+        targetDurationSec=target_duration,
+        durationDeltaSec=duration_delta,
+        durationWithinTolerance=duration_within_tolerance,
         targetDurationReached=target_duration_reached,
+        unboundSegmentCount=unbound_segment_count,
+        issues=issues,
         message=message,
     )
 
@@ -595,6 +644,60 @@ def parse_route_locations(route_text: str) -> list[str]:
         )
         if item.strip()
     ]
+
+
+def duration_within_target_tolerance(total_duration: float, target_duration: float) -> bool:
+    if target_duration <= 0:
+        return total_duration > 0
+    tolerance = max(target_duration * DURATION_TOLERANCE_RATIO, DURATION_TOLERANCE_MIN_SEC)
+    delta = total_duration - target_duration
+    return abs(delta) <= tolerance or total_duration >= target_duration
+
+
+def find_location_jump_issues(
+    segments: list[StoryboardSegmentRead],
+    asset_map: dict[str, AssetRead],
+    route_locations: list[str],
+) -> list[str]:
+    if not segments:
+        return []
+
+    segment_locations: list[str] = []
+    for segment in segments:
+        asset = asset_map.get(segment.assetId)
+        if not asset or not asset.location:
+            return [f"镜头 {segment.id} 缺少地点信息，无法校验地点连续性"]
+        segment_locations.append(asset.location)
+
+    issues: list[str] = []
+    if route_locations:
+        route_index_map = {location: index for index, location in enumerate(route_locations)}
+        route_indexes = [route_index_map.get(location) for location in segment_locations]
+        if all(index is not None for index in route_indexes):
+            last_index = -1
+            last_location = ""
+            for index, location in zip(route_indexes, segment_locations, strict=True):
+                if index is not None and index < last_index:
+                    issues.append(
+                        f"地点顺序回跳：{last_location} → {location}，与路线顺序不一致"
+                    )
+                if index is not None:
+                    last_index = index
+                    last_location = location
+            return dedupe_issue_messages(issues)
+
+    seen_order: dict[str, int] = {}
+    last_seen_index = -1
+    last_location = ""
+    for location in segment_locations:
+        if location not in seen_order:
+            seen_order[location] = len(seen_order)
+        current_index = seen_order[location]
+        if current_index < last_seen_index:
+            issues.append(f"地点顺序回跳：{last_location} → {location}")
+        last_seen_index = current_index
+        last_location = location
+    return dedupe_issue_messages(issues)
 
 
 def check_location_continuity(

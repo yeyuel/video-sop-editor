@@ -58,9 +58,14 @@ export default async function ProjectExportPage({ params }: ProjectExportPagePro
         <div className="mt-6">
           <SectionCard
             title="导出配置"
-            description="支持 Markdown、JSON、YAML 三种预览格式，导出结果中会包含时间线脚本和发布文案。"
+            description="支持 Markdown、JSON、YAML、CSV 四种预览格式，导出结果中会包含时间线脚本、校验摘要和发布文案。"
           >
-            <ExportPlanClient projectId={projectId} initialPlan={workspace.exportPlan} />
+            <ExportPlanClient
+              projectId={projectId}
+              initialPlan={workspace.exportPlan}
+              storyboardValidation={workspace.storyboardValidation}
+              exportValidation={workspace.exportValidation}
+            />
           </SectionCard>
         </div>
       </div>

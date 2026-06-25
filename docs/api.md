@@ -101,6 +101,7 @@ Base URL:
   "videoType": "emotion_film",
   "stylePreference": "情绪氛围片",
   "routeText": "将军山 - 喀纳斯 - 禾木",
+  "validateLocationOrder": false,
   "mediaRoot": "D:\\素材库\\阿勒泰项目",
   "status": "draft"
 }
@@ -129,6 +130,7 @@ Base URL:
 - `themes`
 - `storyboard`
 - `storyboardValidation`
+- `exportValidation`
 - `rhythmPlan`
 - `exportPlan`
 
@@ -459,6 +461,12 @@ Base URL:
 
 `POST /projects/{projectId}/exports/yaml`
 
+## 7.4 生成 CSV 预览
+
+`POST /projects/{projectId}/exports/csv`
+
+返回分镜时间线 CSV（`segmentId,startTime,endTime,assetId,function,rhythm,beatMode,subtitle`）。
+
 返回结构：
 
 ```json
@@ -476,6 +484,8 @@ Base URL:
 - 当前主题
 - 节奏规划
 - 分镜时间线
+- 分镜校验摘要（`storyboardValidation`）
+- 导出文案校验（`exportValidation`）
 - 标题
 - 标签
 - 文案

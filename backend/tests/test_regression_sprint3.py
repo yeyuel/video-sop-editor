@@ -289,12 +289,14 @@ def test_export_markdown_json_yaml(regression_env) -> None:
     client = regression_env["client"]
     project_id = "proj_001"
 
-    for fmt in ("markdown", "json", "yaml"):
+    for fmt in ("markdown", "json", "yaml", "csv"):
         response = client.post(f"/api/v1/projects/{project_id}/exports/{fmt}")
         assert response.status_code == 200
         document = response.json()["data"]
         assert document["format"] == fmt
         assert document["content"].strip()
+        if fmt == "csv":
+            assert "segmentId" in document["content"]
 
 
 def test_run_all_migrations_from_zero(tmp_path, monkeypatch) -> None:

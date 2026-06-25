@@ -77,11 +77,15 @@ def build_rule_theme_candidates(
     locations = _all_locations(assets)
     location_text = " / ".join(locations) or project.destination
     dominant_emotion = assets[0].emotionTags[0] if assets and assets[0].emotionTags else "沉浸"
-    route_locations = [
-        item.strip()
-        for item in project.route_text.replace("->", "-").replace("—", "-").split("-")
-        if item.strip()
-    ]
+    route_locations = (
+        [
+            item.strip()
+            for item in project.route_text.replace("->", "-").replace("—", "-").split("-")
+            if item.strip()
+        ]
+        if project.route_text.strip()
+        else []
+    )
     route_asset_ids = [
         asset.assetId
         for asset in assets
@@ -107,8 +111,12 @@ def build_rule_theme_candidates(
         {
             "title": f"{project.destination} 路线纪实片",
             "summary": (
-                f"按照 {project.route_text} 的路线推进，让地点变化带出行程推进感，"
-                "强调观众跟着镜头一路走完旅程。"
+                (
+                    f"按照 {project.route_text} 的路线推进，让地点变化带出行程推进感，"
+                    if project.route_text.strip()
+                    else f"围绕 {location_text} 的不同区域推进，让地点变化带出行程推进感，"
+                )
+                + "强调观众跟着镜头一路走完旅程。"
             ),
             "coreEmotion": "纪实",
             "rhythmProfile": "按路线推进，节点提速，地点切换清晰。",

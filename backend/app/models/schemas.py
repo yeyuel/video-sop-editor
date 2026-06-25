@@ -52,10 +52,11 @@ class ProjectRead(BaseModel):
     videoType: str
     stylePreference: str
     styleNotes: str
-    routeText: str
+    routeText: str = ""
     mediaRoot: str
     status: str
     selectedThemeId: str = ""
+    validateLocationOrder: bool = False
 
 
 class ProjectWriteRequest(BaseModel):
@@ -66,9 +67,10 @@ class ProjectWriteRequest(BaseModel):
     videoType: str
     stylePreference: str
     styleNotes: str = ""
-    routeText: str
+    routeText: str = ""
     mediaRoot: str
     status: str = "draft"
+    validateLocationOrder: bool = False
 
 
 class ProjectCreateRequest(ProjectWriteRequest):
@@ -186,11 +188,24 @@ class StoryboardReorderRequest(BaseModel):
 class StoryboardValidationRead(BaseModel):
     allSegmentsBoundToAsset: bool
     locationContinuityPassed: bool
+    locationOrderValidationEnabled: bool = False
     beatAlignmentPassed: bool
     beatAdaptationEnabled: bool
     totalDurationSec: float
+    targetDurationSec: float = 0
+    durationDeltaSec: float = 0
+    durationWithinTolerance: bool = False
     targetDurationReached: bool
+    unboundSegmentCount: int = 0
+    issues: list[str] = Field(default_factory=list)
     message: str = ""
+
+
+class ExportValidationRead(BaseModel):
+    destinationMentioned: bool
+    themeConsistencyPassed: bool
+    message: str = ""
+    issues: list[str] = Field(default_factory=list)
 
 
 class StoryboardBundleRead(BaseModel):
@@ -261,6 +276,7 @@ class WorkspaceDataRead(BaseModel):
     themes: list[NarrativeThemeRead]
     storyboard: list[StoryboardSegmentRead]
     storyboardValidation: StoryboardValidationRead
+    exportValidation: ExportValidationRead
     rhythmPlan: RhythmPlanRead
     exportPlan: ExportPlanRead
 

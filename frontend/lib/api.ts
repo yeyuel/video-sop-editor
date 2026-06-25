@@ -105,7 +105,7 @@ export async function getExportPlan(projectId: string): Promise<ExportPlan | nul
 
 export async function getExportPreview(
   projectId: string,
-  format: "markdown" | "json" | "yaml"
+  format: "markdown" | "json" | "yaml" | "csv"
 ): Promise<ExportDocument> {
   return safeFetch<ExportDocument>(
     `/projects/${projectId}/exports/${format}`,

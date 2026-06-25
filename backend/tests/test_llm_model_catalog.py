@@ -47,7 +47,15 @@ def test_kimi_k2_does_not_use_json_response_format() -> None:
 
 def test_list_llm_providers_include_models(regression_env: dict) -> None:
     client = regression_env["client"]
-    response = client.get("/api/v1/llm/providers")
+    login = client.post(
+        "/api/v1/auth/login",
+        json={"username": "director", "password": "root123"},
+    )
+    token = login.json()["data"]["sessionToken"]
+    response = client.get(
+        "/api/v1/llm/providers",
+        headers={"X-Session-Token": token},
+    )
     assert response.status_code == 200
     providers = response.json()["data"]
     kimi = next(item for item in providers if item["providerId"] == "kimi")

@@ -167,7 +167,12 @@ export function StoryboardClient({
           绑定素材：{bundle.validation.allSegmentsBoundToAsset ? "通过" : "未通过"}
         </div>
         <div className="rounded-2xl bg-sand/60 px-4 py-3 text-sm text-ink/70">
-          地点连续性：{bundle.validation.locationContinuityPassed ? "通过" : "未通过"}
+          地点连续性：
+          {bundle.validation.locationOrderValidationEnabled
+            ? bundle.validation.locationContinuityPassed
+              ? "通过"
+              : "未通过"
+            : "未启用"}
         </div>
         <div className="rounded-2xl bg-sand/60 px-4 py-3 text-sm text-ink/70">
           节拍对齐：{bundle.validation.beatAlignmentPassed ? "通过" : "未通过"}

@@ -83,7 +83,8 @@ export function ProjectBasicsPrototype({
     styleNotes: project?.styleNotes ?? "",
     routeText: project?.routeText ?? "",
     mediaRoot: project?.mediaRoot ?? "",
-    status: project?.status ?? "draft"
+    status: project?.status ?? "draft",
+    validateLocationOrder: project?.validateLocationOrder ?? false
   });
 
   useEffect(() => {
@@ -139,7 +140,8 @@ export function ProjectBasicsPrototype({
             styleNotes: updated.styleNotes,
             routeText: updated.routeText,
             mediaRoot: updated.mediaRoot,
-            status: updated.status
+            status: updated.status,
+            validateLocationOrder: updated.validateLocationOrder
           });
           setShowSuccess(true);
         }
@@ -274,15 +276,33 @@ export function ProjectBasicsPrototype({
             </p>
           </label>
           <label className="block md:col-span-2">
-            <span className="mb-2 block text-sm text-ink/75">路线</span>
+            <span className="mb-2 block text-sm text-ink/75">路线 / 区域（可选）</span>
             <textarea
-              required
               value={form.routeText}
               onChange={(event) => setForm({ ...form, routeText: event.target.value })}
-              placeholder="例如：将军山 - 喀纳斯 - 禾木"
+              placeholder="例如：将军山、喀纳斯、禾木（可写区域范围，供 LLM 理解本次旅行覆盖范围）"
               rows={4}
               className="w-full rounded-2xl border border-pine/30 bg-white px-4 py-3 outline-none transition focus:border-pine"
             />
+            <p className="mt-2 text-xs text-ink/55">
+              主要用于给 LLM 提供区域上下文，生成分镜与文案时会参考；不填也不影响主流程。
+            </p>
+          </label>
+          <label className="flex items-start gap-3 md:col-span-2">
+            <input
+              type="checkbox"
+              checked={form.validateLocationOrder}
+              onChange={(event) =>
+                setForm({ ...form, validateLocationOrder: event.target.checked })
+              }
+              className="mt-1 h-4 w-4 rounded border-pine/30 text-pine focus:ring-pine"
+            />
+            <span className="text-sm text-ink/75">
+              <span className="block font-medium text-ink">校验分镜地点顺序</span>
+              <span className="mt-1 block text-xs leading-5 text-ink/55">
+                开启后，系统会按上方路线/区域的先后次序检查分镜是否出现地点回跳；适合路线纪实类项目。
+              </span>
+            </span>
           </label>
           {error ? (
             <div className="rounded-2xl border border-clay/15 bg-[#fff5ef] px-4 py-3 text-sm text-clay md:col-span-2">

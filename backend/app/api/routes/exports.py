@@ -13,7 +13,7 @@ def export_project(
     project_id: str, fmt: str, session: Session = Depends(get_session)
 ) -> ApiResponse:
     normalized = fmt.lower()
-    if normalized not in {"markdown", "json", "yaml"}:
+    if normalized not in {"markdown", "json", "yaml", "csv"}:
         raise HTTPException(status_code=400, detail="Unsupported export format")
 
     document = repository.build_export_document(session, project_id, normalized)

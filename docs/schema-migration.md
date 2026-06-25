@@ -38,6 +38,7 @@
 | 7 | `007_theme_evidence` | 主题表 used_locations / used_asset_ids（可解释性） |
 | 8 | `008_auth_sessions` | 会话表 authsessionentity + userentity.created_at |
 | 9 | `009_encrypt_llm_api_keys` | LLM api_key 加密存储（enc:v1: 前缀） |
+| 10 | `010_project_location_validation` | 项目表新增 `validate_location_order`（地点顺序校验开关，默认关闭） |
 
 ## 5. 注意事项
 

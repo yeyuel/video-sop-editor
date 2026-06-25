@@ -11,6 +11,7 @@ export type Project = {
   mediaRoot: string;
   status: string;
   selectedThemeId: string;
+  validateLocationOrder: boolean;
 };
 
 export type Asset = {
@@ -55,11 +56,24 @@ export type StoryboardSegment = {
 export type StoryboardValidation = {
   allSegmentsBoundToAsset: boolean;
   locationContinuityPassed: boolean;
+  locationOrderValidationEnabled: boolean;
   beatAlignmentPassed: boolean;
   beatAdaptationEnabled: boolean;
   totalDurationSec: number;
+  targetDurationSec: number;
+  durationDeltaSec: number;
+  durationWithinTolerance: boolean;
   targetDurationReached: boolean;
+  unboundSegmentCount: number;
+  issues: string[];
   message: string;
+};
+
+export type ExportValidation = {
+  destinationMentioned: boolean;
+  themeConsistencyPassed: boolean;
+  message: string;
+  issues: string[];
 };
 
 export type StoryboardBundle = {
@@ -113,6 +127,7 @@ export type WorkspaceData = {
   themes: NarrativeTheme[];
   storyboard: StoryboardSegment[];
   storyboardValidation: StoryboardValidation;
+  exportValidation: ExportValidation;
   rhythmPlan: RhythmPlan;
   exportPlan: ExportPlan;
 };

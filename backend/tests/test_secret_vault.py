@@ -26,6 +26,11 @@ def test_encrypt_secret_idempotent() -> None:
 def test_llm_config_save_encrypts_api_key(regression_env: dict) -> None:
     client = regression_env["client"]
     engine = regression_env["engine"]
+    login = client.post(
+        "/api/v1/auth/login",
+        json={"username": "director", "password": "root123"},
+    )
+    token = login.json()["data"]["sessionToken"]
 
     response = client.post(
         "/api/v1/llm/providers/kimi/config",
@@ -35,6 +40,7 @@ def test_llm_config_save_encrypts_api_key(regression_env: dict) -> None:
             "model": "moonshot-v1-8k",
             "apiKey": "test-kimi-key",
         },
+        headers={"X-Session-Token": token},
     )
     assert response.status_code == 200
 

@@ -75,8 +75,10 @@ export default async function ProjectAssetsPage({
                 </p>
               </div>
               <div className="rounded-2xl bg-white p-4">
-                <p className="text-sm text-ink/60">路线</p>
-                <p className="mt-2 text-sm font-medium text-ink">{workspace.project.routeText}</p>
+                <p className="text-sm text-ink/60">路线 / 区域</p>
+                <p className="mt-2 text-sm font-medium text-ink">
+                  {workspace.project.routeText || "未填写（可选，供 LLM 参考）"}
+                </p>
               </div>
               <div className="flex flex-wrap gap-3">
                 <Link

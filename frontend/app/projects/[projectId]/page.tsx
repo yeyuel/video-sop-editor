@@ -31,7 +31,10 @@ export default async function ProjectWorkspacePage({ params }: ProjectPageProps)
             <div>
               <h2 className="text-3xl font-semibold text-ink">{workspace.project.name}</h2>
               <p className="mt-2 text-sm leading-6 text-ink/70">
-                {workspace.project.destination} · {workspace.project.routeText}
+                {workspace.project.destination}
+                {workspace.project.routeText
+                  ? ` · ${workspace.project.routeText}`
+                  : ""}
               </p>
             </div>
             <div className="rounded-2xl bg-sand/70 px-4 py-3 text-sm text-ink/70">
