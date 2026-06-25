@@ -43,6 +43,7 @@ class Settings(BaseSettings):
         alias="LLM_MAX_RETRIES",
         validation_alias=AliasChoices("LLM_MAX_RETRIES", "OPENAI_MAX_RETRIES"),
     )
+    app_secret_key: str = Field(default="", alias="APP_SECRET_KEY")
 
     model_config = SettingsConfigDict(env_file=".env", populate_by_name=True)
 
@@ -75,6 +76,12 @@ class Settings(BaseSettings):
     @property
     def resolved_llm_max_retries(self) -> int:
         return max(0, min(self.llm_max_retries or 1, 5))
+
+    @property
+    def resolved_app_secret_key(self) -> str:
+        if self.app_secret_key.strip():
+            return self.app_secret_key.strip()
+        return "video-sop-editor-dev-secret-change-me"
 
 
 settings = Settings()

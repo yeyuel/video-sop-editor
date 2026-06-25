@@ -2,10 +2,12 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlmodel import Session
 import json
 
+from app.api.deps import require_director_user
 from app.api.meta import merge_response_meta
 from app.db import get_session
 from app.models.schemas import (
     ApiResponse,
+    AuthUserRead,
     LlmDeviceCodeStartRead,
     LlmModelOptionRead,
     LlmOAuthStartRead,
@@ -80,7 +82,10 @@ def _build_test_response(
 
 
 @router.get("/providers", response_model=ApiResponse)
-def list_llm_providers(session: Session = Depends(get_session)) -> ApiResponse:
+def list_llm_providers(
+    session: Session = Depends(get_session),
+    _: AuthUserRead = Depends(require_director_user),
+) -> ApiResponse:
     items = list_provider_statuses(session)
     providers = [
         LlmProviderRead(
@@ -108,7 +113,10 @@ def list_llm_providers(session: Session = Depends(get_session)) -> ApiResponse:
 
 
 @router.get("/providers/{provider_id}/models", response_model=ApiResponse)
-def list_llm_provider_models(provider_id: str) -> ApiResponse:
+def list_llm_provider_models(
+    provider_id: str,
+    _: AuthUserRead = Depends(require_director_user),
+) -> ApiResponse:
     provider = get_provider(provider_id)
     if not provider:
         raise HTTPException(status_code=404, detail="LLM provider not found")
@@ -129,6 +137,7 @@ def list_llm_provider_models(provider_id: str) -> ApiResponse:
 def get_llm_provider_status(
     provider_id: str,
     session: Session = Depends(get_session),
+    _: AuthUserRead = Depends(require_director_user),
 ) -> ApiResponse:
     try:
         status_payload = get_provider_status(session, provider_id)
@@ -150,7 +159,10 @@ def get_llm_provider_status(
 
 
 @router.get("/status", response_model=ApiResponse)
-def get_active_llm_status(session: Session = Depends(get_session)) -> ApiResponse:
+def get_active_llm_status(
+    session: Session = Depends(get_session),
+    _: AuthUserRead = Depends(require_director_user),
+) -> ApiResponse:
     config = resolve_active_config(session)
     status_value = evaluate_config_status(config).value
     message = ""
@@ -175,6 +187,7 @@ def save_llm_provider_config(
     provider_id: str,
     payload: LlmProviderConfigWriteRequest,
     session: Session = Depends(get_session),
+    _: AuthUserRead = Depends(require_director_user),
 ) -> ApiResponse:
     try:
         save_provider_config(
@@ -207,6 +220,7 @@ def save_llm_provider_config(
 def activate_llm_provider(
     provider_id: str,
     session: Session = Depends(get_session),
+    _: AuthUserRead = Depends(require_director_user),
 ) -> ApiResponse:
     try:
         set_active_provider_id(session, provider_id)
@@ -229,7 +243,10 @@ def activate_llm_provider(
 
 
 @router.post("/test", response_model=ApiResponse)
-def test_active_llm_provider(session: Session = Depends(get_session)) -> ApiResponse:
+def test_active_llm_provider(
+    session: Session = Depends(get_session),
+    _: AuthUserRead = Depends(require_director_user),
+) -> ApiResponse:
     config = resolve_active_config(session)
     provider = get_provider(config.provider_id)
     if not provider:
@@ -261,6 +278,7 @@ def test_llm_provider(
     provider_id: str,
     payload: LlmProviderConfigWriteRequest | None = None,
     session: Session = Depends(get_session),
+    _: AuthUserRead = Depends(require_director_user),
 ) -> ApiResponse:
     try:
         overrides = payload or LlmProviderConfigWriteRequest()
@@ -321,7 +339,10 @@ def test_llm_provider(
 
 
 @router.post("/providers/{provider_id}/oauth/start", response_model=ApiResponse)
-def start_oauth(provider_id: str) -> ApiResponse:
+def start_oauth(
+    provider_id: str,
+    _: AuthUserRead = Depends(require_director_user),
+) -> ApiResponse:
     provider = get_provider(provider_id)
     if not provider:
         raise HTTPException(status_code=404, detail="LLM provider not found")
@@ -337,7 +358,10 @@ def start_oauth(provider_id: str) -> ApiResponse:
 
 
 @router.get("/providers/{provider_id}/oauth/callback", response_model=ApiResponse)
-def oauth_callback(provider_id: str) -> ApiResponse:
+def oauth_callback(
+    provider_id: str,
+    _: AuthUserRead = Depends(require_director_user),
+) -> ApiResponse:
     raise HTTPException(
         status_code=status.HTTP_501_NOT_IMPLEMENTED,
         detail="OAuth callback 尚未接入。",
@@ -345,7 +369,10 @@ def oauth_callback(provider_id: str) -> ApiResponse:
 
 
 @router.post("/providers/{provider_id}/device-code/start", response_model=ApiResponse)
-def start_device_code(provider_id: str) -> ApiResponse:
+def start_device_code(
+    provider_id: str,
+    _: AuthUserRead = Depends(require_director_user),
+) -> ApiResponse:
     provider = get_provider(provider_id)
     if not provider:
         raise HTTPException(status_code=404, detail="LLM provider not found")

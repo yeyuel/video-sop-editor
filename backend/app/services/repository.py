@@ -1,5 +1,6 @@
 ﻿import os
 import re
+from datetime import datetime, timezone
 from uuid import uuid4
 
 from sqlmodel import Session, delete, select
@@ -17,7 +18,9 @@ from app.models.schemas import (
     AssetCreateRequest,
     AssetRead,
     AssetUpdateRequest,
+    AuthUserCreateRequest,
     AuthUserRead,
+    AuthUserUpdateRequest,
     ExportDocumentRead,
     ExportPlanRead,
     ExportPlanWriteRequest,
@@ -38,7 +41,7 @@ from app.models.schemas import (
     WorkspaceDataRead,
 )
 from app.services.audio_analysis import AudioAnalysisError, audio_beat_analyzer
-from app.services.auth import verify_password
+from app.services.auth import hash_password, verify_password
 from app.services.export_generation import (
     apply_export_captions_to_segments,
     build_llm_export_plan,
@@ -65,6 +68,7 @@ from app.services.storyboard_generation import (
 )
 from app.services.theme_generation import build_llm_theme_candidates, build_rule_theme_candidates
 from app.services.llm.progress import ProgressReporter, emit_progress
+from app.services.session_service import delete_user_sessions, revoke_user_sessions
 
 
 class SqlRepository:
@@ -77,6 +81,113 @@ class SqlRepository:
         if not verify_password(password, user.password_hash):
             return None
         return self._map_user(user)
+
+    def list_users(self, session: Session) -> list[AuthUserRead]:
+        users = session.exec(select(UserEntity).order_by(UserEntity.username)).all()
+        return [self._map_user(item) for item in users]
+
+    def create_user(self, session: Session, payload: AuthUserCreateRequest) -> AuthUserRead:
+        username = payload.username.strip()
+        if not username:
+            raise ValueError("用户名不能为空")
+        if len(payload.password.strip()) < 6:
+            raise ValueError("密码长度至少 6 位")
+
+        existing = session.exec(select(UserEntity).where(UserEntity.username == username)).first()
+        if existing:
+            raise ValueError("用户名已存在")
+
+        role = payload.role.strip() or "editor"
+        if role not in {"director", "editor"}:
+            raise ValueError("角色仅支持 director 或 editor")
+
+        ui_enabled = payload.uiEnabled
+        if role == "director" and not ui_enabled:
+            ui_enabled = True
+
+        user = UserEntity(
+            id=f"user_{uuid4().hex[:8]}",
+            username=username,
+            display_name=payload.displayName.strip() or username,
+            password_hash=hash_password(payload.password),
+            role=role,
+            ui_enabled=ui_enabled,
+            created_at=datetime.now(timezone.utc).isoformat(),
+        )
+        session.add(user)
+        session.commit()
+        session.refresh(user)
+        return self._map_user(user)
+
+    def update_user(
+        self,
+        session: Session,
+        user_id: str,
+        payload: AuthUserUpdateRequest,
+        *,
+        actor_id: str,
+    ) -> AuthUserRead:
+        user = session.get(UserEntity, user_id)
+        if not user:
+            raise ValueError("用户不存在")
+
+        if payload.displayName is not None:
+            user.display_name = payload.displayName.strip() or user.username
+
+        next_role = payload.role.strip() if payload.role is not None else user.role
+        if next_role not in {"director", "editor"}:
+            raise ValueError("角色仅支持 director 或 editor")
+
+        next_ui_enabled = payload.uiEnabled if payload.uiEnabled is not None else user.ui_enabled
+        if next_role == "director":
+            next_ui_enabled = True
+
+        if user.role == "director" and next_role != "director":
+            if self._count_directors(session) <= 1:
+                raise ValueError("至少保留一名导演账号")
+
+        if user.id == actor_id:
+            if not next_ui_enabled:
+                raise ValueError("不能关闭当前登录账号的登录权限")
+            if user.role == "director" and next_role != "director":
+                raise ValueError("不能修改当前登录账号的角色")
+
+        password_changed = bool(payload.password and payload.password.strip())
+        if password_changed:
+            if len(payload.password.strip()) < 6:
+                raise ValueError("密码长度至少 6 位")
+            user.password_hash = hash_password(payload.password.strip())
+
+        login_disabled = user.ui_enabled and not next_ui_enabled
+        user.role = next_role
+        user.ui_enabled = next_ui_enabled
+
+        if password_changed or login_disabled:
+            revoke_user_sessions(session, user.id)
+
+        session.add(user)
+        session.commit()
+        session.refresh(user)
+        return self._map_user(user)
+
+    def delete_user(self, session: Session, user_id: str, *, actor_id: str) -> None:
+        if user_id == actor_id:
+            raise ValueError("不能删除当前登录账号")
+
+        user = session.get(UserEntity, user_id)
+        if not user:
+            raise ValueError("用户不存在")
+
+        if user.role == "director" and self._count_directors(session) <= 1:
+            raise ValueError("至少保留一名导演账号")
+
+        delete_user_sessions(session, user_id)
+        session.delete(user)
+        session.commit()
+
+    @staticmethod
+    def _count_directors(session: Session) -> int:
+        return len(session.exec(select(UserEntity).where(UserEntity.role == "director")).all())
 
     def list_projects(self, session: Session) -> list[ProjectRead]:
         projects = session.exec(select(ProjectEntity)).all()

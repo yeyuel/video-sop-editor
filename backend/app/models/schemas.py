@@ -22,6 +22,27 @@ class AuthUserRead(BaseModel):
     uiEnabled: bool
 
 
+class AuthLoginResponse(BaseModel):
+    user: AuthUserRead
+    sessionToken: str
+    expiresAt: str
+
+
+class AuthUserCreateRequest(BaseModel):
+    username: str
+    password: str
+    displayName: str
+    role: str = "editor"
+    uiEnabled: bool = False
+
+
+class AuthUserUpdateRequest(BaseModel):
+    displayName: str | None = None
+    password: str | None = None
+    role: str | None = None
+    uiEnabled: bool | None = None
+
+
 class ProjectRead(BaseModel):
     id: str
     name: str

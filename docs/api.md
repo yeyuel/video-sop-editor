@@ -16,6 +16,70 @@ Base URL:
 }
 ```
 
+## 0. 鉴权
+
+### 0.1 登录
+
+`POST /auth/login`
+
+请求体：
+
+```json
+{
+  "username": "director",
+  "password": "root123"
+}
+```
+
+响应 `data`：
+
+```json
+{
+  "user": {
+    "id": "user_director",
+    "username": "director",
+    "displayName": "Director",
+    "role": "director",
+    "uiEnabled": true
+  },
+  "sessionToken": "<opaque-token>",
+  "expiresAt": "2026-06-21T12:00:00+00:00"
+}
+```
+
+### 0.2 当前用户
+
+`GET /auth/me`
+
+请求头（二选一）：
+
+- `Authorization: Bearer <sessionToken>`
+- `X-Session-Token: <sessionToken>`
+
+### 0.3 登出
+
+`POST /auth/logout`
+
+同上 Session Token 请求头；服务端撤销会话。
+
+### 0.4 用户管理（导演专用，预留）
+
+`GET /auth/users` — 列出用户（不含密码）
+
+`POST /auth/users` — 创建用户（默认 `uiEnabled=false`，导演可登录）
+
+请求体：
+
+```json
+{
+  "username": "editor_a",
+  "password": "secret12",
+  "displayName": "剪辑 A",
+  "role": "editor",
+  "uiEnabled": false
+}
+```
+
 ## 1. 项目
 
 ## 1.1 获取项目列表
@@ -429,6 +493,8 @@ Base URL:
 - `api_key`（已接入）
 - `oauth`（501 / not_implemented stub）
 - `device_code`（501 / not_implemented stub）
+
+**权限**：`/llm/*` 配置与管理接口仅 **导演（director）** 可访问，需携带 Session Token（`Authorization: Bearer` 或 `X-Session-Token`）。剪辑账号可正常使用主题/分镜/导出等 LLM 业务接口，共用系统级 Provider 配置。
 
 LLM 业务接口（主题 / 分镜 / 导出 / 节奏文案）在 `ApiResponse.meta` 中返回：
 

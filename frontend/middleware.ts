@@ -6,6 +6,7 @@ function isAllowedPath(pathname: string) {
   return (
     pathname.startsWith("/_next") ||
     pathname.startsWith("/api/auth") ||
+    pathname.startsWith("/api/llm") ||
     pathname.startsWith("/api/v1") ||
     pathname === "/favicon.ico" ||
     pathname === "/login"

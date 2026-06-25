@@ -34,12 +34,24 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error, ok: false }, { status: response.status });
     }
 
-    const payload = (await response.json()) as { data?: { username?: string } };
-    const sessionUsername = payload.data?.username ?? username;
-    const nextResponse = NextResponse.json({ ok: true });
+    const payload = (await response.json()) as {
+      data?: { sessionToken?: string; user?: { username?: string } };
+    };
+    const sessionToken = payload.data?.sessionToken;
+    if (!sessionToken) {
+      return NextResponse.json(
+        { error: "登录响应无效，请稍后重试。", ok: false },
+        { status: 502 }
+      );
+    }
+
+    const nextResponse = NextResponse.json({
+      ok: true,
+      username: payload.data?.user?.username ?? username
+    });
     nextResponse.cookies.set({
       name: AUTH_COOKIE_NAME,
-      value: sessionUsername,
+      value: sessionToken,
       httpOnly: true,
       maxAge: 60 * 60 * 8,
       path: "/",

@@ -53,6 +53,31 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return result.data;
 }
 
+async function requestLlmAdminWithMeta<T>(
+  path: string,
+  init?: RequestInit
+): Promise<RequestWithMetaResult<T>> {
+  const response = await fetch(`/api/llm${path}`, {
+    headers: {
+      "Content-Type": "application/json",
+      ...(init?.headers ?? {})
+    },
+    ...init
+  });
+
+  if (!response.ok) {
+    throw new Error(await readApiErrorDetail(response));
+  }
+
+  const payload = (await response.json()) as ApiEnvelopeWithMeta<T>;
+  return { data: payload.data, meta: payload.meta };
+}
+
+async function requestLlmAdmin<T>(path: string, init?: RequestInit): Promise<T> {
+  const result = await requestLlmAdminWithMeta<T>(path, init);
+  return result.data;
+}
+
 export type ProjectPayload = {
   name: string;
   destination: string;
@@ -384,14 +409,14 @@ export type LlmProviderConfigPayload = {
 };
 
 export function getLlmProviderStatus(providerId: string): Promise<LlmStatus> {
-  return request<LlmStatus>(`/llm/providers/${providerId}/status`);
+  return requestLlmAdmin<LlmStatus>(`/providers/${providerId}/status`);
 }
 
 export function saveLlmProviderConfig(
   providerId: string,
   payload: LlmProviderConfigPayload
 ): Promise<LlmStatus> {
-  return request<LlmStatus>(`/llm/providers/${providerId}/config`, {
+  return requestLlmAdmin<LlmStatus>(`/providers/${providerId}/config`, {
     method: "POST",
     body: JSON.stringify({
       authType: payload.authType ?? "api_key",
@@ -403,7 +428,7 @@ export function saveLlmProviderConfig(
 }
 
 export function activateLlmProvider(providerId: string): Promise<LlmStatus> {
-  return request<LlmStatus>(`/llm/providers/${providerId}/activate`, {
+  return requestLlmAdmin<LlmStatus>(`/providers/${providerId}/activate`, {
     method: "POST"
   });
 }
@@ -412,7 +437,7 @@ export function testLlmProvider(
   providerId: string,
   payload?: LlmProviderConfigPayload
 ): Promise<RequestWithMetaResult<LlmTestResult>> {
-  return requestWithMeta<LlmTestResult>(`/llm/providers/${providerId}/test`, {
+  return requestLlmAdminWithMeta<LlmTestResult>(`/providers/${providerId}/test`, {
     method: "POST",
     body: JSON.stringify({
       authType: payload?.authType ?? "api_key",
@@ -424,17 +449,17 @@ export function testLlmProvider(
 }
 
 export function testActiveLlmProvider(): Promise<RequestWithMetaResult<LlmTestResult>> {
-  return requestWithMeta<LlmTestResult>("/llm/test", {
+  return requestLlmAdminWithMeta<LlmTestResult>("/test", {
     method: "POST"
   });
 }
 
 export function getLlmProviders(): Promise<LlmProvider[]> {
-  return request<LlmProvider[]>("/llm/providers");
+  return requestLlmAdmin<LlmProvider[]>("/providers");
 }
 
 export function getLlmStatus(): Promise<LlmStatus> {
-  return request<LlmStatus>("/llm/status");
+  return requestLlmAdmin<LlmStatus>("/status");
 }
 
 export function previewExport(

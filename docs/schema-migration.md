@@ -36,6 +36,8 @@
 | 5 | `005_llm_provider_config` | LLM Provider 配置表（provider_id、api_key、model 等） |
 | 6 | `006_app_settings` | 应用级 KV 设置（如 `llm_active_provider_id`） |
 | 7 | `007_theme_evidence` | 主题表 used_locations / used_asset_ids（可解释性） |
+| 8 | `008_auth_sessions` | 会话表 authsessionentity + userentity.created_at |
+| 9 | `009_encrypt_llm_api_keys` | LLM api_key 加密存储（enc:v1: 前缀） |
 
 ## 5. 注意事项
 

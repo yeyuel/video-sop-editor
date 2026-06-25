@@ -8,6 +8,7 @@ from app.services.llm.model_catalog import normalize_model_id
 from app.services.llm.registry import get_provider, list_providers
 from app.services.llm.auth import evaluate_config_status
 from app.services.llm.types import LlmProviderStatus, ResolvedLlmConfig
+from app.services.secret_vault import decrypt_api_key_if_needed, encrypt_api_key_if_needed
 
 
 ACTIVE_LLM_PROVIDER_SETTING_KEY = "llm_active_provider_id"
@@ -61,7 +62,7 @@ def resolve_active_config(session: Session | None = None) -> ResolvedLlmConfig:
         base_url = stored.base_url or base_url
         model = normalize_model_id(provider.provider_id, stored.model or model)
         if stored.api_key:
-            api_key = stored.api_key
+            api_key = decrypt_api_key_if_needed(stored.api_key)
         status = LlmProviderStatus(stored.status) if stored.status in LlmProviderStatus else LlmProviderStatus.NOT_CONFIGURED
 
     config = ResolvedLlmConfig(
@@ -103,7 +104,7 @@ def resolve_provider_config(
     else:
         resolved_base = stored.base_url if stored and stored.base_url else provider.default_base_url
         resolved_model = stored.model if stored and stored.model else provider.default_model
-        resolved_key = stored.api_key if stored else ""
+        resolved_key = decrypt_api_key_if_needed(stored.api_key) if stored else ""
         auth_type = stored.auth_type if stored and stored.auth_type else "api_key"
 
     if base_url.strip():
@@ -154,10 +155,10 @@ def save_provider_config(
     entity.base_url = base_url.strip() or provider.default_base_url
     entity.model = normalize_model_id(provider_id, model.strip() or provider.default_model)
     if api_key.strip():
-        entity.api_key = api_key.strip()
+        entity.api_key = encrypt_api_key_if_needed(api_key.strip())
     entity.status = (
         LlmProviderStatus.CONFIGURED.value
-        if entity.api_key.strip()
+        if decrypt_api_key_if_needed(entity.api_key).strip()
         else LlmProviderStatus.NOT_CONFIGURED.value
     )
     session.add(entity)
@@ -220,7 +221,7 @@ def get_provider_status(session: Session, provider_id: str) -> dict[str, str | b
         base_url = stored.base_url if stored and stored.base_url else provider.default_base_url
         raw_model = stored.model if stored and stored.model else provider.default_model
         model = normalize_model_id(provider_id, raw_model)
-        configured = bool(stored and stored.api_key.strip())
+        configured = bool(stored and decrypt_api_key_if_needed(stored.api_key).strip())
         status = (
             LlmProviderStatus.CONFIGURED.value
             if configured
@@ -244,6 +245,7 @@ def _load_stored_config(
     session: Session,
     provider_id: str,
 ) -> LlmProviderConfigEntity | None:
-    return session.exec(
+    entity = session.exec(
         select(LlmProviderConfigEntity).where(LlmProviderConfigEntity.provider_id == provider_id)
     ).first()
+    return entity

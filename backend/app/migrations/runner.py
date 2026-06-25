@@ -175,6 +175,47 @@ def _migration_007_theme_evidence(session: Session) -> None:
         session.exec(text("ALTER TABLE themeentity ADD COLUMN used_asset_ids TEXT DEFAULT '[]'"))
 
 
+def _migration_008_auth_sessions(session: Session) -> None:
+    inspector = inspect(engine)
+    table_names = set(inspector.get_table_names())
+
+    if "userentity" in table_names:
+        user_columns = {column["name"] for column in inspector.get_columns("userentity")}
+        if "created_at" not in user_columns:
+            session.exec(text("ALTER TABLE userentity ADD COLUMN created_at TEXT DEFAULT ''"))
+
+    if "authsessionentity" not in table_names:
+        session.exec(
+            text(
+                """
+                CREATE TABLE authsessionentity (
+                    token TEXT PRIMARY KEY,
+                    user_id TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    expires_at TEXT NOT NULL,
+                    revoked INTEGER NOT NULL DEFAULT 0
+                )
+                """
+            )
+        )
+
+
+def _migration_009_encrypt_llm_api_keys(session: Session) -> None:
+    from sqlmodel import select
+
+    from app.models.entities import LlmProviderConfigEntity
+    from app.services.secret_vault import encrypt_api_key_if_needed, is_encrypted
+
+    if "llmproviderconfigentity" not in inspect(engine).get_table_names():
+        return
+
+    rows = session.exec(select(LlmProviderConfigEntity)).all()
+    for row in rows:
+        if row.api_key and not is_encrypted(row.api_key):
+            row.api_key = encrypt_api_key_if_needed(row.api_key)
+            session.add(row)
+
+
 MIGRATIONS: list[tuple[int, str, object]] = [
     (1, "001_legacy_columns", _migration_001_legacy_columns),
     (2, "002_rhythm_analysis_metrics", _migration_002_rhythm_analysis_metrics),
@@ -183,6 +224,8 @@ MIGRATIONS: list[tuple[int, str, object]] = [
     (5, "005_llm_provider_config", _migration_005_llm_provider_config),
     (6, "006_app_settings", _migration_006_app_settings),
     (7, "007_theme_evidence", _migration_007_theme_evidence),
+    (8, "008_auth_sessions", _migration_008_auth_sessions),
+    (9, "009_encrypt_llm_api_keys", _migration_009_encrypt_llm_api_keys),
 ]
 
 

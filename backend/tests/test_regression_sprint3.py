@@ -110,7 +110,9 @@ def test_login_and_workspace_unlock_steps(regression_env) -> None:
         json={"username": "director", "password": "root123"},
     )
     assert login_response.status_code == 200
-    assert login_response.json()["data"]["username"] == "director"
+    login_payload = login_response.json()["data"]
+    assert login_payload["user"]["username"] == "director"
+    assert login_payload["sessionToken"]
 
     workspace_response = client.get("/api/v1/projects/proj_001/workspace")
     assert workspace_response.status_code == 200
@@ -315,4 +317,4 @@ def test_run_all_migrations_from_zero(tmp_path, monkeypatch) -> None:
         final_version = _current_version(session)
 
     assert final_version == len(MIGRATIONS)
-    assert final_version == 7
+    assert final_version >= 9

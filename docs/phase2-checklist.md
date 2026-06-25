@@ -15,6 +15,7 @@
 | Sprint 4（节奏模块深化） | ✅ 已完成 | 暗场能量分析、细/粗踩点、LLM 节奏文案、曲名真实化 |
 | Sprint 5（LLM 网关标准化） | ✅ 已完成 | Gateway、Provider 配置页、SSE 进度、Kimi 兼容、stream 回归 |
 | Sprint 6（LLM 业务质量） | ✅ 已完成 | 主题证据字段、导出平台化、rawBeat 切镜、LLM 二层排序、字幕写回 |
+| Sprint 7（用户与鉴权） | ✅ 已完成 | Session Token、用户 API 预留、LLM Key Fernet 加密 |
 
 ## 3. Sprint 迭代计划
 
@@ -92,12 +93,12 @@
 - [x] 按平台差异化标题、标签、文案风格（小红书 / 抖音 guide）
 - [x] 导出结果写回时间线字幕（`segmentCaptions` → 分镜 subtitle）
 
-### Sprint 7 — 用户与鉴权
+### Sprint 7 — 用户与鉴权 ✅
 
-- [ ] 新增用户入口数据结构（API + 表结构预留）
-- [ ] UI 暂时仍只开放导演账号
-- [ ] Session / Token 规范化
-- [ ] LLM Key 等敏感配置不入库明文（或加密方案）
+- [x] 新增用户入口数据结构（`POST/GET /auth/users` + migration 008）
+- [x] UI 暂时仍只开放导演账号（`uiEnabled` 门禁 + 登录页固定 director）
+- [x] Session / Token 规范化（`authsessionentity` + Bearer / X-Session-Token）
+- [x] LLM Key 加密入库（`secret_vault` + migration 009，`APP_SECRET_KEY`）
 
 ### Sprint 8 — P2 增强（按需排期）
 
@@ -125,7 +126,7 @@
 
 - [x] 明确数据库 schema 变更流程（`schemaversionentity` + 编号 migration）
 - [x] 每次新增字段都同步 migration、schema、api 文档（SOP 见 `schema-migration.md` §6）
-- [ ] 给音频分析、登录用户、LLM 配置相关数据结构补长期方案（LLM 配置已落 migration 005/006；Key 加密见 Sprint 7）
+- [ ] 给音频分析、登录用户、LLM 配置相关数据结构补长期方案（LLM Key 已加密 migration 009；用户 session 见 migration 008）
 
 ### 4.4 基础稳定性
 
@@ -171,14 +172,15 @@
 
 - [x] 将用户信息从前端代码迁移到后台数据库
 - [x] 改为后端校验登录
-- [ ] 保留新增用户入口的数据结构
-- [ ] UI 暂时仍可只开放导演账号
+- [x] 保留新增用户入口的数据结构（`POST /auth/users`，默认 uiEnabled=false）
+- [x] UI 暂时仍可只开放导演账号
 
 ### 5.6 LLM Provider 与鉴权标准化
 
 - [x] 建立 Provider Registry
 - [x] 建立统一 Auth Service
 - [x] 支持 API Key 配置
+- [x] LLM 配置角色策略：仅导演可改，剪辑共用系统级 Provider（`/api/llm/*` + `/settings/llm`）
 - [x] 预留 OAuth / Device Code 能力
 - [ ] 不支持通过抓取网页登录 Cookie 作为正式方案
 
@@ -247,8 +249,8 @@ node scripts/verify-workflow.mjs
 1. ~~Sprint 3~~：文档对齐 + 回归清单 + 字段变更 SOP ✅
 2. ~~Sprint 4~~：节奏字段剩余升级 ✅
 3. ~~Sprint 5~~：LLM Gateway 标准化 ✅
-4. **Sprint 6**：主题 / 分镜 / 导出 LLM 质量
-5. **Sprint 7**：用户鉴权收尾
+4. ~~Sprint 6~~：主题 / 分镜 / 导出 LLM 质量 ✅
+5. ~~Sprint 7~~：用户鉴权收尾 ✅
 6. **Sprint 8**：P2 增强与远期 AI 能力
 
 ## 10. 关联文档

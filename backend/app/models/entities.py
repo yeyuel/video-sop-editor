@@ -10,6 +10,15 @@ class UserEntity(SQLModel, table=True):
     password_hash: str
     role: str
     ui_enabled: bool = True
+    created_at: str = ""
+
+
+class AuthSessionEntity(SQLModel, table=True):
+    token: str = Field(primary_key=True)
+    user_id: str = Field(index=True)
+    created_at: str
+    expires_at: str
+    revoked: bool = False
 
 
 class ProjectEntity(SQLModel, table=True):

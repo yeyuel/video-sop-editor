@@ -8,7 +8,7 @@ export default async function HomePage() {
 
   return (
     <main className="pb-12">
-      <Topbar action={{ label: "新建项目", href: "/projects/new" }} />
+      <Topbar />
       <div className="mx-auto max-w-7xl px-6">
         <section className="rounded-xl2 border border-black/5 bg-white/80 p-6 shadow-card backdrop-blur">
           <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">

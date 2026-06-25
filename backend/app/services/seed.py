@@ -1,5 +1,7 @@
 import json
 
+from datetime import datetime, timezone
+
 from sqlmodel import Session, select
 
 from app.models.entities import (
@@ -37,6 +39,7 @@ def _ensure_default_director(session: Session) -> None:
             password_hash=hash_password("root123"),
             role="director",
             ui_enabled=True,
+            created_at=datetime.now(timezone.utc).isoformat(),
         )
     )
     session.commit()

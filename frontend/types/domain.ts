@@ -99,6 +99,14 @@ export type ExportDocument = {
   content: string;
 };
 
+export type AuthUser = {
+  id: string;
+  username: string;
+  displayName: string;
+  role: string;
+  uiEnabled: boolean;
+};
+
 export type WorkspaceData = {
   project: Project;
   assets: Asset[];

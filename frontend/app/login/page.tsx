@@ -48,9 +48,9 @@ export default async function LoginPage() {
 
           <section className="rounded-[2rem] border border-black/5 bg-white/88 p-8 shadow-card backdrop-blur md:p-10">
             <p className="text-xs uppercase tracking-[0.28em] text-pine/75">Director Login</p>
-            <h2 className="mt-4 text-3xl font-semibold text-ink">登录导演工作台</h2>
+            <h2 className="mt-4 text-3xl font-semibold text-ink">登录工作台</h2>
             <p className="mt-3 text-sm leading-7 text-ink/70">
-              当前先开放导演账号入口。后续新增用户会统一放在后台管理和数据库里维护。
+              使用已开放登录的账号进入工作台。导演可在用户管理页新建账号并决定是否允许登录。
             </p>
 
             <LoginForm />
