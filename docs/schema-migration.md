@@ -33,6 +33,8 @@
 | 2 | `002_rhythm_analysis_metrics` | 节奏表 detected_bpm、audio_duration_sec |
 | 3 | `003_rhythm_raw_beats` | 节奏表 raw_beat_points（细粒度节拍） |
 | 4 | `004_rhythm_coarse_beats` | 节奏表 coarse_beat_points（粗粒度/强拍序列） |
+| 5 | `005_llm_provider_config` | LLM Provider 配置表（provider_id、api_key、model 等） |
+| 6 | `006_app_settings` | 应用级 KV 设置（如 `llm_active_provider_id`） |
 
 ## 5. 注意事项
 

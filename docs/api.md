@@ -432,9 +432,29 @@ Base URL:
 
 LLM 业务接口（主题 / 分镜 / 导出 / 节奏文案）在 `ApiResponse.meta` 中返回：
 
-- `llmStatus`：`success` | `fallback_rule` | `not_configured` | `timeout` | ...
+- `llmStatus`：`success` | `fallback_rule` | `not_configured` | `timeout` | `empty_response` | `parse_error` | ...
 - `llmMessage`：用户可读说明
 - `llmProviderId` / `llmUsedFallback`
+
+兜底口径详见 `regression-sprint5.md` §5。
+
+### 9.0 流式 LLM 接口（SSE）
+
+长耗时 LLM 任务优先使用 `text/event-stream`，事件类型：
+
+- `progress`：`stage` / `message` / `progress` / `detail`
+- `complete`：`data` + `meta`（与非流式接口一致）
+- `error`：错误消息
+
+| 业务 | 路径 |
+|------|------|
+| 主题 LLM | `POST /projects/{id}/themes/generate-llm/stream` |
+| 分镜 LLM | `POST /projects/{id}/storyboard/generate-llm/stream` |
+| 节奏生成 | `POST /projects/{id}/rhythm-plan/generate/stream` |
+| 音频识别 | `POST /projects/{id}/rhythm-plan/audio-upload/stream` |
+| 导出建议 | `POST /projects/{id}/export-plan/suggest/stream` |
+
+前端通过 `Accept: text/event-stream` 调用，浏览器直连 FastAPI（见 `frontend/lib/api-base.ts`）。
 
 ### 9.1 获取 provider 列表
 

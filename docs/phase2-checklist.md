@@ -4,7 +4,7 @@
 
 本文档用于把二期工作拆成可跟踪事项。优先级分为 `P0 / P1 / P2`，Sprint 按迭代推进；勾选状态请在开发过程中持续维护。
 
-## 2. 当前状态概览（截至 2026-06-23）
+## 2. 当前状态概览（截至 2026-06-24）
 
 | 阶段 | 状态 | 说明 |
 |------|------|------|
@@ -13,8 +13,8 @@
 | Sprint 2（音频节拍） | ✅ 已完成 | librosa + 能量兜底、剪映踩点语义、rawBeatPoints、migration 002/003 |
 | Sprint 3（P0 收尾 + 文档对齐） | ✅ 已完成 | 回归测试、字段变更 SOP、文档同步 |
 | Sprint 4（节奏模块深化） | ✅ 已完成 | 暗场能量分析、细/粗踩点、LLM 节奏文案、曲名真实化 |
-| LLM 孤立能力 | 🟡 已接入、待深化 | 主题 / 分镜 / 导出 LLM 待 Sprint 6 质量增强 |
-| 二期系统化整理 | 进行中 | LLM 业务质量（Sprint 6）待推进 |
+| Sprint 5（LLM 网关标准化） | ✅ 已完成 | Gateway、Provider 配置页、SSE 进度、Kimi 兼容、stream 回归 |
+| Sprint 6（LLM 业务质量） | 🔜 待启动 | 主题 / 分镜 / 导出 LLM 质量增强 |
 
 ## 3. Sprint 迭代计划
 
@@ -57,13 +57,20 @@
 - [x] **`rhythmNotes` / `bgmStyle` LLM 化**：LLM 生成 + 模板兜底（`rhythm_copy.py`）
 - [x] **旧节奏计划补 raw**：保存时从 beatPoints 回填 raw/coarse 缓存
 
-### Sprint 5 — LLM 网关标准化
+### Sprint 5 — LLM 网关标准化 ✅
 
 - [x] Provider Registry（多厂商 base_url / model / timeout）
-- [x] 统一 Auth Service（完善 API Key，预留 OAuth / Device Code）
+- [x] 统一 Auth Service（完善 API Key，预留 OAuth / Device Code stub）
 - [x] LLM Gateway（超时、重试、JSON 解析失败、空响应兜底）
 - [x] 前端区分 LLM 未配置 / 超时 / 解析失败 / 规则兜底
-- [x] 配置管理长期方案（环境变量 → 可选 DB 配置表 migration 005）
+- [x] 配置管理长期方案（环境变量 → DB 配置表 migration 005/006）
+- [x] LLM 设置页（保存 / 激活 / 连通性测试）
+- [x] 主流程 SSE 流式进度（主题 / 分镜 / 节奏 / 导出）
+- [x] 浏览器直连 FastAPI，规避 Next.js 代理超时
+- [x] Kimi K2 兼容（temperature=0.6、关闭 thinking、JSON 解析增强）
+- [x] 主题 / 分镜 prompt 瘦身与 `max_tokens` 上限
+- [x] LLM 流式接口回归：`regression-sprint5.md` + `test_llm_stream.py`
+- [ ] OAuth / Device Code 实装（预留至后续 Sprint，非 Sprint 5 阻塞项）
 
 ### Sprint 6 — LLM 业务质量
 
@@ -71,7 +78,7 @@
 
 - [ ] 候选间差异度控制（情绪轴 / 叙事结构不重复）
 - [ ] 可解释性：标注用了哪些素材 / 地点
-- [ ] 失败兜底策略文档化 + 前端提示
+- [x] 失败兜底策略文档化（`regression-sprint5.md` §5）+ 前端提示（`describeLlmStatus`）
 
 **分镜建议**
 
@@ -118,7 +125,7 @@
 
 - [x] 明确数据库 schema 变更流程（`schemaversionentity` + 编号 migration）
 - [x] 每次新增字段都同步 migration、schema、api 文档（SOP 见 `schema-migration.md` §6）
-- [ ] 给音频分析、登录用户、LLM 配置相关数据结构补长期方案
+- [ ] 给音频分析、登录用户、LLM 配置相关数据结构补长期方案（LLM 配置已落 migration 005/006；Key 加密见 Sprint 7）
 
 ### 4.4 基础稳定性
 
@@ -146,7 +153,7 @@
 
 - [ ] 强化主题候选的可解释性
 - [ ] 增加候选间差异度控制
-- [ ] 明确失败兜底和超时兜底策略
+- [x] 明确失败兜底和超时兜底策略（`regression-sprint5.md` §5 + 前端 `describeLlmStatus`）
 
 ### 5.3 LLM 分镜建议
 
@@ -209,7 +216,9 @@
 - 完整多角色协同权限体系
 - 网页 Cookie 抓取式 LLM 登录
 
-## 8. 关键路径最小回归清单（Sprint 3 ✅）
+## 8. 关键路径最小回归清单（Sprint 3 ✅ + Sprint 5 ✅）
+
+自动化脚本见 `regression-sprint3.md`（主流程）与 `regression-sprint5.md`（LLM / SSE）。
 
 自动化脚本见 `regression-sprint3.md`。覆盖路径：
 
@@ -227,6 +236,7 @@
 ```powershell
 cd backend
 python -m pytest tests/ -q
+python -m pytest tests/test_llm_routes.py tests/test_llm_gateway.py tests/test_llm_model_catalog.py tests/test_llm_stream.py -q
 
 cd ..
 node scripts/verify-workflow.mjs
@@ -236,7 +246,7 @@ node scripts/verify-workflow.mjs
 
 1. ~~Sprint 3~~：文档对齐 + 回归清单 + 字段变更 SOP ✅
 2. ~~Sprint 4~~：节奏字段剩余升级 ✅
-3. **Sprint 5**：LLM Gateway 标准化
+3. ~~Sprint 5~~：LLM Gateway 标准化 ✅
 4. **Sprint 6**：主题 / 分镜 / 导出 LLM 质量
 5. **Sprint 7**：用户鉴权收尾
 6. **Sprint 8**：P2 增强与远期 AI 能力
@@ -251,3 +261,4 @@ node scripts/verify-workflow.mjs
 - `api.md`
 - `schema-migration.md`
 - `regression-sprint3.md`
+- `regression-sprint5.md`
