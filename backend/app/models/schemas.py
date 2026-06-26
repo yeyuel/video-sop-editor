@@ -213,6 +213,23 @@ class StoryboardBundleRead(BaseModel):
     validation: StoryboardValidationRead
 
 
+class BgmRecommendationRead(BaseModel):
+    id: str
+    title: str
+    artist: str = ""
+    styleTags: list[str] = Field(default_factory=list)
+    mood: str = ""
+    bpmRange: str = ""
+    fitReason: str = ""
+    searchHint: str = ""
+    platformTips: str = ""
+    isSelected: bool = False
+
+
+class BgmSelectionRequest(BaseModel):
+    recommendationId: str
+
+
 class RhythmPlanRead(BaseModel):
     bgmStyle: str
     selectedTrackName: str
@@ -228,6 +245,9 @@ class RhythmPlanRead(BaseModel):
     rhythmNotes: list[str]
     darkCutSuggestions: list[float]
     photoMotionSuggestions: list[str]
+    recommendedBgm: list[BgmRecommendationRead] = Field(default_factory=list)
+    selectedBgmId: str = ""
+    bgmPhase: str = "empty"
 
 
 class RhythmPlanWriteRequest(BaseModel):
@@ -245,6 +265,9 @@ class RhythmPlanWriteRequest(BaseModel):
     rhythmNotes: list[str] = Field(default_factory=list)
     darkCutSuggestions: list[float] = Field(default_factory=list)
     photoMotionSuggestions: list[str] = Field(default_factory=list)
+    recommendedBgm: list[BgmRecommendationRead] | None = None
+    selectedBgmId: str | None = None
+    bgmPhase: str | None = None
 
 
 class ExportPlanRead(BaseModel):

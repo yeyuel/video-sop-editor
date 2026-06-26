@@ -181,11 +181,13 @@ def build_rule_fallback_rhythm_payload(
             "audioFileName": "",
             "analysisSource": "rule_fallback",
             "analysisNotes": [
-                f"音频识别失败（{audio_file_name or '未命名文件'}），已自动回退到规则生成：{failure_reason}",
-                "你可以重新上传音频，或继续手工调整节拍点。",
+                f"音频识别失败（{audio_file_name or '未命名文件'}）：{failure_reason}",
+                "请重新下载所选 BGM 并上传有效音频文件，完成节拍识别后再进入分镜。",
             ],
             "detectedBpm": 0,
             "audioDurationSec": 0.0,
+            "beatMode": "none",
+            "beatPoints": [],
             "rawBeatPoints": [],
             "coarseBeatPoints": [],
         }

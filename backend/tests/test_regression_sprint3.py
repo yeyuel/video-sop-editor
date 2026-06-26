@@ -124,26 +124,38 @@ def test_login_and_workspace_unlock_steps(regression_env) -> None:
     assert len(workspace["rhythmPlan"]["beatPoints"]) > 0
 
 
-def test_rhythm_rule_generate_and_save(regression_env) -> None:
+def _prepare_bgm_selection(client, project_id: str) -> None:
+    recommend_response = client.post(f"/api/v1/projects/{project_id}/rhythm-plan/bgm-recommend")
+    assert recommend_response.status_code == 200
+    plan = recommend_response.json()["data"]
+    assert plan["recommendedBgm"]
+    recommendation_id = plan["recommendedBgm"][0]["id"]
+    select_response = client.put(
+        f"/api/v1/projects/{project_id}/rhythm-plan/bgm-selection",
+        json={"recommendationId": recommendation_id},
+    )
+    assert select_response.status_code == 200
+
+
+def test_rhythm_bgm_recommend_and_save(regression_env) -> None:
     client = regression_env["client"]
     project_id = "proj_001"
 
-    generate_response = client.post(f"/api/v1/projects/{project_id}/rhythm-plan:generate")
+    generate_response = client.post(f"/api/v1/projects/{project_id}/rhythm-plan/bgm-recommend")
     assert generate_response.status_code == 200
     plan = generate_response.json()["data"]
-    assert plan["analysisSource"] == "rule"
-    assert len(plan["beatPoints"]) >= 2
+    assert plan["bgmPhase"] == "recommended"
+    assert len(plan["recommendedBgm"]) >= 2
+    assert plan["beatPoints"] == []
 
     save_response = client.put(
-        f"/api/v1/projects/{project_id}/rhythm-plan",
-        json={
-            **plan,
-            "bgmStyle": plan["bgmStyle"] + "（回归测试）",
-        },
+        f"/api/v1/projects/{project_id}/rhythm-plan/bgm-selection",
+        json={"recommendationId": plan["recommendedBgm"][0]["id"]},
     )
     assert save_response.status_code == 200
-    saved = save_response.json()["data"]
-    assert "回归测试" in saved["bgmStyle"]
+    selected = save_response.json()["data"]
+    assert selected["selectedBgmId"] == plan["recommendedBgm"][0]["id"]
+    assert selected["selectedTrackName"]
 
 
 def test_rhythm_beat_mode_refilter_on_save(regression_env) -> None:
@@ -176,6 +188,8 @@ def test_rhythm_beat_mode_refilter_on_save(regression_env) -> None:
             rhythmNotes=["regression"],
             darkCutSuggestions=[1.0, 2.0],
             photoMotionSuggestions=["slow push"],
+            selectedBgmId="bgm_test",
+            bgmPhase="analyzed",
         )
         saved = repository.upsert_rhythm_plan(session, project_id, payload)
         assert saved is not None
@@ -194,6 +208,7 @@ def test_rhythm_beat_mode_refilter_on_save(regression_env) -> None:
 def test_audio_upload_and_delete_audio(regression_env) -> None:
     client = regression_env["client"]
     project_id = "proj_001"
+    _prepare_bgm_selection(client, project_id)
 
     with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as temp_file:
         wav_path = temp_file.name
@@ -217,12 +232,14 @@ def test_audio_upload_and_delete_audio(regression_env) -> None:
     cleared = delete_response.json()["data"]
     assert cleared["audioFileName"] == ""
     assert cleared["detectedBpm"] == 0
-    assert len(cleared["beatPoints"]) >= 2
+    assert cleared["beatPoints"] == []
+    assert cleared["bgmPhase"] == "recommended"
 
 
 def test_rule_fallback_on_invalid_audio(regression_env) -> None:
     client = regression_env["client"]
     project_id = "proj_001"
+    _prepare_bgm_selection(client, project_id)
 
     with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as temp_file:
         temp_file.write(b"not-a-valid-wav")
@@ -237,7 +254,8 @@ def test_rule_fallback_on_invalid_audio(regression_env) -> None:
     assert upload_response.status_code == 200
     plan = upload_response.json()["data"]
     assert plan["analysisSource"] == "rule_fallback"
-    assert len(plan["beatPoints"]) >= 2
+    assert plan["bgmPhase"] == "recommended"
+    assert plan["beatPoints"] == []
 
 
 def test_storyboard_generate_rule_and_llm_fallback(regression_env) -> None:

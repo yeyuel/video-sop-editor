@@ -9,7 +9,7 @@ from app.api.meta import merge_response_meta
 from app.api.sse_stream import run_streaming_task
 from app.core.config import settings
 from app.db import get_session
-from app.models.schemas import ApiResponse, RhythmPlanWriteRequest
+from app.models.schemas import ApiResponse, BgmSelectionRequest, RhythmPlanWriteRequest
 from app.services.repository import repository
 
 router = APIRouter(prefix="/projects/{project_id}", tags=["rhythm"])
@@ -27,11 +27,58 @@ def get_rhythm_plan(project_id: str, session: Session = Depends(get_session)) ->
 def generate_rhythm_plan(
     project_id: str, session: Session = Depends(get_session)
 ) -> ApiResponse:
-    result = repository.generate_rhythm_plan(session, project_id)
+    """Legacy alias for BGM recommendation."""
+    result = repository.recommend_bgm(session, project_id)
     if result is None:
         raise HTTPException(status_code=404, detail="Project not found")
     rhythm_plan, llm_meta = result
     return ApiResponse(data=rhythm_plan, meta=merge_response_meta(llm_meta))
+
+
+@router.post("/rhythm-plan/bgm-recommend", response_model=ApiResponse)
+def recommend_bgm(project_id: str, session: Session = Depends(get_session)) -> ApiResponse:
+    result = repository.recommend_bgm(session, project_id)
+    if result is None:
+        raise HTTPException(status_code=404, detail="Project not found")
+    rhythm_plan, llm_meta = result
+    return ApiResponse(data=rhythm_plan, meta=merge_response_meta(llm_meta))
+
+
+@router.post("/rhythm-plan/bgm-recommend/stream")
+def recommend_bgm_stream(project_id: str) -> StreamingResponse:
+    def serialize_complete(result: object) -> tuple[object, dict[str, str] | None]:
+        if result is None:
+            raise HTTPException(status_code=404, detail="Project not found")
+        rhythm_plan, llm_meta = result  # type: ignore[misc]
+        return rhythm_plan.model_dump(), llm_meta
+
+    def task(session: Session, report) -> object:
+        return repository.recommend_bgm(session, project_id, on_progress=report)
+
+    return StreamingResponse(
+        run_streaming_task(task, serialize_complete=serialize_complete),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
+
+
+@router.put("/rhythm-plan/bgm-selection", response_model=ApiResponse)
+def select_bgm_recommendation(
+    project_id: str,
+    payload: BgmSelectionRequest,
+    session: Session = Depends(get_session),
+) -> ApiResponse:
+    try:
+        rhythm_plan = repository.select_bgm_recommendation(session, project_id, payload)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    if rhythm_plan is None:
+        raise HTTPException(status_code=404, detail="Rhythm plan not found")
+    return ApiResponse(data=rhythm_plan)
 
 
 @router.post("/rhythm-plan/generate/stream")
@@ -43,7 +90,7 @@ def generate_rhythm_plan_stream(project_id: str) -> StreamingResponse:
         return rhythm_plan.model_dump(), llm_meta
 
     def task(session: Session, report) -> object:
-        return repository.generate_rhythm_plan(session, project_id, on_progress=report)
+        return repository.recommend_bgm(session, project_id, on_progress=report)
 
     return StreamingResponse(
         run_streaming_task(task, serialize_complete=serialize_complete),
@@ -87,12 +134,18 @@ async def upload_audio_for_rhythm(
     with open(stored_path, "wb") as output_file:
         output_file.write(content)
 
-    result = repository.analyze_rhythm_audio(
-        session,
-        project_id,
-        audio.filename,
-        stored_path,
-    )
+    try:
+        result = repository.analyze_rhythm_audio(
+            session,
+            project_id,
+            audio.filename,
+            stored_path,
+        )
+    except ValueError as exc:
+        if os.path.exists(stored_path):
+            os.remove(stored_path)
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
     if result is None:
         if os.path.exists(stored_path):
             os.remove(stored_path)

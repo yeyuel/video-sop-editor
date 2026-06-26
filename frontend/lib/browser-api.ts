@@ -207,14 +207,14 @@ export function selectTheme(projectId: string, themeId: string): Promise<Narrati
   });
 }
 
-export function generateRhythmPlan(
+export function recommendBgm(
   projectId: string,
   onProgress?: (event: LlmStreamProgressEvent) => void,
   signal?: AbortSignal
 ): Promise<RequestWithMetaResult<RhythmPlan>> {
   if (onProgress) {
     return postLlmStream<RhythmPlan>(
-      `/projects/${projectId}/rhythm-plan/generate/stream`,
+      `/projects/${projectId}/rhythm-plan/bgm-recommend/stream`,
       {},
       (event) => {
         if (event.type === "progress") {
@@ -225,8 +225,26 @@ export function generateRhythmPlan(
     );
   }
 
-  return requestWithMeta<RhythmPlan>(`/projects/${projectId}/rhythm-plan:generate`, {
+  return requestWithMeta<RhythmPlan>(`/projects/${projectId}/rhythm-plan/bgm-recommend`, {
     method: "POST"
+  });
+}
+
+export function generateRhythmPlan(
+  projectId: string,
+  onProgress?: (event: LlmStreamProgressEvent) => void,
+  signal?: AbortSignal
+): Promise<RequestWithMetaResult<RhythmPlan>> {
+  return recommendBgm(projectId, onProgress, signal);
+}
+
+export function selectBgmRecommendation(
+  projectId: string,
+  recommendationId: string
+): Promise<RhythmPlan> {
+  return request<RhythmPlan>(`/projects/${projectId}/rhythm-plan/bgm-selection`, {
+    method: "PUT",
+    body: JSON.stringify({ recommendationId })
   });
 }
 

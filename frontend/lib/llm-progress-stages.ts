@@ -23,6 +23,16 @@ export const STORYBOARD_LLM_STAGES: LlmStageDefinition[] = [
   { id: "saving", label: "保存分镜" }
 ];
 
+export const BGM_RECOMMEND_LLM_STAGES: LlmStageDefinition[] = [
+  { id: "preparing", label: "读取项目与主题" },
+  { id: "configuring", label: "加载模型配置" },
+  { id: "calling_llm", label: "模型推荐 BGM" },
+  { id: "parsing", label: "解析推荐结果" },
+  { id: "building", label: "整理候选曲目" },
+  { id: "fallback", label: "规则回退（如需要）" },
+  { id: "saving", label: "保存推荐" }
+];
+
 export const RHYTHM_LLM_STAGES: LlmStageDefinition[] = [
   { id: "preparing", label: "读取项目与主题" },
   { id: "analyzing_audio", label: "分析音频节拍" },

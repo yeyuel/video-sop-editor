@@ -195,12 +195,12 @@ def _ensure_demo_project(session: Session) -> None:
             id="rhythm_001",
             project_id="proj_001",
             bgm_style="冷感氛围电子 + 轻鼓点",
-            selected_track_name="snow-dream-demo",
-            audio_file_name="",
+            selected_track_name="Ludovico Einaudi - Nuvole Bianche",
+            audio_file_name="seed-demo.wav",
             audio_file_path="",
-            analysis_source="rule",
+            analysis_source="audio_upload",
             analysis_notes=json.dumps(
-                ["当前为规则生成节拍点，尚未上传真实音频。"],
+                ["Demo 项目已预置 BGM 推荐与音频分析结果。"],
                 ensure_ascii=False,
             ),
             beat_mode="beat_1",
@@ -218,6 +218,25 @@ def _ensure_demo_project(session: Session) -> None:
                 ["照片素材可用轻推或停留 1 到 2 拍，避免和视频一起快切。"],
                 ensure_ascii=False,
             ),
+            recommended_bgm=json.dumps(
+                [
+                    {
+                        "id": "bgm_seed_001",
+                        "title": "Nuvole Bianche",
+                        "artist": "Ludovico Einaudi",
+                        "styleTags": ["钢琴", "氛围"],
+                        "mood": "沉浸",
+                        "bpmRange": "85-95",
+                        "fitReason": "适合阿勒泰情绪氛围片的铺陈与空镜节奏。",
+                        "searchHint": "Nuvole Bianche 钢琴 纯音乐",
+                        "platformTips": "可在网易云音乐搜索并下载可商用版本。",
+                        "isSelected": True,
+                    }
+                ],
+                ensure_ascii=False,
+            ),
+            selected_bgm_id="bgm_seed_001",
+            bgm_phase="analyzed",
         ),
     )
 
@@ -304,6 +323,9 @@ def _upsert_rhythm(session: Session, payload: RhythmPlanEntity) -> None:
         current.rhythm_notes = payload.rhythm_notes
         current.dark_cut_suggestions = payload.dark_cut_suggestions
         current.photo_motion_suggestions = payload.photo_motion_suggestions
+        current.recommended_bgm = getattr(payload, "recommended_bgm", "[]") or "[]"
+        current.selected_bgm_id = getattr(payload, "selected_bgm_id", "") or ""
+        current.bgm_phase = getattr(payload, "bgm_phase", "empty") or "empty"
         session.add(current)
         return
     session.add(payload)

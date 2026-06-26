@@ -230,6 +230,20 @@ def _migration_010_project_location_validation(session: Session) -> None:
         )
 
 
+def _migration_011_rhythm_bgm_recommendations(session: Session) -> None:
+    inspector = inspect(engine)
+    if "rhythmplanentity" not in inspector.get_table_names():
+        return
+
+    rhythm_columns = {column["name"] for column in inspector.get_columns("rhythmplanentity")}
+    if "recommended_bgm" not in rhythm_columns:
+        session.exec(text("ALTER TABLE rhythmplanentity ADD COLUMN recommended_bgm TEXT DEFAULT '[]'"))
+    if "selected_bgm_id" not in rhythm_columns:
+        session.exec(text("ALTER TABLE rhythmplanentity ADD COLUMN selected_bgm_id TEXT DEFAULT ''"))
+    if "bgm_phase" not in rhythm_columns:
+        session.exec(text("ALTER TABLE rhythmplanentity ADD COLUMN bgm_phase TEXT DEFAULT 'empty'"))
+
+
 MIGRATIONS: list[tuple[int, str, object]] = [
     (1, "001_legacy_columns", _migration_001_legacy_columns),
     (2, "002_rhythm_analysis_metrics", _migration_002_rhythm_analysis_metrics),
@@ -241,6 +255,7 @@ MIGRATIONS: list[tuple[int, str, object]] = [
     (8, "008_auth_sessions", _migration_008_auth_sessions),
     (9, "009_encrypt_llm_api_keys", _migration_009_encrypt_llm_api_keys),
     (10, "010_project_location_validation", _migration_010_project_location_validation),
+    (11, "011_rhythm_bgm_recommendations", _migration_011_rhythm_bgm_recommendations),
 ]
 
 

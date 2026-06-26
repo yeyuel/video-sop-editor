@@ -1,4 +1,5 @@
-﻿import os
+import json
+import os
 import re
 from datetime import datetime, timezone
 from uuid import uuid4
@@ -21,6 +22,8 @@ from app.models.schemas import (
     AuthUserCreateRequest,
     AuthUserRead,
     AuthUserUpdateRequest,
+    BgmRecommendationRead,
+    BgmSelectionRequest,
     ExportDocumentRead,
     ExportPlanRead,
     ExportPlanWriteRequest,
@@ -41,6 +44,11 @@ from app.models.schemas import (
     WorkspaceDataRead,
 )
 from app.services.audio_analysis import AudioAnalysisError, audio_beat_analyzer
+from app.services.bgm_recommendation import (
+    build_llm_bgm_recommendations,
+    format_bgm_track_name,
+)
+from app.services.rhythm_readiness import rhythm_ready_for_storyboard, rhythm_requirement_message
 from app.services.auth import hash_password, verify_password
 from app.services.export_generation import (
     apply_export_captions_to_segments,
@@ -52,8 +60,11 @@ from app.services.export_generation import (
 from app.services.export_validation import build_export_validation
 from app.services.rhythm_generation import (
     build_audio_rhythm_payload,
+    build_photo_motion_suggestions,
+    build_rule_dark_cuts,
     build_rule_fallback_rhythm_payload,
     build_rule_rhythm_payload,
+    recommend_beat_mode,
 )
 from app.services.beat_grid import filter_beats_for_capcut_mode, normalize_beat_times
 from app.services.serialization import dumps_list, loads_float_list, loads_str_list
@@ -423,6 +434,14 @@ class SqlRepository:
         project_id: str,
         on_progress: ProgressReporter | None = None,
     ) -> tuple[RhythmPlanRead, dict[str, str]] | None:
+        return self.recommend_bgm(session, project_id, on_progress=on_progress)
+
+    def recommend_bgm(
+        self,
+        session: Session,
+        project_id: str,
+        on_progress: ProgressReporter | None = None,
+    ) -> tuple[RhythmPlanRead, dict[str, str]] | None:
         project = self.get_project_entity(session, project_id)
         if not project:
             return None
@@ -430,12 +449,77 @@ class SqlRepository:
         emit_progress(on_progress, "preparing", "正在加载项目与主题…", progress=8)
         assets = self.list_assets(session, project_id)
         theme = self.get_selected_theme(session, project_id)
-        rhythm_payload, llm_meta = build_rule_rhythm_payload(
-            project, assets, theme, on_progress=on_progress
+        existing_rhythm = session.exec(
+            select(RhythmPlanEntity).where(RhythmPlanEntity.project_id == project_id)
+        ).first()
+        if existing_rhythm and existing_rhythm.audio_file_path:
+            self._remove_stored_audio(existing_rhythm.audio_file_path)
+
+        recommendations, bgm_style, rhythm_notes, llm_meta = build_llm_bgm_recommendations(
+            project,
+            assets,
+            theme,
+            on_progress=on_progress,
         )
-        emit_progress(on_progress, "saving", "正在保存节奏规划…", progress=94)
-        plan = self.upsert_rhythm_plan(session, project_id, rhythm_payload)
+        beat_mode = recommend_beat_mode(project.video_type)
+        rhythm_payload = RhythmPlanWriteRequest(
+            bgmStyle=bgm_style,
+            selectedTrackName="",
+            audioFileName="",
+            analysisSource="manual",
+            analysisNotes=[
+                "已生成 BGM 推荐，请先选定曲目，下载后上传音频以识别真实节拍点。"
+            ],
+            detectedBpm=0,
+            audioDurationSec=0.0,
+            rawBeatPoints=[],
+            coarseBeatPoints=[],
+            beatMode=beat_mode,
+            beatPoints=[],
+            rhythmNotes=rhythm_notes,
+            darkCutSuggestions=build_rule_dark_cuts(project.target_duration_sec),
+            photoMotionSuggestions=build_photo_motion_suggestions(assets),
+            recommendedBgm=recommendations,
+            selectedBgmId="",
+            bgmPhase="recommended",
+        )
+        emit_progress(on_progress, "saving", "正在保存 BGM 推荐…", progress=94)
+        plan = self.upsert_rhythm_plan(session, project_id, rhythm_payload, audio_file_path="")
         return plan, llm_meta
+
+    def select_bgm_recommendation(
+        self,
+        session: Session,
+        project_id: str,
+        payload: BgmSelectionRequest,
+    ) -> RhythmPlanRead | None:
+        rhythm = session.exec(
+            select(RhythmPlanEntity).where(RhythmPlanEntity.project_id == project_id)
+        ).first()
+        if not rhythm:
+            return None
+
+        recommendations = self._load_bgm_recommendations(rhythm.recommended_bgm)
+        selected = next(
+            (item for item in recommendations if item.id == payload.recommendationId),
+            None,
+        )
+        if not selected:
+            raise ValueError("未找到对应的 BGM 推荐项")
+
+        updated_recommendations = [
+            item.model_copy(update={"isSelected": item.id == selected.id})
+            for item in recommendations
+        ]
+        rhythm.recommended_bgm = self._dump_bgm_recommendations(updated_recommendations)
+        rhythm.selected_bgm_id = selected.id
+        rhythm.selected_track_name = format_bgm_track_name(selected)
+        if rhythm.bgm_phase != "analyzed":
+            rhythm.bgm_phase = "recommended"
+        session.add(rhythm)
+        session.commit()
+        session.refresh(rhythm)
+        return self._map_rhythm(rhythm)
 
     def analyze_rhythm_audio(
         self,
@@ -455,6 +539,8 @@ class SqlRepository:
         existing_rhythm = session.exec(
             select(RhythmPlanEntity).where(RhythmPlanEntity.project_id == project_id)
         ).first()
+        if not existing_rhythm or not existing_rhythm.selected_bgm_id:
+            raise ValueError("请先在节奏页选定一首 BGM 推荐，再上传音频。")
         previous_audio_path = existing_rhythm.audio_file_path if existing_rhythm else ""
 
         try:
@@ -486,7 +572,7 @@ class SqlRepository:
             plan = self.upsert_rhythm_plan(
                 session,
                 project_id,
-                rhythm_payload,
+                rhythm_payload.model_copy(update={"bgmPhase": "analyzed"}),
                 audio_file_path=audio_file_path,
             )
             return plan, llm_meta
@@ -507,7 +593,11 @@ class SqlRepository:
                 on_progress=on_progress,
             )
             emit_progress(on_progress, "saving", "正在保存回退后的节奏规划…", progress=94)
-            plan = self.upsert_rhythm_plan(session, project_id, rhythm_payload)
+            plan = self.upsert_rhythm_plan(
+                session,
+                project_id,
+                rhythm_payload.model_copy(update={"bgmPhase": "recommended"}),
+            )
             return plan, llm_meta
 
     def clear_rhythm_audio(self, session: Session, project_id: str) -> RhythmPlanRead | None:
@@ -528,8 +618,10 @@ class SqlRepository:
         rhythm.audio_duration_sec = 0.0
         rhythm.raw_beat_points = "[]"
         rhythm.coarse_beat_points = "[]"
+        rhythm.beat_points = "[]"
         if rhythm.analysis_source == "audio_upload":
             rhythm.analysis_source = "manual"
+        rhythm.bgm_phase = "recommended" if self._load_bgm_recommendations(rhythm.recommended_bgm) else "empty"
         session.add(rhythm)
         session.commit()
         session.refresh(rhythm)
@@ -584,59 +676,73 @@ class SqlRepository:
 
         existing_raw = loads_float_list(getattr(rhythm, "raw_beat_points", "[]") or "[]")
         existing_coarse = loads_float_list(getattr(rhythm, "coarse_beat_points", "[]") or "[]")
-        if payload.rawBeatPoints:
-            raw_beats = payload.rawBeatPoints
-        elif existing_raw:
-            raw_beats = existing_raw
-        elif payload.beatPoints and payload.beatMode != "none":
-            raw_beats = normalize_beat_times(
-                payload.beatPoints,
-                float(project.target_duration_sec),
-            )
+        if payload.analysisSource == "rule_fallback":
+            rhythm.raw_beat_points = "[]"
+            rhythm.coarse_beat_points = "[]"
+            rhythm.beat_mode = payload.beatMode
+            rhythm.beat_points = "[]"
         else:
-            raw_beats = []
-
-        if payload.coarseBeatPoints:
-            coarse_beats = payload.coarseBeatPoints
-        elif existing_coarse:
-            coarse_beats = existing_coarse
-        elif raw_beats:
-            coarse_beats = normalize_beat_times(
-                [raw_beats[index] for index in range(0, len(raw_beats), 2)],
-                float(project.target_duration_sec),
-            )
-        else:
-            coarse_beats = []
-
-        if raw_beats and payload.beatMode != "none":
-            beat_points = filter_beats_for_capcut_mode(
-                raw_beats,
-                payload.beatMode,
-                float(project.target_duration_sec),
-                coarse_beats=coarse_beats or None,
-            )
-            rhythm.raw_beat_points = dumps_list(raw_beats)
-            rhythm.coarse_beat_points = dumps_list(coarse_beats)
-        else:
-            beat_points = payload.beatPoints
             if payload.rawBeatPoints:
-                rhythm.raw_beat_points = dumps_list(raw_beats)
-            elif raw_beats:
-                rhythm.raw_beat_points = dumps_list(raw_beats)
-            elif not existing_raw:
-                rhythm.raw_beat_points = "[]"
-            if payload.coarseBeatPoints:
-                rhythm.coarse_beat_points = dumps_list(coarse_beats)
-            elif coarse_beats:
-                rhythm.coarse_beat_points = dumps_list(coarse_beats)
-            elif not existing_coarse:
-                rhythm.coarse_beat_points = "[]"
+                raw_beats = payload.rawBeatPoints
+            elif existing_raw:
+                raw_beats = existing_raw
+            elif payload.beatPoints and payload.beatMode != "none":
+                raw_beats = normalize_beat_times(
+                    payload.beatPoints,
+                    float(project.target_duration_sec),
+                )
+            else:
+                raw_beats = []
 
-        rhythm.beat_mode = payload.beatMode
-        rhythm.beat_points = dumps_list(beat_points)
+            if payload.coarseBeatPoints:
+                coarse_beats = payload.coarseBeatPoints
+            elif existing_coarse:
+                coarse_beats = existing_coarse
+            elif raw_beats:
+                coarse_beats = normalize_beat_times(
+                    [raw_beats[index] for index in range(0, len(raw_beats), 2)],
+                    float(project.target_duration_sec),
+                )
+            else:
+                coarse_beats = []
+
+            if raw_beats and payload.beatMode != "none":
+                beat_points = filter_beats_for_capcut_mode(
+                    raw_beats,
+                    payload.beatMode,
+                    float(project.target_duration_sec),
+                    coarse_beats=coarse_beats or None,
+                )
+                rhythm.raw_beat_points = dumps_list(raw_beats)
+                rhythm.coarse_beat_points = dumps_list(coarse_beats)
+            else:
+                beat_points = payload.beatPoints
+                if payload.rawBeatPoints:
+                    rhythm.raw_beat_points = dumps_list(raw_beats)
+                elif raw_beats:
+                    rhythm.raw_beat_points = dumps_list(raw_beats)
+                elif not existing_raw:
+                    rhythm.raw_beat_points = "[]"
+                if payload.coarseBeatPoints:
+                    rhythm.coarse_beat_points = dumps_list(coarse_beats)
+                elif coarse_beats:
+                    rhythm.coarse_beat_points = dumps_list(coarse_beats)
+                elif not existing_coarse:
+                    rhythm.coarse_beat_points = "[]"
+
+            rhythm.beat_mode = payload.beatMode
+            rhythm.beat_points = dumps_list(beat_points)
+
         rhythm.rhythm_notes = dumps_list(payload.rhythmNotes)
         rhythm.dark_cut_suggestions = dumps_list(payload.darkCutSuggestions)
         rhythm.photo_motion_suggestions = dumps_list(payload.photoMotionSuggestions)
+
+        if payload.recommendedBgm is not None:
+            rhythm.recommended_bgm = self._dump_bgm_recommendations(payload.recommendedBgm)
+        if payload.selectedBgmId is not None:
+            rhythm.selected_bgm_id = payload.selectedBgmId
+        if payload.bgmPhase is not None:
+            rhythm.bgm_phase = payload.bgmPhase
 
         session.add(rhythm)
         session.commit()
@@ -684,9 +790,12 @@ class SqlRepository:
         if not project:
             return None
 
+        rhythm = self.get_rhythm_plan(session, project_id)
+        if not rhythm_ready_for_storyboard(rhythm):
+            raise ValueError(rhythm_requirement_message(rhythm))
+
         theme = self._resolve_theme(session, project_id, request.themeId)
         assets = self.list_assets(session, project_id)
-        rhythm = self.get_rhythm_plan(session, project_id)
         if not theme or not assets:
             return StoryboardBundleRead(
                 segments=[],
@@ -727,6 +836,10 @@ class SqlRepository:
         project = self.get_project_entity(session, project_id)
         if not project:
             return None
+
+        rhythm = self.get_rhythm_plan(session, project_id)
+        if not rhythm_ready_for_storyboard(rhythm):
+            raise ValueError(rhythm_requirement_message(rhythm))
 
         theme = self._resolve_theme(session, project_id, request.themeId)
         assets = self.list_assets(session, project_id)
@@ -1048,6 +1161,9 @@ class SqlRepository:
                 rhythmNotes=[],
                 darkCutSuggestions=[],
                 photoMotionSuggestions=[],
+                recommendedBgm=[],
+                selectedBgmId="",
+                bgmPhase="empty",
             ),
             exportPlan=export_plan_value,
         )
@@ -1151,6 +1267,34 @@ class SqlRepository:
             rhythmNotes=loads_str_list(item.rhythm_notes),
             darkCutSuggestions=loads_float_list(item.dark_cut_suggestions),
             photoMotionSuggestions=loads_str_list(item.photo_motion_suggestions),
+            recommendedBgm=SqlRepository._load_bgm_recommendations(
+                getattr(item, "recommended_bgm", "[]") or "[]"
+            ),
+            selectedBgmId=getattr(item, "selected_bgm_id", "") or "",
+            bgmPhase=getattr(item, "bgm_phase", "empty") or "empty",
+        )
+
+    @staticmethod
+    def _load_bgm_recommendations(raw_value: str) -> list[BgmRecommendationRead]:
+        if not raw_value:
+            return []
+        try:
+            payload = json.loads(raw_value)
+        except json.JSONDecodeError:
+            return []
+        if not isinstance(payload, list):
+            return []
+        recommendations: list[BgmRecommendationRead] = []
+        for item in payload:
+            if isinstance(item, dict):
+                recommendations.append(BgmRecommendationRead.model_validate(item))
+        return recommendations
+
+    @staticmethod
+    def _dump_bgm_recommendations(recommendations: list[BgmRecommendationRead]) -> str:
+        return json.dumps(
+            [item.model_dump() for item in recommendations],
+            ensure_ascii=False,
         )
 
     @staticmethod

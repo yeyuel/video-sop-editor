@@ -32,7 +32,10 @@ def generate_storyboard(
     request: StoryboardGenerateRequest,
     session: Session = Depends(get_session),
 ) -> ApiResponse:
-    bundle = repository.generate_storyboard(session, project_id, request)
+    try:
+        bundle = repository.generate_storyboard(session, project_id, request)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     if bundle is None:
         raise HTTPException(status_code=404, detail="Project not found")
     return ApiResponse(data=bundle)
@@ -44,7 +47,10 @@ def generate_storyboard_with_llm(
     request: StoryboardGenerateRequest,
     session: Session = Depends(get_session),
 ) -> ApiResponse:
-    result = repository.generate_storyboard_with_llm(session, project_id, request)
+    try:
+        result = repository.generate_storyboard_with_llm(session, project_id, request)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     if result is None:
         raise HTTPException(status_code=404, detail="Project not found")
     bundle, llm_meta = result

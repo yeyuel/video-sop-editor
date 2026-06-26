@@ -81,6 +81,19 @@ export type StoryboardBundle = {
   validation: StoryboardValidation;
 };
 
+export type BgmRecommendation = {
+  id: string;
+  title: string;
+  artist: string;
+  styleTags: string[];
+  mood: string;
+  bpmRange: string;
+  fitReason: string;
+  searchHint: string;
+  platformTips: string;
+  isSelected: boolean;
+};
+
 export type RhythmPlan = {
   bgmStyle: string;
   selectedTrackName: string;
@@ -96,6 +109,9 @@ export type RhythmPlan = {
   rhythmNotes: string[];
   darkCutSuggestions: number[];
   photoMotionSuggestions: string[];
+  recommendedBgm: BgmRecommendation[];
+  selectedBgmId: string;
+  bgmPhase: "empty" | "recommended" | "analyzed";
 };
 
 export type ExportPlan = {

@@ -35,7 +35,7 @@ export default async function ProjectRhythmPage({ params }: ProjectRhythmPagePro
           <p className="text-xs uppercase tracking-[0.24em] text-pine/70">Rhythm</p>
           <h2 className="mt-3 text-3xl font-semibold text-ink">节奏规划</h2>
           <p className="mt-2 text-sm leading-6 text-ink/70">
-            这一阶段输出节拍点、暗场建议和节奏说明。后面的分镜时间线会直接依赖这些卡点数据。
+            先用 LLM 推荐 2–3 首真实 BGM，选定后下载上传，完成节拍识别后才能进入分镜。
           </p>
         </section>
 
@@ -58,7 +58,7 @@ export default async function ProjectRhythmPage({ params }: ProjectRhythmPagePro
         <div className="mt-6">
           <SectionCard
             title="节奏与音乐方案"
-            description="这里不只是推荐歌名，而是把节奏规划成后续可执行的 beat points。"
+            description="LLM 推荐真实歌名与搜索提示；下载上传 BGM 后自动识别节拍点。"
           >
             <RhythmPlanClient
               projectId={projectId}

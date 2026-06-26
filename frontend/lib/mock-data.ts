@@ -143,7 +143,10 @@ export const fallbackWorkspace: WorkspaceData = {
       "高潮段回到最有动势的素材，形成记忆点。"
     ],
     darkCutSuggestions: [15, 30, 45],
-    photoMotionSuggestions: ["照片素材可用轻推或停留 1-2 拍，避免和视频一起快切。"]
+    photoMotionSuggestions: ["照片素材可用轻推或停留 1-2 拍，避免和视频一起快切。"],
+    recommendedBgm: [],
+    selectedBgmId: "",
+    bgmPhase: "empty"
   },
   exportPlan: fallbackExportPlan
 };

@@ -1,4 +1,4 @@
-﻿# API 文档 v1.1
+# API 文档 v1.1
 
 Base URL:
 
@@ -209,21 +209,51 @@ Base URL:
 
 ## 4. 节奏规划
 
+节奏页采用 **BGM 推荐 → 选定曲目 → 下载上传 → 音频识别** 流程。进入分镜前必须完成 BGM 推荐、曲目选定与音频识别（`bgmPhase === "analyzed"`）。
+
+`bgmPhase` 取值：
+
+- `empty`：尚未推荐 BGM
+- `recommended`：已有 LLM 推荐列表（可能已选定曲目，但未完成音频识别）
+- `analyzed`：已上传 BGM 并完成节拍识别
+
 ## 4.1 获取节奏规划
 
 `GET /projects/{projectId}/rhythm-plan`
 
-## 4.2 生成节奏规划
+响应含 `recommendedBgm`、`selectedBgmId`、`bgmPhase` 等字段。
 
-`POST /projects/{projectId}/rhythm-plan:generate`
+## 4.2 LLM 推荐 BGM
+
+`POST /projects/{projectId}/rhythm-plan/bgm-recommend`
+
+`POST /projects/{projectId}/rhythm-plan/bgm-recommend/stream`（SSE）
 
 当前逻辑：
 
-- 根据项目目标时长生成 beat points
-- 根据视频类型推荐 beat mode
-- 根据素材和主题生成节奏说明
+- LLM 返回 2–3 首**真实歌名**（含 artist、searchHint、platformTips），不提供下载链接
+- 同时生成 `bgmStyle` 与 `rhythmNotes`
+- 不生成占位节拍点；`beatPoints` 保持为空直到音频识别成功
+- LLM 不可用时规则兜底推荐
 
-## 4.3 保存节奏规划
+兼容别名：`POST /projects/{projectId}/rhythm-plan/generate` 与 `/generate/stream` 行为与 `bgm-recommend` 相同。
+
+## 4.3 选定 BGM 推荐项
+
+`PUT /projects/{projectId}/rhythm-plan/bgm-selection`
+
+请求体：
+
+```json
+{
+  "recommendationId": "bgm_xxx"
+}
+```
+
+- 写入 `selectedBgmId` 与 `selectedTrackName`
+- 上传音频前必须先选定一首推荐曲目
+
+## 4.4 保存节奏规划
 
 `PUT /projects/{projectId}/rhythm-plan`
 
@@ -244,18 +274,21 @@ Base URL:
   "beatPoints": [0, 0.5, 1, 1.5],
   "rhythmNotes": ["前 3 秒保证强开头"],
   "darkCutSuggestions": [15, 30, 45],
-  "photoMotionSuggestions": ["照片素材优先慢推"]
+  "photoMotionSuggestions": ["照片素材优先慢推"],
+  "recommendedBgm": [],
+  "selectedBgmId": "bgm_xxx",
+  "bgmPhase": "analyzed"
 }
 ```
 
 `analysisSource` 取值：
 
-- `rule`：规则生成
+- `rule`：规则生成（历史兼容）
 - `audio_upload`：音频识别成功
-- `rule_fallback`：音频识别失败，已回退规则生成
+- `rule_fallback`：音频识别失败；**不写入占位节拍点**，需重新上传有效 BGM
 - `manual`：用户手工编辑后保存
 
-## 4.4 上传音频并识别节拍
+## 4.5 上传音频并识别节拍
 
 `POST /projects/{projectId}/rhythm-plan/audio-upload`
 
@@ -263,15 +296,17 @@ Base URL:
 - 字段名：`audio`
 - 支持 WAV / MP3 / M4A / AAC / OGG / MGG / FLAC / WMA
 - 非 WAV 格式需服务端安装 `ffmpeg`
-- 识别失败时不返回 400，而是写入 `rule_fallback` 节奏规划
+- **必须先** `bgm-selection` 选定推荐曲目
+- 识别成功：`bgmPhase` → `analyzed`，写入节拍点
+- 识别失败：返回 200，`analysisSource` 为 `rule_fallback`，`bgmPhase` 保持 `recommended`，节拍点清空
 
-## 4.5 移除已绑定音频
+## 4.6 移除已绑定音频
 
 `DELETE /projects/{projectId}/rhythm-plan/audio`
 
 - 删除本地存储的音频文件
-- 清空 `audioFileName` / `detectedBpm` / `audioDurationSec` / `rawBeatPoints`
-- 保留当前 beat points 与节奏说明，供继续手工编辑
+- 清空 `audioFileName` / `detectedBpm` / `audioDurationSec` / 节拍点
+- 若已有 BGM 推荐则 `bgmPhase` 回退为 `recommended`
 
 ## 5. 分镜
 
@@ -311,6 +346,7 @@ Base URL:
 说明：
 
 - 生成逻辑优先参考节拍点
+- **前置条件**：节奏页 `bgmPhase === "analyzed"` 且 `analysisSource === "audio_upload"`，否则返回 400
 - 分镜在当前实现中会覆盖该项目原有分镜
 - 当前“生成分镜”是整表重建，不是增量追加
 
@@ -526,7 +562,7 @@ LLM 业务接口（主题 / 分镜 / 导出 / 节奏文案）在 `ApiResponse.me
 |------|------|
 | 主题 LLM | `POST /projects/{id}/themes/generate-llm/stream` |
 | 分镜 LLM | `POST /projects/{id}/storyboard/generate-llm/stream` |
-| 节奏生成 | `POST /projects/{id}/rhythm-plan/generate/stream` |
+| 节奏 BGM 推荐 | `POST /projects/{id}/rhythm-plan/bgm-recommend/stream` |
 | 音频识别 | `POST /projects/{id}/rhythm-plan/audio-upload/stream` |
 | 导出建议 | `POST /projects/{id}/export-plan/suggest/stream` |
 

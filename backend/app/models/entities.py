@@ -97,6 +97,9 @@ class RhythmPlanEntity(SQLModel, table=True):
     rhythm_notes: str
     dark_cut_suggestions: str
     photo_motion_suggestions: str
+    recommended_bgm: str = "[]"
+    selected_bgm_id: str = ""
+    bgm_phase: str = "empty"
 
 
 class PublishPlanEntity(SQLModel, table=True):

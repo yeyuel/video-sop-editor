@@ -1,4 +1,5 @@
 import type { WorkspaceData } from "@/types/domain";
+import { isRhythmAnalyzed } from "@/lib/rhythm-workflow";
 
 export type WorkflowStepId =
   | "create"
@@ -61,7 +62,7 @@ export function getEnabledWorkflowSteps(workspace: WorkspaceData): WorkflowStepI
   if (workspace.themes.length > 0 && workspace.project.selectedThemeId) {
     enabled.push("rhythm");
   }
-  if (workspace.rhythmPlan.beatPoints.length > 0) {
+  if (isRhythmAnalyzed(workspace.rhythmPlan)) {
     enabled.push("storyboard");
   }
   if (workspace.storyboard.length > 0) {
@@ -83,7 +84,7 @@ export function getCompletedWorkflowSteps(workspace: WorkspaceData): WorkflowSte
   if (workspace.project.selectedThemeId) {
     completed.push("theme");
   }
-  if (workspace.rhythmPlan.beatPoints.length > 0) {
+  if (isRhythmAnalyzed(workspace.rhythmPlan)) {
     completed.push("rhythm");
   }
   if (workspace.storyboard.length > 0) {
