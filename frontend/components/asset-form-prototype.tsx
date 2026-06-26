@@ -3,8 +3,12 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { FormEvent } from "react";
-import { useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useState, useTransition } from "react";
+import { BlockingNotice, ToastNotice } from "@/components/async-status";
+import { TimeSecondsInput } from "@/components/time-seconds-input";
+import { InlineErrorBanner } from "@/components/ui-primitives";
 import { createAsset, updateAsset, type AssetPayload } from "@/lib/browser-api";
+import { parseTimeSeconds, validateTimeSeconds } from "@/lib/time-input";
 import type { Asset } from "@/types/domain";
 
 type AssetFormPrototypeProps = {
@@ -103,8 +107,10 @@ export function AssetFormPrototype({
   asset
 }: AssetFormPrototypeProps) {
   const router = useRouter();
+  const backHref = `/projects/${projectId}/assets`;
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState("");
+  const [notice, setNotice] = useState<{ message: string; title: string } | null>(null);
   const initialFunctionTags = getInitialFunctionTagState(asset?.functionTags ?? []);
   const [selectedFunctionTags, setSelectedFunctionTags] = useState<string[]>(
     initialFunctionTags.selected
@@ -131,6 +137,31 @@ export function AssetFormPrototype({
       .join(" / ");
   }, [selectedFunctionTags]);
 
+  useEffect(() => {
+    if (!notice) {
+      return;
+    }
+
+    const timer = window.setTimeout(() => setNotice(null), 2400);
+    return () => window.clearTimeout(timer);
+  }, [notice]);
+
+  useEffect(() => {
+    function handleKeyDown(event: globalThis.KeyboardEvent) {
+      if (event.key === "Escape" && !isPending) {
+        router.push(backHref);
+      }
+    }
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [backHref, isPending, router]);
+
+  function showError(message: string) {
+    setError(message);
+    setNotice({ title: "保存失败", message });
+  }
+
   function toggleFunctionTag(value: string) {
     setSelectedFunctionTags((current) =>
       current.includes(value)
@@ -145,11 +176,16 @@ export function AssetFormPrototype({
 
     startTransition(async () => {
       try {
-        const suggestedDurationSec = Number(form.suggestedDurationSec);
-        if (!form.suggestedDurationSec.trim() || Number.isNaN(suggestedDurationSec)) {
-          throw new Error("请填写有效的建议时长。");
+        const durationError = validateTimeSeconds(form.suggestedDurationSec, {
+          min: 0,
+          required: true
+        });
+        if (durationError) {
+          throw new Error(durationError);
         }
-        if (suggestedDurationSec <= 0) {
+
+        const suggestedDurationSec = parseTimeSeconds(form.suggestedDurationSec, { min: 0 });
+        if (suggestedDurationSec === null || suggestedDurationSec <= 0) {
           throw new Error("建议时长需要大于 0 秒。");
         }
 
@@ -172,10 +208,10 @@ export function AssetFormPrototype({
           await updateAsset(projectId, asset.assetId, payload);
         }
 
-        router.push(`/projects/${projectId}/assets`);
+        router.push(backHref);
         router.refresh();
       } catch (submitError) {
-        setError(
+        showError(
           submitError instanceof Error ? submitError.message : "保存素材失败，请稍后重试。"
         );
       }
@@ -183,6 +219,18 @@ export function AssetFormPrototype({
   }
 
   return (
+    <>
+      <BlockingNotice
+        visible={isPending}
+        title={mode === "create" ? "正在新增素材" : "正在保存素材"}
+        description="保存后会返回素材列表，请稍等片刻。"
+      />
+      <ToastNotice
+        visible={Boolean(notice)}
+        title={notice?.title ?? ""}
+        message={notice?.message ?? ""}
+        tone="error"
+      />
     <div className="rounded-xl2 border border-black/5 bg-white/90 p-6 shadow-card backdrop-blur">
       <div className="mb-6">
         <h2 className="text-2xl font-semibold text-ink">
@@ -269,23 +317,15 @@ export function AssetFormPrototype({
             ))}
           </select>
         </label>
-        <label className="block">
-          <span className="mb-2 block text-sm text-ink/75">建议时长（秒）</span>
-          <input
-            required
-            type="text"
-            inputMode="decimal"
-            value={form.suggestedDurationSec}
-            onChange={(event) => {
-              const nextValue = event.target.value;
-              if (nextValue === "" || /^\d*\.?\d*$/.test(nextValue)) {
-                setForm({ ...form, suggestedDurationSec: nextValue });
-              }
-            }}
-            placeholder="例如：1.5"
-            className="w-full rounded-2xl border border-pine/30 bg-white px-4 py-3 outline-none transition focus:border-pine"
-          />
-        </label>
+        <TimeSecondsInput
+          className="md:col-span-1"
+          label="建议时长（秒）"
+          value={form.suggestedDurationSec}
+          required
+          onValueChange={(nextValue) =>
+            setForm({ ...form, suggestedDurationSec: nextValue })
+          }
+        />
         <label className="block">
           <span className="mb-2 block text-sm text-ink/75">情绪标签</span>
           <input
@@ -343,7 +383,7 @@ export function AssetFormPrototype({
             推荐标签用于常见剪辑功能位，自定义内容会和已选标签一起提交。
           </p>
         </div>
-        {error ? <p className="text-sm text-red-600 md:col-span-2">{error}</p> : null}
+        <InlineErrorBanner className="md:col-span-2" message={error} />
         <div className="flex flex-wrap gap-3 md:col-span-2">
           <button
             type="submit"
@@ -353,13 +393,15 @@ export function AssetFormPrototype({
             {isPending ? "保存中..." : mode === "create" ? "保存素材" : "更新素材"}
           </button>
           <Link
-            href={`/projects/${projectId}/assets`}
+            href={backHref}
             className="inline-flex rounded-full border border-pine/20 bg-white px-5 py-3 text-sm font-medium text-pine transition hover:bg-mist"
           >
             返回素材列表
           </Link>
+          <span className="self-center text-xs text-ink/45">Esc 返回列表</span>
         </div>
       </form>
     </div>
+    </>
   );
 }

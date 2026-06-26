@@ -1,8 +1,18 @@
 #!/usr/bin/env node
 /**
- * Sprint 3 workflow 回归：验证 rhythm → storyboard 解锁逻辑。
+ * Sprint 3+ workflow 回归：验证 rhythm → storyboard 解锁逻辑（含 BGM analyzed 门禁）。
  * 运行：node scripts/verify-workflow.mjs
  */
+
+function isRhythmAnalyzed(plan) {
+  return (
+    plan.bgmPhase === "analyzed" &&
+    plan.analysisSource === "audio_upload" &&
+    plan.beatPoints.length > 0 &&
+    Boolean(plan.selectedBgmId) &&
+    Boolean(plan.audioFileName)
+  );
+}
 
 function getEnabledWorkflowSteps(workspace) {
   const enabled = ["create"];
@@ -11,7 +21,7 @@ function getEnabledWorkflowSteps(workspace) {
   if (workspace.themes.length > 0 && workspace.project.selectedThemeId) {
     enabled.push("rhythm");
   }
-  if (workspace.rhythmPlan.beatPoints.length > 0) enabled.push("storyboard");
+  if (isRhythmAnalyzed(workspace.rhythmPlan)) enabled.push("storyboard");
   if (workspace.storyboard.length > 0) enabled.push("export");
   return enabled;
 }
@@ -21,7 +31,7 @@ function getCompletedWorkflowSteps(workspace) {
   if (workspace.project.name) completed.push("create");
   if (workspace.assets.length > 0) completed.push("assets");
   if (workspace.project.selectedThemeId) completed.push("theme");
-  if (workspace.rhythmPlan.beatPoints.length > 0) completed.push("rhythm");
+  if (isRhythmAnalyzed(workspace.rhythmPlan)) completed.push("rhythm");
   if (workspace.storyboard.length > 0) completed.push("storyboard");
   if (workspace.exportPlan.title && workspace.exportPlan.description) {
     completed.push("export");
@@ -41,7 +51,7 @@ const emptyWorkspace = {
   project: { id: "p1", name: "demo", selectedThemeId: "" },
   assets: [],
   themes: [],
-  rhythmPlan: { beatPoints: [] },
+  rhythmPlan: { beatPoints: [], bgmPhase: "empty", analysisSource: "manual", selectedBgmId: "", audioFileName: "" },
   storyboard: [],
   exportPlan: { title: "", description: "" }
 };
@@ -73,14 +83,36 @@ assertEqual(
   "选定主题后解锁节奏"
 );
 
+const withBeatPointsOnly = {
+  ...withTheme,
+  rhythmPlan: {
+    beatPoints: [0, 1, 2],
+    bgmPhase: "recommended",
+    analysisSource: "manual",
+    selectedBgmId: "bgm_1",
+    audioFileName: ""
+  }
+};
+assertEqual(
+  getEnabledWorkflowSteps(withBeatPointsOnly),
+  ["create", "assets", "theme", "rhythm"],
+  "仅有节拍点但未完成 BGM 分析时不解锁分镜"
+);
+
 const withRhythm = {
   ...withTheme,
-  rhythmPlan: { beatPoints: [0, 1, 2] }
+  rhythmPlan: {
+    beatPoints: [0, 1, 2],
+    bgmPhase: "analyzed",
+    analysisSource: "audio_upload",
+    selectedBgmId: "bgm_1",
+    audioFileName: "track.mp3"
+  }
 };
 assertEqual(
   getEnabledWorkflowSteps(withRhythm),
   ["create", "assets", "theme", "rhythm", "storyboard"],
-  "有节拍点后解锁分镜"
+  "BGM 已分析且有节拍点后解锁分镜"
 );
 
 const withStoryboard = {
@@ -99,4 +131,4 @@ assertEqual(
   "完成态在分镜前停在节奏"
 );
 
-console.log("workflow regression: 5 checks passed");
+console.log("workflow regression: 7 checks passed");

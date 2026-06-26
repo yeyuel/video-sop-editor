@@ -78,6 +78,7 @@ export default async function ProjectStoryboardEditPage({
               assets={workspace.assets}
               projectId={projectId}
               segment={segment}
+              targetDurationSec={workspace.project.targetDurationSec}
               backHref={`/projects/${projectId}/storyboard`}
             />
           </SectionCard>

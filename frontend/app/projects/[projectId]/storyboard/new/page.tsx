@@ -116,6 +116,7 @@ export default async function ProjectStoryboardNewPage({
               assets={workspace.assets}
               projectId={projectId}
               segment={initialSegment}
+              targetDurationSec={workspace.project.targetDurationSec}
               themeId={workspace.project.selectedThemeId}
               afterSegmentId={referenceSegment?.id}
               backHref={`/projects/${projectId}/storyboard`}

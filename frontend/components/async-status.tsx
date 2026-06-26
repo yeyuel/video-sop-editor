@@ -11,7 +11,7 @@ type BlockingNoticeProps = {
 type ToastNoticeProps = {
   message: string;
   title: string;
-  tone?: "success" | "error";
+  tone?: "success" | "error" | "warning";
   visible: boolean;
 };
 
@@ -56,23 +56,32 @@ export function ToastNotice({
   }
 
   const isSuccess = tone === "success";
+  const isWarning = tone === "warning";
 
   return (
     <div className="pointer-events-none fixed right-6 top-6 z-50 w-full max-w-sm">
       <div
         className={clsx(
           "toast-enter rounded-[24px] border px-5 py-4 shadow-[0_24px_64px_rgba(25,34,41,0.14)] backdrop-blur-md",
-          isSuccess ? "border-pine/15 bg-white/92" : "border-clay/20 bg-white/94"
+          isSuccess
+            ? "border-pine/15 bg-white/92"
+            : isWarning
+              ? "border-sand/30 bg-white/94"
+              : "border-clay/20 bg-white/94"
         )}
       >
         <div className="flex items-start gap-3">
           <div
             className={clsx(
               "mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-lg font-semibold",
-              isSuccess ? "bg-mist text-pine" : "bg-[#fff1ea] text-clay"
+              isSuccess
+                ? "bg-mist text-pine"
+                : isWarning
+                  ? "bg-sand text-ink/75"
+                  : "bg-[#fff1ea] text-clay"
             )}
           >
-            {isSuccess ? "✓" : "!"}
+            {isSuccess ? "✓" : isWarning ? "!" : "!"}
           </div>
           <div className="min-w-0">
             <p className="text-base font-semibold text-ink">{title}</p>
@@ -82,13 +91,13 @@ export function ToastNotice({
         <div
           className={clsx(
             "mt-4 h-1.5 overflow-hidden rounded-full",
-            isSuccess ? "bg-mist" : "bg-[#f9dfd3]"
+            isSuccess ? "bg-mist" : isWarning ? "bg-sand/70" : "bg-[#f9dfd3]"
           )}
         >
           <div
             className={clsx(
               "toast-progress h-full rounded-full",
-              isSuccess ? "bg-pine" : "bg-clay"
+              isSuccess ? "bg-pine" : isWarning ? "bg-sand" : "bg-clay"
             )}
           />
         </div>

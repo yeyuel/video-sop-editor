@@ -6,6 +6,7 @@ import { useEffect, useMemo, useState, useTransition } from "react";
 
 import { BlockingNotice, ToastNotice } from "@/components/async-status";
 import { LlmProgressOverlay } from "@/components/llm-progress-overlay";
+import { ConfirmDialog, EmptyState, InlineErrorBanner } from "@/components/ui-primitives";
 import {
   deleteStoryboardSegment,
   generateStoryboard,
@@ -49,8 +50,9 @@ export function StoryboardListClient({
   const [notice, setNotice] = useState<{
     message: string;
     title: string;
-    tone?: "error" | "success";
+    tone?: "error" | "success" | "warning";
   } | null>(null);
+  const [deleteSegmentId, setDeleteSegmentId] = useState("");
   const [isPending, startTransition] = useTransition();
   const [llmProgress, setLlmProgress] = useState<LlmProgressViewState | null>(null);
 
@@ -231,16 +233,21 @@ export function StoryboardListClient({
   }
 
   function handleDelete(segmentId: string) {
-    const confirmed = window.confirm("删除后这个镜头会从当前时间线中移除，确认继续吗？");
-    if (!confirmed) {
+    setError("");
+    setDeleteSegmentId(segmentId);
+  }
+
+  function confirmDelete() {
+    if (!deleteSegmentId) {
       return;
     }
 
     setError("");
     startTransition(async () => {
       try {
-        const nextBundle = await deleteStoryboardSegment(projectId, segmentId);
+        const nextBundle = await deleteStoryboardSegment(projectId, deleteSegmentId);
         setBundle(nextBundle);
+        setDeleteSegmentId("");
         router.refresh();
         setNotice({
           title: "镜头已删除",
@@ -354,11 +361,7 @@ export function StoryboardListClient({
           </div>
         </div>
 
-        {error ? (
-          <div className="rounded-2xl border border-clay/15 bg-[#fff5ef] px-4 py-3 text-sm text-clay">
-            {error}
-          </div>
-        ) : null}
+        {error ? <InlineErrorBanner message={error} /> : null}
 
         {bundle.validation.message ? (
           <div className="rounded-2xl border border-pine/10 bg-sand/45 px-4 py-3 text-sm text-ink/70">
@@ -378,9 +381,7 @@ export function StoryboardListClient({
         </div>
 
         {bundle.segments.length === 0 ? (
-          <div className="rounded-2xl border border-dashed border-pine/20 bg-white px-4 py-8 text-center text-sm text-ink/60">
-            还没有分镜时间线。请先确认主题和节奏规划，再生成当前项目的分镜。
-          </div>
+          <EmptyState message="还没有分镜时间线。请先确认主题和节奏规划，再生成当前项目的分镜。" />
         ) : (
           <div className="space-y-4">
             {bundle.segments.map((segment, index) => {
@@ -392,7 +393,13 @@ export function StoryboardListClient({
               return (
                 <article
                   key={segment.id}
-                  className="rounded-[30px] border border-black/5 bg-white/90 p-5 shadow-card transition hover:-translate-y-0.5 hover:shadow-[0_24px_56px_rgba(25,34,41,0.1)]"
+                  tabIndex={0}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") {
+                      router.push(`/projects/${projectId}/storyboard/${segment.id}/edit`);
+                    }
+                  }}
+                  className="rounded-[30px] border border-black/5 bg-white/90 p-5 shadow-card transition hover:-translate-y-0.5 hover:shadow-[0_24px_56px_rgba(25,34,41,0.1)] focus:outline-none focus:ring-2 focus:ring-pine/20"
                 >
                   <div className="flex flex-wrap items-start justify-between gap-4">
                     <div className="flex min-w-0 items-start gap-4">
@@ -483,6 +490,22 @@ export function StoryboardListClient({
           </div>
         )}
       </div>
+
+      <ConfirmDialog
+        open={Boolean(deleteSegmentId)}
+        subtitle="Delete Segment"
+        title="确认删除镜头？"
+        description="删除后这个镜头会从当前时间线中移除，确认继续吗？"
+        confirmLabel="确认删除"
+        confirmTone="danger"
+        error={error}
+        isPending={isPending}
+        onConfirm={confirmDelete}
+        onCancel={() => {
+          setDeleteSegmentId("");
+          setError("");
+        }}
+      />
     </>
   );
 }

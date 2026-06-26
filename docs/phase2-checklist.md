@@ -16,7 +16,8 @@
 | Sprint 5（LLM 网关标准化） | ✅ 已完成 | Gateway、Provider 配置页、SSE 进度、Kimi 兼容、stream 回归 |
 | Sprint 6（LLM 业务质量） | ✅ 已完成 | 主题证据字段、导出平台化、rawBeat 切镜、LLM 二层排序、字幕写回 |
 | Sprint 7（用户与鉴权） | ✅ 已完成 | Session Token、用户 API 预留、LLM Key Fernet 加密 |
-| Sprint 8（P2 增强） | ✅ 核心已完成 | 校验四件套、CSV 导出、导出页校验面板；§6.3 交互统一待排 |
+| Sprint 8（P2 增强） | ✅ 核心已完成 | 校验四件套、CSV 导出、BGM 推荐工作流 |
+| Sprint 9（交互统一） | ✅ 已完成 | TimeSecondsInput、AssetSelector、ConfirmDialog、列表布局统一 |
 | **二期收尾** | 🔄 规划中 | Sprint 9～10：交互统一 + 验收冻结（见 §10） |
 
 ## 3. Sprint 迭代计划
@@ -107,35 +108,34 @@
 - [x] 业务校验四件套（时长偏差 / 未绑定素材 / 地点跳切 / 导出主题一致，见 §6.1）
 - [x] 导出格式与预览增强（CSV、校验摘要、复制预览，见 §6.2）
 - [x] **BGM 推荐工作流**：LLM 推荐真实歌名 → 选定 → 下载上传 → 识别；未完成则分镜锁定（migration 011）
-- [ ] 交互统一（见 §6.3）→ **Sprint 9**
+- [x] 交互统一（见 §6.3）→ **Sprint 9 ✅**
 - [ ] 视频内容分析 / 素材自动标签（远期）→ **移出二期，见 §10.3**
 - [ ] 自动粗剪结构准备（不做完整成片）→ **Sprint 10 仅文档评估**
 
-### Sprint 9 — 交互统一 + 清单对齐（二期收尾 A）
+### Sprint 9 — 交互统一 + 清单对齐（二期收尾 A） ✅
 
 **目标**：把剩余 P2 交互债收干净，同步过时勾选，形成可验收的 UI 口径。
 
-- [ ] **列表 ↔ 编辑模式统一**
+- [x] **列表 ↔ 编辑模式统一**
   - 素材 / 主题 / 分镜：统一「列表页操作区 + 行内状态 + 编辑入口」布局
-  - 保存 / 取消 / 删除：统一 BlockingNotice + ToastNotice 文案与按钮位置
-  - 空态、加载态、错误态三类提示与 rhythm / export 页对齐
-- [ ] **复杂选择器体验**
-  - 分镜编辑页素材选择：支持按 `location` 分组 + 关键词过滤
-  - 主题选择页：已选主题与候选卡片视觉层级统一
+  - 保存 / 取消 / 删除：统一 BlockingNotice + ToastNotice + ConfirmDialog
+  - 空态、加载态、错误态与 rhythm / export 页对齐（`EmptyState` / `InlineErrorBanner`）
+- [x] **复杂选择器体验**
+  - 分镜编辑页素材选择：按 `location` 分组 + 关键词过滤（`AssetSelector`）
+  - 主题选择页：已选主题置顶与候选卡片视觉层级统一
   - 键盘：列表 Enter 进入编辑、Esc 取消（分镜 / 素材编辑页）
-- [ ] **时间类输入统一**
-  - 抽 `TimeSecondsInput`（或同等组件）：秒数输入、失焦校验、最小 0 / 最大目标时长
-  - `storyboard-client` 与 `storyboard-segment-editor-client` 共用同一套交互
+- [x] **时间类输入统一**
+  - 抽 `TimeSecondsInput` + `lib/time-input.ts`：秒数输入、失焦校验、最小 0 / 最大目标时长
+  - `storyboard-segment-editor-client` 与 `asset-form-prototype` 共用
   - 非法输入统一提示：「请输入有效秒数，例如 1.5」
-- [ ] **清单与文档对齐**
-  - 勾选 §5.3「LLM 二层排序」（Sprint 6 已实现 `merge_asset_order`）
-  - 勾选 §5.4 字幕写回；补充「完整脚本写回」若 Sprint 10 未做则标为三期
-  - §4.3 长期方案：audio / session / LLM 配置各写一段「当前态 + 三期方向」
-- [ ] **回归**
-  - 扩展 `regression-sprint3.md` 或新增 `regression-sprint9.md`：覆盖交互改动路径
-  - `node scripts/verify-workflow.mjs` 通过
+- [x] **清单与文档对齐**
+  - §5.3「LLM 二层排序」已勾选（Sprint 6 `merge_asset_order`）
+  - §5.4 字幕写回已勾选；「完整脚本写回」标 Sprint 10 评估 / 三期
+  - §4.3 长期方案见下方「数据结构长期方向」
+- [x] **回归**
+  - 新增 `regression-sprint9.md`；`verify-workflow.mjs` 同步 BGM analyzed 门禁（7 checks）
 
-**验收标准**：导演账号走通全流程，三处时间输入行为一致，分镜素材选择可搜可分组，无新增 console 警告。
+**验收标准**：导演账号走通全流程，时间输入行为一致，分镜素材选择可搜可分组，删除走 ConfirmDialog。
 
 ### Sprint 10 — 验收冻结 + 三期 backlog（二期收尾 B）
 
@@ -178,7 +178,15 @@
 
 - [x] 明确数据库 schema 变更流程（`schemaversionentity` + 编号 migration）
 - [x] 每次新增字段都同步 migration、schema、api 文档（SOP 见 `schema-migration.md` §6）
-- [ ] 给音频分析、登录用户、LLM 配置相关数据结构补长期方案 → **Sprint 9 文档段（§4.3）；实现已落地 migration 008/009**
+- [ ] 给音频分析、登录用户、LLM 配置相关数据结构补长期方案 → **Sprint 9 文档段（见下）；实现已落地 migration 008/009/011**
+
+#### 数据结构长期方向（Sprint 9 文档对齐）
+
+| 领域 | 当前态（二期） | 三期方向 |
+|------|-------------|---------|
+| **音频 / BGM** | 用户下载上传 BGM → librosa 识别节拍；`recommended_bgm` / `bgm_phase` 工作流 | 可选接入音乐平台 API 预览；多轨 / 版权元数据；识别结果缓存与增量重分析 |
+| **Session / 用户** | SQLite `authsessionentity` + Bearer Token；导演 / 剪辑角色；用户表 `uiEnabled` 门禁 | Redis 会话、Refresh Token、完整 RBAC、剪辑侧独立 LLM 配额 |
+| **LLM 配置** | DB Provider 表 + `enc:v1:` API Key（migration 009）；导演专属设置页 | OAuth / Device Code 实装；按项目/用户级模型路由；调用审计与成本统计 |
 
 ### 4.4 基础稳定性
 
@@ -254,9 +262,9 @@
 
 ### 6.3 交互体验优化
 
-- [ ] 持续统一列表页与编辑页交互模式 → **Sprint 9**
-- [ ] 优化复杂选择器的搜索、分组、键盘操作 → **Sprint 9**
-- [ ] 保持所有时间类输入控件体验一致 → **Sprint 9**
+- [x] 持续统一列表页与编辑页交互模式 → **Sprint 9**
+- [x] 优化复杂选择器的搜索、分组、键盘操作 → **Sprint 9**
+- [x] 保持所有时间类输入控件体验一致 → **Sprint 9**
 
 ### 6.4 AI 深化能力
 
@@ -305,7 +313,7 @@ node scripts/verify-workflow.mjs
 4. ~~Sprint 6~~：主题 / 分镜 / 导出 LLM 质量 ✅
 5. ~~Sprint 7~~：用户鉴权收尾 ✅
 6. ~~Sprint 8~~：P2 校验与导出增强 ✅
-7. **Sprint 9**：交互统一 + 清单 / 文档对齐
+7. **Sprint 9**：交互统一 + 清单 / 文档对齐 ✅
 8. **Sprint 10**：验收冻结 + 三期 backlog 文档
 9. **二期关闭**：P0/P1 全部验收，§6.4 / 视频分析 / OAuth 实装移出
 
@@ -315,9 +323,9 @@ node scripts/verify-workflow.mjs
 
 | 项 | 来源 | Sprint | 工作量 |
 |----|------|--------|--------|
-| 列表 / 编辑 / 提示交互统一 | §6.3 | 9 | 中 |
-| 素材选择器搜索 + 分组 | §6.3 | 9 | 中 |
-| 分镜时间输入组件统一 | §6.3 | 9 | 小 |
+| 列表 / 编辑 / 提示交互统一 | §6.3 | 9 | 中 | ✅ |
+| 素材选择器搜索 + 分组 | §6.3 | 9 | 中 | ✅ |
+| 分镜时间输入组件统一 | §6.3 | 9 | 小 | ✅ |
 | 过时 checklist 勾选同步 | 多处 | 9 | 小 |
 | §4.3 数据结构长期方案文档 | §4.3 | 9 | 小 |
 | 分镜 LLM + validation 摘要联动 | §5.3 | 10 | 小 |

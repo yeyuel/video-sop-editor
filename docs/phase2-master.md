@@ -9,8 +9,8 @@
 截至 2026-06-25：
 
 - 一期主工作流已经可以完整跑通
-- **Sprint 1～8 已完成**（音频节拍、LLM 网关、业务质量、鉴权、校验与导出增强）
-- **剩余工作**：Sprint 9～10 收尾（交互统一 + 验收冻结），预计 **2 个 Sprint 内关闭二期**
+- **Sprint 1～9 已完成**（含 BGM 推荐工作流、交互统一）
+- **剩余工作**：Sprint 10 验收冻结 + 三期 backlog 文档
 - 执行清单见 `phase2-checklist.md` §3 Sprint 9/10、§10 未完成项汇总
 
 ## 3. 一期基线能力
@@ -68,17 +68,16 @@
 
 ## 7. 当前优先级
 
-### 已完成（Sprint 1～8）
+### 已完成（Sprint 1～9）
 
 - P0 工程收口、migration 规范、回归清单
-- P1 音频节拍、LLM 全链路、鉴权、Key 加密
-- P2 业务校验四件套、CSV 导出、路线可选 + 地点校验开关
+- P1 音频节拍、LLM 全链路、鉴权、Key 加密、BGM 推荐工作流
+- P2 业务校验四件套、CSV 导出、交互统一（TimeSecondsInput / AssetSelector / ConfirmDialog）
 
-### 收尾中（Sprint 9～10）
+### 收尾中（Sprint 10）
 
 | Sprint | 主题 | 交付 |
 |--------|------|------|
-| **9** | 交互统一 | 列表/编辑/提示一致；素材选择器；时间输入组件；清单勾选同步 |
 | **10** | 验收冻结 | 分镜 LLM polish；导出写回评估；`phase3-backlog.md`；二期 closed |
 
 ## 8. 已提前完成的二期起步项
@@ -105,15 +104,14 @@
 
 ## 10. 建议执行顺序
 
-1. ~~Sprint 4～8~~ ✅
-2. **Sprint 9**：交互统一 + 文档 / checklist 对齐
-3. **Sprint 10**：验收回归 + 三期 backlog 文档 + 声明二期关闭
+1. ~~Sprint 4～9~~ ✅
+2. **Sprint 10**：验收回归 + 三期 backlog 文档 + 声明二期关闭
 
 ## 11. 二期关闭标准
 
 满足以下全部条件即可在 Sprint 10 结束二期：
 
-1. `phase2-checklist.md` §6.3 三项完成
+1. `phase2-checklist.md` §6.3 三项完成 ✅
 2. §10.1 表格内任务全部勾选
 3. `pytest` 全绿 + `verify-workflow.mjs` 通过
 4. §10.3 能力已写入三期 backlog，代码库无 scope creep
