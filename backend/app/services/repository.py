@@ -26,6 +26,9 @@ from app.models.schemas import (
     BgmRecommendationRead,
     BgmSelectionRequest,
     ExportDocumentRead,
+    ExportCsvImportRequest,
+    ExportJsonImportRequest,
+    ExportImportResultRead,
     ExportPlanRead,
     ExportPlanWriteRequest,
     NarrativeThemeRead,
@@ -57,6 +60,14 @@ from app.services.export_generation import (
     build_rule_export_fallback,
     merge_storyboard_subtitle_updates,
     render_export_content,
+)
+from app.services.export_import import (
+    apply_storyboard_import_plan,
+    build_storyboard_import_plan,
+    finalize_import_result,
+    parse_export_csv_document,
+    parse_export_json_document,
+    segments_from_export_json,
 )
 from app.services.export_validation import build_export_validation
 from app.services.rhythm_generation import (
@@ -1134,6 +1145,99 @@ class SqlRepository:
             fileName=f"{project_id}-timeline.{extension}",
             content=content,
         )
+
+    def import_export_json(
+        self,
+        session: Session,
+        project_id: str,
+        payload: ExportJsonImportRequest,
+    ) -> ExportImportResultRead | None:
+        project = self.get_project_entity(session, project_id)
+        if not project:
+            return None
+
+        document, parse_errors = parse_export_json_document(payload.content)
+        if parse_errors and not document.get("storyboard"):
+            return ExportImportResultRead(
+                schemaVersion="1.0",
+                dryRun=payload.dryRun,
+                applied=False,
+                fields=payload.fields or ["subtitle"],
+                conflictStrategy=payload.conflictStrategy,
+                changes=[],
+                updateCount=0,
+                skippedCount=0,
+                unchangedCount=0,
+                errors=parse_errors,
+            )
+
+        incoming_segments, segment_errors = segments_from_export_json(document)
+        return self._apply_storyboard_import(
+            session,
+            project,
+            incoming_segments=incoming_segments,
+            fields=payload.fields,
+            conflict_strategy=self._normalize_conflict_strategy(payload.conflictStrategy),
+            dry_run=payload.dryRun,
+            extra_errors=[*parse_errors, *segment_errors],
+        )
+
+    def import_export_csv(
+        self,
+        session: Session,
+        project_id: str,
+        payload: ExportCsvImportRequest,
+    ) -> ExportImportResultRead | None:
+        project = self.get_project_entity(session, project_id)
+        if not project:
+            return None
+
+        incoming_segments, parse_errors = parse_export_csv_document(
+            payload.content,
+            column_map=payload.columnMap,
+        )
+        return self._apply_storyboard_import(
+            session,
+            project,
+            incoming_segments=incoming_segments,
+            fields=payload.fields,
+            conflict_strategy=self._normalize_conflict_strategy(payload.conflictStrategy),
+            dry_run=payload.dryRun,
+            extra_errors=parse_errors,
+        )
+
+    def _apply_storyboard_import(
+        self,
+        session: Session,
+        project: ProjectEntity,
+        *,
+        incoming_segments,
+        fields: list[str],
+        conflict_strategy: str,
+        dry_run: bool,
+        extra_errors: list[str],
+    ) -> ExportImportResultRead:
+        storyboard_bundle = self.get_storyboard_bundle(session, project.id)
+        plan = build_storyboard_import_plan(
+            current_segments=storyboard_bundle.segments,
+            incoming_segments=incoming_segments,
+            fields=fields,
+            conflict_strategy=conflict_strategy,  # type: ignore[arg-type]
+        )
+        plan = finalize_import_result(plan, dry_run=dry_run, applied=False, errors=extra_errors)
+
+        if dry_run or plan.updateCount == 0:
+            return plan
+
+        merged_segments = apply_storyboard_import_plan(storyboard_bundle.segments, plan)
+        theme_id = project.selected_theme_id
+        self._replace_storyboard_segments(session, project.id, theme_id, merged_segments)
+        return finalize_import_result(plan, dry_run=False, applied=True)
+
+    @staticmethod
+    def _normalize_conflict_strategy(value: str) -> str:
+        normalized = value.strip().lower()
+        return normalized if normalized in {"overwrite", "skip"} else "overwrite"
 
     def get_workspace(self, session: Session, project_id: str) -> WorkspaceDataRead | None:
         project = self.get_project(session, project_id)

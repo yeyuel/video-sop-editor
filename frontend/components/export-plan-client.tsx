@@ -1,14 +1,17 @@
 "use client";
 
-import type { FormEvent } from "react";
+import type { ChangeEvent, FormEvent } from "react";
 import { useEffect, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { BlockingNotice, ToastNotice } from "@/components/async-status";
 import { LlmProgressOverlay } from "@/components/llm-progress-overlay";
 import {
+  importExportCsv,
+  importExportJson,
   previewExport,
   saveExportPlan,
-  suggestExportPlanWithLlm
+  suggestExportPlanWithLlm,
+  type ExportImportResult
 } from "@/lib/browser-api";
 import { describeLlmStatus, llmNoticeTone } from "@/lib/llm-status";
 import { EXPORT_LLM_STAGES } from "@/lib/llm-progress-stages";
@@ -21,6 +24,8 @@ import type {
 } from "@/types/domain";
 
 type ExportFormat = "markdown" | "json" | "yaml" | "csv";
+type ImportFormat = "json" | "csv";
+type ConflictStrategy = "overwrite" | "skip";
 
 type ExportPlanClientProps = {
   projectId: string;
@@ -62,6 +67,12 @@ export function ExportPlanClient({
   } | null>(null);
   const [isPending, startTransition] = useTransition();
   const { llmProgress, isLlmRunning, start, onProgress, finish } = useLlmProgress();
+  const [importFormat, setImportFormat] = useState<ImportFormat>("json");
+  const [importContent, setImportContent] = useState("");
+  const [importFileName, setImportFileName] = useState("");
+  const [conflictStrategy, setConflictStrategy] = useState<ConflictStrategy>("overwrite");
+  const [importFields, setImportFields] = useState({ subtitle: true, function: false });
+  const [importPreview, setImportPreview] = useState<ExportImportResult | null>(null);
 
   const validationItems = useMemo(
     () => [
@@ -231,6 +242,75 @@ export function ExportPlanClient({
     } catch {
       showError("复制失败，请手动选择预览内容。");
     }
+  }
+
+  function selectedImportFields() {
+    const fields: string[] = [];
+    if (importFields.subtitle) {
+      fields.push("subtitle");
+    }
+    if (importFields.function) {
+      fields.push("function");
+    }
+    return fields.length > 0 ? fields : ["subtitle"];
+  }
+
+  function handleImportFileChange(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    if (!file) {
+      return;
+    }
+
+    const lowerName = file.name.toLowerCase();
+    const nextFormat: ImportFormat = lowerName.endsWith(".csv") ? "csv" : "json";
+    setImportFormat(nextFormat);
+    setImportFileName(file.name);
+    setImportPreview(null);
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      setImportContent(typeof reader.result === "string" ? reader.result : "");
+    };
+    reader.readAsText(file, "utf-8");
+    event.target.value = "";
+  }
+
+  function runImport(dryRun: boolean) {
+    if (!importContent.trim()) {
+      showError("请先上传或粘贴导出 JSON / CSV 内容。");
+      return;
+    }
+
+    setError("");
+    startTransition(async () => {
+      try {
+        const payload = {
+          content: importContent,
+          dryRun,
+          conflictStrategy,
+          fields: selectedImportFields()
+        };
+        const result =
+          importFormat === "csv"
+            ? await importExportCsv(projectId, payload)
+            : await importExportJson(projectId, payload);
+        setImportPreview(result);
+        if (result.applied) {
+          router.refresh();
+          setNotice({
+            title: "导入已应用",
+            message: `已写回 ${result.updateCount} 处字段变更。`
+          });
+        } else {
+          setNotice({
+            title: dryRun ? "导入预览完成" : "无需写入",
+            message: `将更新 ${result.updateCount} 处，跳过 ${result.skippedCount} 处，未变化 ${result.unchangedCount} 处。`
+          });
+        }
+      } catch (submitError) {
+        showError(submitError instanceof Error ? submitError.message : "导入处理失败，请稍后重试。");
+      }
+    });
   }
 
   return (
@@ -430,6 +510,192 @@ export function ExportPlanClient({
           placeholder="先保存并生成一个导出预览。"
           className="mt-4 min-h-[320px] w-full rounded-2xl border border-pine/20 bg-sand/30 px-4 py-3 font-mono text-sm outline-none"
         />
+      </div>
+
+      <div className="rounded-xl2 border border-black/5 bg-white/90 p-5 shadow-card">
+        <div className="flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
+          <div>
+            <p className="text-xs uppercase tracking-[0.22em] text-pine/70">Round-trip Import</p>
+            <h3 className="mt-2 text-lg font-semibold text-ink">反向导入分镜</h3>
+            <p className="mt-1 text-sm text-ink/65">
+              上传导出的 JSON 或 CSV，预览 diff 后将字幕 / 功能标签写回分镜。dry-run 不会修改数据库。
+            </p>
+          </div>
+          {importFileName ? (
+            <span className="rounded-full bg-mist px-3 py-1 text-xs text-pine">{importFileName}</span>
+          ) : null}
+        </div>
+
+        <div className="mt-5 grid gap-4 lg:grid-cols-2">
+          <label className="block">
+            <span className="mb-2 block text-sm text-ink/75">导入文件</span>
+            <input
+              type="file"
+              accept=".json,.csv,application/json,text/csv"
+              onChange={handleImportFileChange}
+              className="block w-full text-sm text-ink/70 file:mr-4 file:rounded-full file:border-0 file:bg-pine file:px-4 file:py-2 file:text-sm file:font-medium file:text-white hover:file:bg-pine/90"
+            />
+          </label>
+          <label className="block">
+            <span className="mb-2 block text-sm text-ink/75">格式</span>
+            <select
+              value={importFormat}
+              onChange={(event) => {
+                setImportFormat(event.target.value as ImportFormat);
+                setImportPreview(null);
+              }}
+              className="w-full rounded-2xl border border-pine/20 bg-white px-4 py-3 text-base text-ink outline-none transition focus:border-pine"
+            >
+              <option value="json">导出 JSON（schemaVersion 1.0）</option>
+              <option value="csv">导出 CSV（分镜表）</option>
+            </select>
+          </label>
+        </div>
+
+        <div className="mt-4 grid gap-4 lg:grid-cols-2">
+          <fieldset className="rounded-2xl border border-pine/10 bg-sand/30 px-4 py-3">
+            <legend className="px-1 text-sm text-ink/75">冲突策略</legend>
+            <div className="mt-2 space-y-2 text-sm text-ink/70">
+              <label className="flex items-center gap-2">
+                <input
+                  type="radio"
+                  name="conflictStrategy"
+                  checked={conflictStrategy === "overwrite"}
+                  onChange={() => setConflictStrategy("overwrite")}
+                />
+                覆盖：incoming 值直接写回
+              </label>
+              <label className="flex items-center gap-2">
+                <input
+                  type="radio"
+                  name="conflictStrategy"
+                  checked={conflictStrategy === "skip"}
+                  onChange={() => setConflictStrategy("skip")}
+                />
+                跳过：当前字段非空且不同则跳过
+              </label>
+            </div>
+          </fieldset>
+          <fieldset className="rounded-2xl border border-pine/10 bg-sand/30 px-4 py-3">
+            <legend className="px-1 text-sm text-ink/75">写回字段</legend>
+            <div className="mt-2 space-y-2 text-sm text-ink/70">
+              <label className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={importFields.subtitle}
+                  onChange={(event) =>
+                    setImportFields((current) => ({ ...current, subtitle: event.target.checked }))
+                  }
+                />
+                字幕 subtitle（P0）
+              </label>
+              <label className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={importFields.function}
+                  onChange={(event) =>
+                    setImportFields((current) => ({ ...current, function: event.target.checked }))
+                  }
+                />
+                功能标签 function（P1）
+              </label>
+            </div>
+          </fieldset>
+        </div>
+
+        <label className="mt-4 block">
+          <span className="mb-2 block text-sm text-ink/75">文件内容预览</span>
+          <textarea
+            value={importContent}
+            onChange={(event) => {
+              setImportContent(event.target.value);
+              setImportPreview(null);
+            }}
+            placeholder="上传 JSON / CSV，或直接粘贴导出内容。"
+            className="min-h-[160px] w-full rounded-2xl border border-pine/20 bg-sand/30 px-4 py-3 font-mono text-xs outline-none transition focus:border-pine"
+          />
+        </label>
+
+        <div className="mt-4 flex flex-wrap gap-3">
+          <button
+            type="button"
+            onClick={() => runImport(true)}
+            disabled={isPending || isLlmRunning || !importContent.trim()}
+            className="inline-flex rounded-full border border-pine/20 bg-white px-5 py-3 text-sm font-medium text-pine transition hover:bg-mist disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {isPending ? "处理中..." : "预览 diff（dry-run）"}
+          </button>
+          <button
+            type="button"
+            onClick={() => runImport(false)}
+            disabled={isPending || isLlmRunning || !importContent.trim()}
+            className="inline-flex rounded-full bg-pine px-5 py-3 text-sm font-medium text-white transition hover:bg-pine/90 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {isPending ? "处理中..." : "应用导入"}
+          </button>
+        </div>
+
+        {importPreview ? (
+          <div className="mt-5 overflow-x-auto rounded-2xl border border-pine/10">
+            <div className="border-b border-pine/10 bg-sand/40 px-4 py-3 text-sm text-ink/70">
+              {importPreview.applied ? "已应用" : importPreview.dryRun ? "预览结果" : "处理结果"} ·
+              更新 {importPreview.updateCount} · 跳过 {importPreview.skippedCount} · 未变化{" "}
+              {importPreview.unchangedCount}
+            </div>
+            {importPreview.errors.length > 0 ? (
+              <ul className="space-y-1 px-4 py-3 text-sm text-amber-800">
+                {importPreview.errors.map((item) => (
+                  <li key={item}>{item}</li>
+                ))}
+              </ul>
+            ) : null}
+            {importPreview.changes.length === 0 ? (
+              <p className="px-4 py-6 text-sm text-ink/55">没有可展示的字段差异。</p>
+            ) : (
+              <table className="min-w-full text-left text-sm">
+                <thead>
+                  <tr className="border-b border-pine/10 text-xs uppercase tracking-wide text-ink/55">
+                    <th className="px-4 py-3 font-medium">镜头</th>
+                    <th className="px-4 py-3 font-medium">字段</th>
+                    <th className="px-4 py-3 font-medium">当前值</th>
+                    <th className="px-4 py-3 font-medium">导入值</th>
+                    <th className="px-4 py-3 font-medium">动作</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-pine/8">
+                  {importPreview.changes
+                    .filter((item) => item.action !== "unchanged")
+                    .map((item) => (
+                      <tr key={`${item.segmentId}-${item.field}-${item.incomingValue}`}>
+                        <td className="px-4 py-3 font-medium text-ink">{item.segmentId}</td>
+                        <td className="px-4 py-3 text-ink/70">{item.field}</td>
+                        <td className="max-w-xs truncate px-4 py-3 text-ink/65">{item.currentValue || "—"}</td>
+                        <td className="max-w-xs truncate px-4 py-3 text-ink/65">{item.incomingValue}</td>
+                        <td className="px-4 py-3">
+                          <span
+                            className={[
+                              "inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium",
+                              item.action === "update"
+                                ? "bg-mist text-pine"
+                                : item.action === "skip"
+                                  ? "bg-amber-50 text-amber-900"
+                                  : "bg-sand text-ink/60"
+                            ].join(" ")}
+                          >
+                            {item.action === "update"
+                              ? "将更新"
+                              : item.action === "skip"
+                                ? "跳过"
+                                : "未变化"}
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+        ) : null}
       </div>
     </div>
   );

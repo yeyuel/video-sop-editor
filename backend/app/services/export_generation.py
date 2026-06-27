@@ -1,12 +1,15 @@
 from __future__ import annotations
 
 import json
+from datetime import datetime, timezone
 
 from app.models.entities import ProjectEntity
 from app.models.schemas import AssetRead, ExportPlanRead, NarrativeThemeRead, StoryboardSegmentRead, StoryboardSegmentWrite, WorkspaceDataRead
 from app.services.llm import LlmCallResult, build_llm_meta, llm_suggestion_service
 from app.services.llm.progress import ProgressReporter, emit_progress
 from app.services.storyboard_generation import segment_read_to_write
+
+EXPORT_JSON_SCHEMA_VERSION = "1.0"
 
 PLATFORM_EXPORT_GUIDES: dict[str, dict[str, str]] = {
     "xiaohongshu": {
@@ -207,6 +210,9 @@ def build_rule_export_fallback(
 
 def render_export_content(workspace: WorkspaceDataRead, fmt: str) -> str:
     export_payload = {
+        "schemaVersion": EXPORT_JSON_SCHEMA_VERSION,
+        "exportedAt": datetime.now(timezone.utc).isoformat(),
+        "projectId": workspace.project.id,
         "project": workspace.project.model_dump(),
         "selectedTheme": next(
             (theme.model_dump() for theme in workspace.themes if theme.isSelected),

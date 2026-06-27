@@ -19,7 +19,7 @@
 | 二期 | ✅ 已关闭 | Sprint 1～10 |
 | Sprint 11（工程基线） | ✅ 已完成 | E2E、lifespan、节拍网格对齐 |
 | Sprint 12（剪辑 + RBAC） | ✅ 已完成 | **决策 1** |
-| Sprint 13（导出反向导入） | ⬜ 未开始 | JSON / CSV round-trip |
+| Sprint 13（导出反向导入） | ✅ 已完成 | JSON / CSV round-trip |
 | Sprint 14（LLM Vision） | ⬜ 未开始 | **决策 2** |
 | Sprint 15（全局分镜 + 复用） | ⬜ 未开始 | **决策 3** |
 | Sprint 16（OAuth） | ⬜ 未开始 | **决策 4** |
@@ -77,20 +77,20 @@
 
 **JSON 导入（P0）**
 
-- [ ] 定义 export JSON schema version 字段
-- [ ] `POST /projects/{id}/import/export-json` dry-run + apply
-- [ ] 冲突策略 UI：覆盖 subtitle / 跳过 / 预览 diff
-- [ ] 写回范围：subtitle（P0）；function / tags（P1）
+- [x] 定义 export JSON schema version 字段
+- [x] `POST /projects/{id}/import/export-json` dry-run + apply
+- [x] 冲突策略 UI：覆盖 subtitle / 跳过 / 预览 diff
+- [x] 写回范围：subtitle（P0）；function / tags（P1）
 
 **CSV 导入（P1）**
 
-- [ ] 列映射向导（segmentId / start / end / subtitle / assetId）
-- [ ] 导入前 validation 预览
+- [x] 列映射向导（segmentId / start / end / subtitle / assetId）
+- [x] 导入前 validation 预览
 
 **测试**
 
-- [ ] 导出 JSON → 修改 → 导入 → 分镜字段一致
-- [ ] `test_regression_sprint13.py`
+- [x] 导出 JSON → 修改 → 导入 → 分镜字段一致
+- [x] `test_regression_sprint13.py`
 
 **验收：** round-trip 无数据丢失；dry-run 不修改 DB。
 

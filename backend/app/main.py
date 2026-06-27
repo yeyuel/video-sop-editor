@@ -8,6 +8,7 @@ from app.api.routes.auth import router as auth_router
 from app.api.routes.assets import router as assets_router
 from app.api.routes.exports import router as exports_router
 from app.api.routes.health import router as health_router
+from app.api.routes.imports import router as imports_router
 from app.api.routes.projects import router as projects_router
 from app.api.routes.publish import router as publish_router
 from app.api.routes.rhythm import router as rhythm_router
@@ -52,3 +53,4 @@ app.include_router(storyboard_router, prefix=api_prefix)
 app.include_router(rhythm_router, prefix=api_prefix)
 app.include_router(publish_router, prefix=api_prefix)
 app.include_router(exports_router, prefix=api_prefix)
+app.include_router(imports_router, prefix=api_prefix)

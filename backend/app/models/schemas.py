@@ -311,6 +311,43 @@ class ExportDocumentRead(BaseModel):
     content: str
 
 
+class ExportJsonImportRequest(BaseModel):
+    content: str
+    dryRun: bool = True
+    conflictStrategy: str = "overwrite"
+    fields: list[str] = Field(default_factory=lambda: ["subtitle"])
+
+
+class ExportCsvImportRequest(BaseModel):
+    content: str
+    dryRun: bool = True
+    conflictStrategy: str = "overwrite"
+    fields: list[str] = Field(default_factory=lambda: ["subtitle"])
+    columnMap: dict[str, str] = Field(default_factory=dict)
+
+
+class ExportImportChangeRead(BaseModel):
+    segmentId: str
+    field: str
+    currentValue: str
+    incomingValue: str
+    action: str
+
+
+class ExportImportResultRead(BaseModel):
+    schemaVersion: str
+    dryRun: bool
+    applied: bool
+    fields: list[str]
+    conflictStrategy: str
+    changes: list[ExportImportChangeRead]
+    updateCount: int
+    skippedCount: int
+    unchangedCount: int
+    unknownSegmentIds: list[str] = Field(default_factory=list)
+    errors: list[str] = Field(default_factory=list)
+
+
 class WorkspaceDataRead(BaseModel):
     project: ProjectRead
     assets: list[AssetRead]

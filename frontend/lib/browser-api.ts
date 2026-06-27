@@ -507,3 +507,53 @@ export function previewExport(
     method: "POST"
   });
 }
+
+export type ExportImportChange = {
+  segmentId: string;
+  field: string;
+  currentValue: string;
+  incomingValue: string;
+  action: "update" | "skip" | "unchanged" | string;
+};
+
+export type ExportImportResult = {
+  schemaVersion: string;
+  dryRun: boolean;
+  applied: boolean;
+  fields: string[];
+  conflictStrategy: string;
+  changes: ExportImportChange[];
+  updateCount: number;
+  skippedCount: number;
+  unchangedCount: number;
+  unknownSegmentIds: string[];
+  errors: string[];
+};
+
+export type ExportImportPayload = {
+  content: string;
+  dryRun?: boolean;
+  conflictStrategy?: "overwrite" | "skip";
+  fields?: string[];
+  columnMap?: Record<string, string>;
+};
+
+export function importExportJson(
+  projectId: string,
+  payload: ExportImportPayload
+): Promise<ExportImportResult> {
+  return request<ExportImportResult>(`/projects/${projectId}/import/export-json`, {
+    method: "POST",
+    body: JSON.stringify(payload)
+  });
+}
+
+export function importExportCsv(
+  projectId: string,
+  payload: ExportImportPayload
+): Promise<ExportImportResult> {
+  return request<ExportImportResult>(`/projects/${projectId}/import/export-csv`, {
+    method: "POST",
+    body: JSON.stringify(payload)
+  });
+}
