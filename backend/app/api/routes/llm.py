@@ -8,6 +8,7 @@ from app.db import get_session
 from app.models.schemas import (
     ApiResponse,
     AuthUserRead,
+    LlmCallLogRead,
     LlmDeviceCodeStartRead,
     LlmModelOptionRead,
     LlmOAuthStartRead,
@@ -16,6 +17,7 @@ from app.models.schemas import (
     LlmProviderTestRead,
     LlmStatusRead,
 )
+from app.services.llm.audit_log import list_recent_llm_calls
 from app.services.llm.auth import evaluate_config_status
 from app.services.llm.config_store import (
     get_provider_status,
@@ -180,6 +182,15 @@ def get_active_llm_status(
             message=message,
         )
     )
+
+
+@router.get("/audit-logs", response_model=ApiResponse)
+def get_llm_audit_logs(
+    session: Session = Depends(get_session),
+    _: AuthUserRead = Depends(require_director_user),
+    limit: int = 50,
+) -> ApiResponse:
+    return ApiResponse(data=list_recent_llm_calls(session, limit=limit))
 
 
 @router.post("/providers/{provider_id}/config", response_model=ApiResponse)

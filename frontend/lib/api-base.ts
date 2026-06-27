@@ -1,17 +1,14 @@
 const DEFAULT_BACKEND_API_BASE = "http://127.0.0.1:8000/api/v1";
+const BROWSER_API_BASE = "/api/v1";
 
 export function getBrowserApiBaseUrl(): string {
-  if (process.env.NEXT_PUBLIC_API_BASE_URL) {
-    return process.env.NEXT_PUBLIC_API_BASE_URL;
-  }
-
-  // Browser calls go directly to FastAPI. Next.js rewrites use a ~30s proxy timeout
-  // which breaks long LLM routes before the backend can respond.
+  // Browser must stay same-origin: session cookie lives on the Next.js host (:3000),
+  // not on FastAPI (:8000). The /api/v1 route handler forwards X-Session-Token.
   if (typeof window !== "undefined") {
-    return DEFAULT_BACKEND_API_BASE;
+    return BROWSER_API_BASE;
   }
 
-  return DEFAULT_BACKEND_API_BASE;
+  return process.env.NEXT_PUBLIC_API_BASE_URL ?? DEFAULT_BACKEND_API_BASE;
 }
 
 export function getServerApiBaseUrl(): string {

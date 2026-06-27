@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 
-import { AUTH_COOKIE_NAME } from "@/lib/auth-constants";
+import { AUTH_COOKIE_NAME, AUTH_ROLE_COOKIE } from "@/lib/auth-constants";
 
 const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://127.0.0.1:8000/api/v1";
@@ -35,9 +35,13 @@ export async function POST(request: NextRequest) {
     }
 
     const payload = (await response.json()) as {
-      data?: { sessionToken?: string; user?: { username?: string } };
+      data?: {
+        sessionToken?: string;
+        user?: { username?: string; role?: string };
+      };
     };
     const sessionToken = payload.data?.sessionToken;
+    const role = payload.data?.user?.role ?? "editor";
     if (!sessionToken) {
       return NextResponse.json(
         { error: "登录响应无效，请稍后重试。", ok: false },
@@ -52,6 +56,14 @@ export async function POST(request: NextRequest) {
     nextResponse.cookies.set({
       name: AUTH_COOKIE_NAME,
       value: sessionToken,
+      httpOnly: true,
+      maxAge: 60 * 60 * 8,
+      path: "/",
+      sameSite: "lax"
+    });
+    nextResponse.cookies.set({
+      name: AUTH_ROLE_COOKIE,
+      value: role,
       httpOnly: true,
       maxAge: 60 * 60 * 8,
       path: "/",

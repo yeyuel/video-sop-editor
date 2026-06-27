@@ -1,11 +1,16 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlmodel import Session
 
+from app.api.deps import require_project_editor
 from app.db import get_session
 from app.models.schemas import ApiResponse
 from app.services.repository import repository
 
-router = APIRouter(prefix="/projects/{project_id}/exports", tags=["exports"])
+router = APIRouter(
+    prefix="/projects/{project_id}/exports",
+    tags=["exports"],
+    dependencies=[Depends(require_project_editor)],
+)
 
 
 @router.post("/{fmt}", response_model=ApiResponse)

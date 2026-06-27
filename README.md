@@ -49,6 +49,8 @@ npm run dev
 ### 前端 `.env.local`
 
 ```env
+# 仅供 Next.js 服务端组件 / Route Handler 直连 FastAPI。
+# 浏览器端请求走同源 /api/v1，由 route handler 转发 session，请勿改为直连 :8000。
 NEXT_PUBLIC_API_BASE_URL=http://127.0.0.1:8000/api/v1
 ```
 

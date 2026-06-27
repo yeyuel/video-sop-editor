@@ -38,7 +38,14 @@ export async function Topbar({
           {title}
         </h1>
       </div>
-      <div className="flex items-center gap-3">
+      <div className="flex flex-col items-end gap-3 sm:flex-row sm:items-center">
+        {user ? (
+          <div className="rounded-full border border-pine/15 bg-white/85 px-4 py-2 text-xs text-ink/70">
+            {user.displayName} · {isDirector ? "导演" : "剪辑"}
+            {!isDirector ? " · 项目内编辑" : " · 全量能力"}
+          </div>
+        ) : null}
+        <div className="flex items-center gap-3">
         <Link
           href="/projects/new"
           className="inline-flex rounded-full border border-pine/15 bg-white/85 px-5 py-3 text-sm font-medium text-pine transition hover:border-pine/30 hover:bg-mist"
@@ -79,6 +86,7 @@ export async function Topbar({
             </button>
           </form>
         ) : null}
+        </div>
       </div>
     </header>
   );

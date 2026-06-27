@@ -28,6 +28,24 @@ class AuthLoginResponse(BaseModel):
     expiresAt: str
 
 
+class AuthLoginOptionRead(BaseModel):
+    username: str
+    displayName: str
+    role: str
+
+
+class LlmCallLogRead(BaseModel):
+    id: str
+    userId: str
+    endpoint: str
+    providerId: str
+    model: str
+    status: str
+    tokenEstimate: int
+    message: str
+    createdAt: str
+
+
 class AuthUserCreateRequest(BaseModel):
     username: str
     password: str

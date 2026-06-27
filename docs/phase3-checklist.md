@@ -18,7 +18,7 @@
 |------|------|------|
 | 二期 | ✅ 已关闭 | Sprint 1～10 |
 | Sprint 11（工程基线） | ✅ 已完成 | E2E、lifespan、节拍网格对齐 |
-| Sprint 12（剪辑 + RBAC） | ⬜ 未开始 | **决策 1** |
+| Sprint 12（剪辑 + RBAC） | ✅ 已完成 | **决策 1** |
 | Sprint 13（导出反向导入） | ⬜ 未开始 | JSON / CSV round-trip |
 | Sprint 14（LLM Vision） | ⬜ 未开始 | **决策 2** |
 | Sprint 15（全局分镜 + 复用） | ⬜ 未开始 | **决策 3** |
@@ -46,28 +46,28 @@
 
 **登录与门禁**
 
-- [ ] 登录页：支持已启用用户列表 / 用户名密码（非仅硬编码 director）
-- [ ] `uiEnabled=false` 账号拒绝登录并提示联系导演
-- [ ] 剪辑角色隐藏：LLM 设置、用户管理、系统级 Provider 路由
-- [ ] Topbar / 导航按角色显示能力说明
+- [x] 登录页：支持已启用用户列表 / 用户名密码（非仅硬编码 director）
+- [x] `uiEnabled=false` 账号拒绝登录并提示联系导演
+- [x] 剪辑角色隐藏：LLM 设置、用户管理、系统级 Provider 路由
+- [x] Topbar / 导航按角色显示能力说明
 
 **权限模型**
 
-- [ ] 定义 `require_director_user` / `require_project_editor` 依赖
-- [ ] 剪辑：项目内 assets / themes / rhythm / storyboard / export 读写
-- [ ] 导演：保留全部能力 + 用户 CRUD
-- [ ] migration 015（如需要）：项目成员表或 role 扩展
-- [ ] **决策 5**：Session / OAuth token / 审计日志均 SQLite，不引入 Redis
+- [x] 定义 `require_director_user` / `require_project_editor` 依赖
+- [x] 剪辑：项目内 assets / themes / rhythm / storyboard / export 读写
+- [x] 导演：保留全部能力 + 用户 CRUD
+- [x] migration 015（如需要）：项目成员表或 role 扩展 — **MVP 跳过，全项目可见**
+- [x] **决策 5**：Session / OAuth token / 审计日志均 SQLite，不引入 Redis
 
 **审计（P1）**
 
-- [ ] LLM 调用日志：userId、endpoint、token 估算、status
-- [ ] 导演可查看最近 N 条（简单列表即可）
+- [x] LLM 调用日志：userId、endpoint、token 估算、status
+- [x] 导演可查看最近 N 条（简单列表即可）
 
 **回归**
 
-- [ ] E2E：剪辑账号走通全流程且无法进入 `/settings/llm`
-- [ ] `test_regression_sprint12.py`（角色门禁）
+- [x] E2E：剪辑账号走通全流程且无法进入 `/settings/llm`
+- [x] `test_regression_sprint12.py`（角色门禁）
 
 **验收：** 导演创建剪辑用户 → 剪辑登录完成一个项目导出。
 

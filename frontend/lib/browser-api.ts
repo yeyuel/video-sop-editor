@@ -29,6 +29,7 @@ async function requestWithMeta<T>(
 ): Promise<RequestWithMetaResult<T>> {
   const isFormData = init?.body instanceof FormData;
   const response = await fetch(`${getBrowserApiBaseUrl()}${path}`, {
+    credentials: "include",
     headers: {
       ...(isFormData ? {} : { "Content-Type": "application/json" }),
       ...(init?.headers ?? {})
@@ -58,6 +59,7 @@ async function requestLlmAdminWithMeta<T>(
   init?: RequestInit
 ): Promise<RequestWithMetaResult<T>> {
   const response = await fetch(`/api/llm${path}`, {
+    credentials: "include",
     headers: {
       "Content-Type": "application/json",
       ...(init?.headers ?? {})
@@ -479,6 +481,22 @@ export function getLlmProviders(): Promise<LlmProvider[]> {
 
 export function getLlmStatus(): Promise<LlmStatus> {
   return requestLlmAdmin<LlmStatus>("/status");
+}
+
+export type LlmAuditLog = {
+  id: string;
+  userId: string;
+  endpoint: string;
+  providerId: string;
+  model: string;
+  status: string;
+  tokenEstimate: number;
+  message: string;
+  createdAt: string;
+};
+
+export function getLlmAuditLogs(limit = 20): Promise<LlmAuditLog[]> {
+  return requestLlmAdmin<LlmAuditLog[]>(`/audit-logs?limit=${limit}`);
 }
 
 export function previewExport(

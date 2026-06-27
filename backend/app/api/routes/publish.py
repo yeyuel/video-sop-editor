@@ -2,13 +2,18 @@ from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 from sqlmodel import Session
 
+from app.api.deps import require_project_editor
 from app.api.meta import merge_response_meta
 from app.api.sse_stream import run_streaming_task
 from app.db import get_session
 from app.models.schemas import ApiResponse, ExportPlanWriteRequest
 from app.services.repository import repository
 
-router = APIRouter(prefix="/projects/{project_id}", tags=["export-plan"])
+router = APIRouter(
+    prefix="/projects/{project_id}",
+    tags=["export-plan"],
+    dependencies=[Depends(require_project_editor)],
+)
 
 
 @router.get("/export-plan", response_model=ApiResponse)

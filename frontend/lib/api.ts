@@ -1,5 +1,6 @@
 import { fallbackProjects, fallbackWorkspace } from "@/lib/mock-data";
 import { getServerApiBaseUrl } from "@/lib/api-base";
+import { getServerAuthHeaders } from "@/lib/server-auth";
 import type {
   Asset,
   ExportDocument,
@@ -16,8 +17,10 @@ const API_BASE_URL = getServerApiBaseUrl();
 
 async function safeFetch<T>(path: string, fallback: T): Promise<T> {
   try {
+    const authHeaders = await getServerAuthHeaders();
     const response = await fetch(`${API_BASE_URL}${path}`, {
-      cache: "no-store"
+      cache: "no-store",
+      headers: authHeaders
     });
 
     if (!response.ok) {
@@ -45,8 +48,10 @@ export async function getWorkspace(projectId: string): Promise<WorkspaceData> {
 
 export async function getWorkspaceStrict(projectId: string): Promise<WorkspaceData | null> {
   try {
+    const authHeaders = await getServerAuthHeaders();
     const response = await fetch(`${API_BASE_URL}/projects/${projectId}/workspace`, {
-      cache: "no-store"
+      cache: "no-store",
+      headers: authHeaders
     });
     if (!response.ok) {
       return null;

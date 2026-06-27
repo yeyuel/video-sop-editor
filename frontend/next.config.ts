@@ -1,7 +1,5 @@
 import type { NextConfig } from "next";
 
-const backendUrl = process.env.BACKEND_URL ?? "http://127.0.0.1:8000";
-
 const nextConfig: NextConfig = {
   reactStrictMode: true,
   experimental: {
@@ -9,12 +7,9 @@ const nextConfig: NextConfig = {
     proxyTimeout: 120_000
   },
   async rewrites() {
-    return [
-      {
-        source: "/api/v1/:path*",
-        destination: `${backendUrl}/api/v1/:path*`
-      }
-    ];
+    // Project API calls use app/api/v1/[...path]/route.ts so session cookies are
+    // forwarded as X-Session-Token. Keep rewrite disabled to avoid bypassing it.
+    return [];
   }
 };
 

@@ -20,8 +20,8 @@ def test_login_returns_session_token(regression_env: dict) -> None:
 
 
 def test_auth_me_requires_token(regression_env: dict) -> None:
-    client = regression_env["client"]
-    response = client.get("/api/v1/auth/me")
+    raw_client = regression_env["raw_client"]
+    response = raw_client.get("/api/v1/auth/me")
     assert response.status_code == 401
 
 
@@ -45,10 +45,11 @@ def test_logout_revokes_session(regression_env: dict) -> None:
 
 
 def test_list_users_requires_director_session(regression_env: dict) -> None:
-    client = regression_env["client"]
-    response = client.get("/api/v1/auth/users")
+    raw_client = regression_env["raw_client"]
+    response = raw_client.get("/api/v1/auth/users")
     assert response.status_code == 401
 
+    client = regression_env["client"]
     token = _login(client)
     users_response = client.get("/api/v1/auth/users", headers={"X-Session-Token": token})
     assert users_response.status_code == 200

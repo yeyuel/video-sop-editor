@@ -18,7 +18,32 @@ from app.services.auth import hash_password
 
 def seed_demo_data(session: Session) -> None:
     _ensure_default_director(session)
+    _ensure_demo_editor(session)
     _ensure_demo_project(session)
+
+
+def _ensure_demo_editor(session: Session) -> None:
+    editor = session.exec(select(UserEntity).where(UserEntity.username == "editor")).first()
+    if editor:
+        editor.display_name = "Demo Editor"
+        editor.role = "editor"
+        editor.ui_enabled = True
+        session.add(editor)
+        session.commit()
+        return
+
+    session.add(
+        UserEntity(
+            id="user_editor_demo",
+            username="editor",
+            display_name="Demo Editor",
+            password_hash=hash_password("edit123"),
+            role="editor",
+            ui_enabled=True,
+            created_at=datetime.now(timezone.utc).isoformat(),
+        )
+    )
+    session.commit()
 
 
 def _ensure_default_director(session: Session) -> None:

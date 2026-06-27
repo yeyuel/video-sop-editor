@@ -244,6 +244,29 @@ def _migration_011_rhythm_bgm_recommendations(session: Session) -> None:
         session.exec(text("ALTER TABLE rhythmplanentity ADD COLUMN bgm_phase TEXT DEFAULT 'empty'"))
 
 
+def _migration_012_llm_call_logs(session: Session) -> None:
+    session.exec(
+        text(
+            """
+            CREATE TABLE IF NOT EXISTS llmcalllogentity (
+                id TEXT PRIMARY KEY,
+                user_id TEXT NOT NULL,
+                endpoint TEXT DEFAULT '',
+                provider_id TEXT DEFAULT '',
+                model TEXT DEFAULT '',
+                status TEXT DEFAULT '',
+                token_estimate INTEGER DEFAULT 0,
+                message TEXT DEFAULT '',
+                created_at TEXT DEFAULT ''
+            )
+            """
+        )
+    )
+    session.exec(
+        text("CREATE INDEX IF NOT EXISTS ix_llmcalllogentity_user_id ON llmcalllogentity (user_id)")
+    )
+
+
 MIGRATIONS: list[tuple[int, str, object]] = [
     (1, "001_legacy_columns", _migration_001_legacy_columns),
     (2, "002_rhythm_analysis_metrics", _migration_002_rhythm_analysis_metrics),
@@ -256,6 +279,7 @@ MIGRATIONS: list[tuple[int, str, object]] = [
     (9, "009_encrypt_llm_api_keys", _migration_009_encrypt_llm_api_keys),
     (10, "010_project_location_validation", _migration_010_project_location_validation),
     (11, "011_rhythm_bgm_recommendations", _migration_011_rhythm_bgm_recommendations),
+    (12, "012_llm_call_logs", _migration_012_llm_call_logs),
 ]
 
 

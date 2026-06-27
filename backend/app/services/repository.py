@@ -20,6 +20,7 @@ from app.models.schemas import (
     AssetRead,
     AssetUpdateRequest,
     AuthUserCreateRequest,
+    AuthLoginOptionRead,
     AuthUserRead,
     AuthUserUpdateRequest,
     BgmRecommendationRead,
@@ -97,6 +98,21 @@ class SqlRepository:
     def list_users(self, session: Session) -> list[AuthUserRead]:
         users = session.exec(select(UserEntity).order_by(UserEntity.username)).all()
         return [self._map_user(item) for item in users]
+
+    def list_login_options(self, session: Session) -> list[AuthLoginOptionRead]:
+        users = session.exec(
+            select(UserEntity)
+            .where(UserEntity.ui_enabled == True)  # noqa: E712
+            .order_by(UserEntity.username)
+        ).all()
+        return [
+            AuthLoginOptionRead(
+                username=item.username,
+                displayName=item.display_name,
+                role=item.role,
+            )
+            for item in users
+        ]
 
     def create_user(self, session: Session, payload: AuthUserCreateRequest) -> AuthUserRead:
         username = payload.username.strip()

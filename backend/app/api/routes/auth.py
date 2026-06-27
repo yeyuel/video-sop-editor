@@ -5,6 +5,7 @@ from app.api.deps import extract_session_token, require_authenticated_user, requ
 from app.db import get_session
 from app.models.schemas import (
     ApiResponse,
+    AuthLoginOptionRead,
     AuthLoginRequest,
     AuthLoginResponse,
     AuthUserCreateRequest,
@@ -17,13 +18,18 @@ from app.services.session_service import create_auth_session, revoke_auth_sessio
 router = APIRouter(prefix="/auth", tags=["auth"])
 
 
+@router.get("/login-options", response_model=ApiResponse)
+def list_login_options(session: Session = Depends(get_session)) -> ApiResponse:
+    return ApiResponse(data=repository.list_login_options(session))
+
+
 @router.post("/login", response_model=ApiResponse)
 def login(payload: AuthLoginRequest, session: Session = Depends(get_session)) -> ApiResponse:
     user = repository.authenticate_user(session, payload.username.strip(), payload.password)
     if not user:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="账号或密码不正确，或当前账号暂未开放登录",
+            detail="账号或密码不正确，或当前账号暂未开放登录。如需开通请联系导演。",
         )
 
     auth_session = create_auth_session(session, user.id)

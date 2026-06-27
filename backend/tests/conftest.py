@@ -9,16 +9,11 @@ from sqlmodel import Session, SQLModel, create_engine
 
 from app.core.config import settings
 from app.db import get_session
-from app.main import app
-from app.migrations.runner import (
-    MIGRATIONS,
-    _current_version,
-    _ensure_schema_version_table,
-    _migration_003_rhythm_raw_beats,
-    _set_version,
-    run_migrations,
-)
+from app.main import app as fastapi_app
+from app.migrations.runner import run_migrations
+from app.models.entities import LlmCallLogEntity  # noqa: F401 — register SQLModel metadata
 from app.services.seed import seed_demo_data
+from tests.auth_client import AuthTestClient
 
 
 @pytest.fixture
@@ -45,10 +40,25 @@ def regression_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Generator
         with Session(test_engine) as session:
             yield session
 
-    app.dependency_overrides[get_session] = override_get_session
-    client = TestClient(app)
+    fastapi_app.dependency_overrides[get_session] = override_get_session
+    raw_client = TestClient(fastapi_app)
 
-    yield {"client": client, "engine": test_engine, "storage_dir": storage_dir}
+    login_response = raw_client.post(
+        "/api/v1/auth/login",
+        json={"username": "director", "password": "root123"},
+    )
+    assert login_response.status_code == 200
+    token = login_response.json()["data"]["sessionToken"]
 
-    app.dependency_overrides.clear()
-    client.close()
+    client = AuthTestClient(raw_client, token)
+
+    yield {
+        "client": client,
+        "raw_client": raw_client,
+        "token": token,
+        "engine": test_engine,
+        "storage_dir": storage_dir,
+    }
+
+    fastapi_app.dependency_overrides.clear()
+    raw_client.close()

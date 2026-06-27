@@ -1,17 +1,56 @@
 "use client";
 
 import { useRouter, useSearchParams } from "next/navigation";
-import { FormEvent, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 
 import { DIRECTOR_UI_USERNAME } from "@/lib/auth-constants";
+import { getBrowserApiBaseUrl } from "@/lib/api-base";
+
+type LoginOption = {
+  username: string;
+  displayName: string;
+  role: string;
+};
 
 export function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const [loginOptions, setLoginOptions] = useState<LoginOption[]>([]);
   const [username, setUsername] = useState(DIRECTOR_UI_USERNAME);
   const [password, setPassword] = useState("root123");
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadLoginOptions() {
+      try {
+        const response = await fetch(`${getBrowserApiBaseUrl()}/auth/login-options`, {
+          credentials: "include",
+          cache: "no-store"
+        });
+        if (!response.ok) {
+          return;
+        }
+        const payload = (await response.json()) as { data?: LoginOption[] };
+        if (cancelled || !payload.data?.length) {
+          return;
+        }
+        setLoginOptions(payload.data);
+        if (!payload.data.some((item) => item.username === username)) {
+          setUsername(payload.data[0].username);
+        }
+      } catch {
+        // ignore network errors; manual login still works
+      }
+    }
+
+    void loadLoginOptions();
+    return () => {
+      cancelled = true;
+    };
+  }, [username]);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -21,6 +60,7 @@ export function LoginForm() {
     try {
       const response = await fetch("/api/auth/login", {
         method: "POST",
+        credentials: "include",
         headers: {
           "Content-Type": "application/json"
         },
@@ -47,19 +87,39 @@ export function LoginForm() {
     }
   }
 
+  const selectedOption = loginOptions.find((item) => item.username === username);
+
   return (
     <form className="mt-8 space-y-5" onSubmit={handleSubmit}>
-      <label className="block">
-        <span className="mb-2 block text-sm text-ink/75">账号</span>
-        <input
-          required
-          value={username}
-          onChange={(event) => setUsername(event.target.value)}
-          className="w-full rounded-2xl border border-pine/20 bg-white px-4 py-3 text-base text-ink outline-none transition focus:border-pine"
-          placeholder="请输入用户名"
-          autoComplete="username"
-        />
-      </label>
+      {loginOptions.length > 0 ? (
+        <label className="block">
+          <span className="mb-2 block text-sm text-ink/75">已开放登录的账号</span>
+          <select
+            value={username}
+            onChange={(event) => setUsername(event.target.value)}
+            className="w-full rounded-2xl border border-pine/20 bg-white px-4 py-3 text-base text-ink outline-none transition focus:border-pine"
+          >
+            {loginOptions.map((option) => (
+              <option key={option.username} value={option.username}>
+                {option.displayName} ({option.username}) ·{" "}
+                {option.role === "director" ? "导演" : "剪辑"}
+              </option>
+            ))}
+          </select>
+        </label>
+      ) : (
+        <label className="block">
+          <span className="mb-2 block text-sm text-ink/75">账号</span>
+          <input
+            required
+            value={username}
+            onChange={(event) => setUsername(event.target.value)}
+            className="w-full rounded-2xl border border-pine/20 bg-white px-4 py-3 text-base text-ink outline-none transition focus:border-pine"
+            placeholder="请输入用户名"
+            autoComplete="username"
+          />
+        </label>
+      )}
 
       <label className="block">
         <span className="mb-2 block text-sm text-ink/75">密码</span>
@@ -76,6 +136,12 @@ export function LoginForm() {
 
       <div className="rounded-2xl border border-pine/10 bg-sand/50 px-4 py-3 text-sm leading-6 text-ink/70">
         仅「允许登录」的账号可以进入工作台。导演可在用户管理页创建账号并控制是否开放登录。
+        {selectedOption ? (
+          <span className="mt-1 block">
+            当前选择：{selectedOption.displayName}（
+            {selectedOption.role === "director" ? "导演 · 全量能力" : "剪辑 · 项目内编辑"}）
+          </span>
+        ) : null}
       </div>
 
       {error ? (

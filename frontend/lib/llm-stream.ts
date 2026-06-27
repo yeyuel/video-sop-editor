@@ -41,6 +41,7 @@ export async function postLlmStream<T>(
 ): Promise<LlmStreamResult<T>> {
   const response = await fetch(`${getBrowserApiBaseUrl()}${path}`, {
     method: "POST",
+    credentials: "include",
     headers: {
       "Content-Type": "application/json",
       Accept: "text/event-stream"
@@ -108,6 +109,7 @@ export async function postLlmStreamFormData<T>(
 ): Promise<LlmStreamResult<T>> {
   const response = await fetch(`${getBrowserApiBaseUrl()}${path}`, {
     method: "POST",
+    credentials: "include",
     headers: {
       Accept: "text/event-stream"
     },

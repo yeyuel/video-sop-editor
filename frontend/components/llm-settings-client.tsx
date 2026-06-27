@@ -6,6 +6,7 @@ import { useCallback, useEffect, useState, useTransition } from "react";
 import { BlockingNotice, ToastNotice } from "@/components/async-status";
 import {
   activateLlmProvider,
+  getLlmAuditLogs,
   getLlmProviderStatus,
   getLlmProviders,
   getLlmStatus,
@@ -13,6 +14,7 @@ import {
   testActiveLlmProvider,
   testLlmProvider
 } from "@/lib/browser-api";
+import type { LlmAuditLog } from "@/lib/browser-api";
 import type { LlmProvider, LlmStatus, LlmTestResult } from "@/lib/llm-status";
 
 const STATUS_LABELS: Record<string, string> = {
@@ -44,6 +46,115 @@ function isKnownModel(modelId: string, provider?: LlmProvider | null) {
   return Boolean(provider?.models.some((item) => item.modelId === modelId));
 }
 
+const AUDIT_STATUS_LABELS: Record<string, string> = {
+  ok: "成功",
+  fallback: "规则回退",
+  error: "失败",
+  unknown: "未知"
+};
+
+function formatAuditEndpoint(endpoint: string): string {
+  const path = endpoint.replace(/^\/projects\/[^/]+\//, "");
+  const labels: Record<string, string> = {
+    "themes/generate-llm": "主题 LLM 生成",
+    "themes/generate-llm/stream": "主题 LLM 生成（流式）",
+    "storyboard:generate-llm": "分镜 LLM 生成",
+    "storyboard/generate-llm/stream": "分镜 LLM 生成（流式）",
+    "export-plan:suggest": "导出方案建议",
+    "export-plan/suggest/stream": "导出方案建议（流式）",
+    "rhythm-plan/bgm-recommend": "BGM 推荐",
+    "rhythm-plan/bgm-recommend/stream": "BGM 推荐（流式）"
+  };
+  return labels[path] ?? path.replace(/\//g, " · ");
+}
+
+function formatAuditTime(iso: string): string {
+  try {
+    return new Date(iso).toLocaleString("zh-CN", {
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false
+    });
+  } catch {
+    return iso;
+  }
+}
+
+function auditStatusClass(status: string) {
+  if (status === "ok") {
+    return "border-pine/20 bg-mist text-pine";
+  }
+  if (status === "fallback") {
+    return "border-amber-200/80 bg-amber-50 text-amber-900";
+  }
+  return "border-clay/15 bg-[#fff5ef] text-clay";
+}
+
+function LlmAuditSection({ logs }: { logs: LlmAuditLog[] }) {
+  return (
+    <section className="rounded-xl2 border border-black/5 bg-white/80 p-6 shadow-card">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <p className="text-xs uppercase tracking-[0.22em] text-pine/70">Audit Log</p>
+          <h2 className="mt-2 text-xl font-semibold text-ink">最近 LLM 调用</h2>
+          <p className="mt-1 text-sm text-ink/60">导演可见，SQLite 存储，最多展示 10 条。</p>
+        </div>
+        <span className="text-xs text-ink/45">{logs.length} 条记录</span>
+      </div>
+
+      {logs.length === 0 ? (
+        <p className="mt-6 rounded-2xl border border-dashed border-pine/15 bg-sand/30 px-4 py-8 text-center text-sm text-ink/55">
+          暂无调用记录。在项目内使用 LLM 建议后，会在此显示。
+        </p>
+      ) : (
+        <div className="mt-5 overflow-x-auto rounded-2xl border border-pine/10">
+          <table className="min-w-full text-left text-sm">
+            <thead>
+              <tr className="border-b border-pine/10 bg-sand/40 text-xs uppercase tracking-wide text-ink/55">
+                <th className="px-4 py-3 font-medium">时间</th>
+                <th className="px-4 py-3 font-medium">操作</th>
+                <th className="px-4 py-3 font-medium">模型</th>
+                <th className="px-4 py-3 font-medium">状态</th>
+                <th className="hidden px-4 py-3 font-medium md:table-cell">说明</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-pine/8 bg-white/70">
+              {logs.map((log) => (
+                <tr key={log.id} className="transition hover:bg-mist/40">
+                  <td className="whitespace-nowrap px-4 py-3 text-xs tabular-nums text-ink/60">
+                    {formatAuditTime(log.createdAt)}
+                  </td>
+                  <td className="px-4 py-3 font-medium text-ink">
+                    {formatAuditEndpoint(log.endpoint)}
+                  </td>
+                  <td className="max-w-[8rem] truncate px-4 py-3 text-xs text-ink/65" title={log.model}>
+                    {log.model || "—"}
+                  </td>
+                  <td className="px-4 py-3">
+                    <span
+                      className={[
+                        "inline-flex rounded-full border px-2.5 py-0.5 text-xs font-medium",
+                        auditStatusClass(log.status)
+                      ].join(" ")}
+                    >
+                      {AUDIT_STATUS_LABELS[log.status] ?? log.status}
+                    </span>
+                  </td>
+                  <td className="hidden max-w-xs truncate px-4 py-3 text-xs text-ink/55 md:table-cell">
+                    {log.message || "—"}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </section>
+  );
+}
+
 export function LlmSettingsClient() {
   const [providers, setProviders] = useState<LlmProvider[]>([]);
   const [activeStatus, setActiveStatus] = useState<LlmStatus | null>(null);
@@ -62,6 +173,7 @@ export function LlmSettingsClient() {
   const [isPending, startTransition] = useTransition();
   const [testResult, setTestResult] = useState<LlmTestResult | null>(null);
   const [useCustomModel, setUseCustomModel] = useState(false);
+  const [auditLogs, setAuditLogs] = useState<LlmAuditLog[]>([]);
 
   const loadProviderForm = useCallback(async (providerId: string, providerList: LlmProvider[]) => {
     const status = await getLlmProviderStatus(providerId);
@@ -76,9 +188,14 @@ export function LlmSettingsClient() {
 
   const refreshAll = useCallback(
     async (providerId?: string) => {
-      const [providerList, active] = await Promise.all([getLlmProviders(), getLlmStatus()]);
+      const [providerList, active, logs] = await Promise.all([
+        getLlmProviders(),
+        getLlmStatus(),
+        getLlmAuditLogs(10)
+      ]);
       setProviders(providerList);
       setActiveStatus(active);
+      setAuditLogs(logs);
       const targetId =
         providerId ??
         providerList.find((item) => item.isActive)?.providerId ??
@@ -99,12 +216,17 @@ export function LlmSettingsClient() {
       setLoading(true);
       setError("");
       try {
-        const [providerList, active] = await Promise.all([getLlmProviders(), getLlmStatus()]);
+        const [providerList, active, logs] = await Promise.all([
+          getLlmProviders(),
+          getLlmStatus(),
+          getLlmAuditLogs(10)
+        ]);
         if (cancelled) {
           return;
         }
         setProviders(providerList);
         setActiveStatus(active);
+        setAuditLogs(logs);
         const initialId =
           providerList.find((item) => item.isActive)?.providerId ??
           active.providerId ??
@@ -527,6 +649,8 @@ export function LlmSettingsClient() {
           </form>
         </section>
       </div>
+
+      <LlmAuditSection logs={auditLogs} />
     </div>
   );
 }

@@ -21,6 +21,18 @@ class AuthSessionEntity(SQLModel, table=True):
     revoked: bool = False
 
 
+class LlmCallLogEntity(SQLModel, table=True):
+    id: str = Field(primary_key=True)
+    user_id: str = Field(index=True)
+    endpoint: str = Field(default="")
+    provider_id: str = Field(default="")
+    model: str = Field(default="")
+    status: str = Field(default="")
+    token_estimate: int = Field(default=0)
+    message: str = Field(default="")
+    created_at: str = Field(default="")
+
+
 class ProjectEntity(SQLModel, table=True):
     id: str = Field(primary_key=True)
     name: str

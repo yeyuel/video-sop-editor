@@ -17,10 +17,11 @@ def _director_headers(client) -> dict[str, str]:
 
 
 def test_list_llm_providers(regression_env: dict) -> None:
-    client = regression_env["client"]
-    response = client.get("/api/v1/llm/providers")
+    raw_client = regression_env["raw_client"]
+    response = raw_client.get("/api/v1/llm/providers")
     assert response.status_code == 401
 
+    client = regression_env["client"]
     response = client.get("/api/v1/llm/providers", headers=_director_headers(client))
     assert response.status_code == 200
     payload = response.json()

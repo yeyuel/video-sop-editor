@@ -30,8 +30,8 @@ export default defineConfig({
       reuseExistingServer: !process.env.CI,
       timeout: 120_000,
       env: {
-        DATABASE_URL: "sqlite:///./e2e/playwright.db",
-        STORAGE_DIR: "./e2e/storage",
+        DATABASE_URL: "sqlite:///../e2e/playwright.db",
+        STORAGE_DIR: "../e2e/storage",
       },
     },
     {
@@ -39,10 +39,7 @@ export default defineConfig({
       cwd: "./frontend",
       url: `http://127.0.0.1:${frontendPort}`,
       reuseExistingServer: !process.env.CI,
-      timeout: 180_000,
-      env: {
-        NEXT_PUBLIC_API_BASE_URL: `http://127.0.0.1:${backendPort}/api/v1`,
-      },
+      timeout: 180_000
     },
   ],
 });

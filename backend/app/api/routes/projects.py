@@ -1,15 +1,21 @@
 from fastapi import APIRouter, Depends, HTTPException, Response, status
 from sqlmodel import Session
 
+from app.api.deps import require_director_user, require_project_editor
 from app.db import get_session
 from app.models.schemas import (
     ApiResponse,
+    AuthUserRead,
     ProjectCreateRequest,
     ProjectUpdateRequest,
 )
 from app.services.repository import repository
 
-router = APIRouter(prefix="/projects", tags=["projects"])
+router = APIRouter(
+    prefix="/projects",
+    tags=["projects"],
+    dependencies=[Depends(require_project_editor)],
+)
 
 
 @router.get("", response_model=ApiResponse)
@@ -44,7 +50,11 @@ def update_project(
 
 
 @router.delete("/{project_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_project(project_id: str, session: Session = Depends(get_session)) -> Response:
+def delete_project(
+    project_id: str,
+    session: Session = Depends(get_session),
+    _: AuthUserRead = Depends(require_director_user),
+) -> Response:
     deleted = repository.delete_project(session, project_id)
     if not deleted:
         raise HTTPException(status_code=404, detail="Project not found")

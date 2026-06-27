@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, Response, status
 from sqlmodel import Session
 
+from app.api.deps import require_project_editor
 from app.db import get_session
 from app.models.schemas import (
     ApiResponse,
@@ -9,7 +10,11 @@ from app.models.schemas import (
 )
 from app.services.repository import repository
 
-router = APIRouter(prefix="/projects/{project_id}/assets", tags=["assets"])
+router = APIRouter(
+    prefix="/projects/{project_id}/assets",
+    tags=["assets"],
+    dependencies=[Depends(require_project_editor)],
+)
 
 
 @router.get("", response_model=ApiResponse)

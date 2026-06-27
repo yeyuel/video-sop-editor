@@ -2,13 +2,20 @@ from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 from sqlmodel import Session
 
+from app.api.deps import require_project_editor
 from app.api.meta import merge_response_meta
 from app.api.sse_stream import run_streaming_task
+from app import db
 from app.db import get_session
-from app.models.schemas import ApiResponse, ThemeGenerateRequest, ThemeSelectRequest
+from app.models.schemas import ApiResponse, AuthUserRead, ThemeGenerateRequest, ThemeSelectRequest
+from app.services.llm.audit_log import record_llm_call_from_meta
 from app.services.repository import repository
 
-router = APIRouter(prefix="/projects/{project_id}/themes", tags=["themes"])
+router = APIRouter(
+    prefix="/projects/{project_id}/themes",
+    tags=["themes"],
+    dependencies=[Depends(require_project_editor)],
+)
 
 
 @router.get("", response_model=ApiResponse)
@@ -37,11 +44,18 @@ def generate_themes_with_llm(
     project_id: str,
     payload: ThemeGenerateRequest,
     session: Session = Depends(get_session),
+    current_user: AuthUserRead = Depends(require_project_editor),
 ) -> ApiResponse:
     result = repository.generate_themes_with_llm(session, project_id, payload.count)
     if result is None:
         raise HTTPException(status_code=404, detail="Project not found")
     themes, llm_meta = result
+    record_llm_call_from_meta(
+        session,
+        user_id=current_user.id,
+        endpoint=f"/projects/{project_id}/themes/generate-llm",
+        llm_meta=llm_meta,
+    )
     return ApiResponse(data=themes, meta=merge_response_meta(llm_meta))
 
 
@@ -49,11 +63,21 @@ def generate_themes_with_llm(
 def generate_themes_with_llm_stream(
     project_id: str,
     payload: ThemeGenerateRequest,
+    current_user: AuthUserRead = Depends(require_project_editor),
 ) -> StreamingResponse:
+    endpoint = f"/projects/{project_id}/themes/generate-llm/stream"
+
     def serialize_complete(result: object) -> tuple[list[dict], dict[str, str] | None]:
         if result is None:
             raise HTTPException(status_code=404, detail="Project not found")
         themes, llm_meta = result  # type: ignore[misc]
+        with Session(db.engine) as audit_session:
+            record_llm_call_from_meta(
+                audit_session,
+                user_id=current_user.id,
+                endpoint=endpoint,
+                llm_meta=llm_meta,
+            )
         return [theme.model_dump() for theme in themes], llm_meta
 
     def task(session: Session, report) -> object:
