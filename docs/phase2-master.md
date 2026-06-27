@@ -6,12 +6,12 @@
 
 ## 2. 当前项目所处阶段
 
-截至 2026-06-25：
+截至 **2026-06-26**：
 
 - 一期主工作流已经可以完整跑通
-- **Sprint 1～9 已完成**（含 BGM 推荐工作流、交互统一）
-- **剩余工作**：Sprint 10 验收冻结 + 三期 backlog 文档
-- 执行清单见 `phase2-checklist.md` §3 Sprint 9/10、§10 未完成项汇总
+- **Sprint 1～10 已完成**，**二期已关闭**
+- 新能力规划见 [`phase3-backlog.md`](phase3-backlog.md)
+- 执行清单见 `phase2-checklist.md` §3 Sprint 1～10、§10 未完成项汇总
 
 ## 3. 一期基线能力
 
@@ -20,10 +20,11 @@
 - 项目、素材、主题、节奏、分镜、导出的完整页面流
 - 项目与素材 CRUD
 - 主题生成与选定
-- 节奏生成与保存
+- BGM 推荐 → 上传 → 节拍识别 → 分镜门禁
 - 分镜生成、编辑、插入、删除、排序
-- 导出预览与下载
+- 导出预览与下载（Markdown / JSON / YAML / CSV）
 - Session 登录与用户 API 预留
+- LLM 主题 / 分镜 / 导出 / BGM 建议 + 规则兜底
 
 ## 4. 一期基线业务口径
 
@@ -46,17 +47,18 @@
 
 对应落地方向：
 
-- 音频上传与真实节拍识别
+- 音频上传与真实节拍识别 + BGM 推荐工作流
 - LLM 主题、分镜、导出建议深化
 - 用户与鉴权体系后端化
 - 数据结构与服务分层进一步规范
 - 自动化校验与测试补齐
+- 交互体验统一（Sprint 9）
 
-**上述 P0/P1 目标已基本达成**；收尾阶段聚焦 P2 交互统一与文档验收。
+**上述 P0/P1/P2 目标已达成**；二期正式关闭。
 
 ## 6. 二期边界
 
-二期仍然不做以下内容（移三期 backlog，见 `phase2-checklist.md` §10.3）：
+二期仍然不做以下内容（已写入三期 backlog，见 `phase3-backlog.md`）：
 
 - 自动粗剪产出完整成片
 - 高复杂度镜头复用策略引擎
@@ -65,30 +67,28 @@
 - 视频内容分析 / 素材自动标签
 - OAuth / Device Code 实装（API Key 已满足 MVP）
 - 网页 Cookie 抓取式 LLM 登录
+- 导出 Markdown/JSON 全量反向导入
 
 ## 7. 当前优先级
 
-### 已完成（Sprint 1～9）
+### 已完成（Sprint 1～10）
 
 - P0 工程收口、migration 规范、回归清单
-- P1 音频节拍、LLM 全链路、鉴权、Key 加密、BGM 推荐工作流
-- P2 业务校验四件套、CSV 导出、交互统一（TimeSecondsInput / AssetSelector / ConfirmDialog）
+- P1 音频节拍、LLM 全链路、鉴权、Key 加密、BGM 推荐
+- P2 业务校验四件套、CSV 导出、交互统一、验收冻结
 
-### 收尾中（Sprint 10）
+### 三期（新立项入口）
 
-| Sprint | 主题 | 交付 |
-|--------|------|------|
-| **10** | 验收冻结 | 分镜 LLM polish；导出写回评估；`phase3-backlog.md`；二期 closed |
+见 [`phase3-backlog.md`](phase3-backlog.md)。
 
-## 8. 已提前完成的二期起步项
+## 8. 已落地的主要能力
 
-以下能力已不再是“规划中”，而是已经落到代码：
-
-- 音频上传入口与 librosa / 能量兜底节拍分析
-- LLM 主题 / 分镜 / 导出 / 节奏文案建议（Gateway + 规则兜底 + SSE）
+- 音频上传 + librosa / 能量兜底节拍分析
+- LLM 主题 / 分镜 / 导出 / BGM 推荐（Gateway + 规则兜底 + SSE）
 - LLM Provider 配置页、激活与连通性测试（导演专属）
 - Session Token 鉴权、用户 API、Fernet Key 加密
 - 分镜 / 导出校验、`validateLocationOrder` 可选开关
+- 分镜 validation 摘要面板、导出字幕写回
 
 ## 9. LLM 统一接入原则
 
@@ -102,20 +102,21 @@
 
 详细规范见 `phase2-llm-integration-standard.md`。
 
-## 10. 建议执行顺序
+## 10. 执行顺序（归档）
 
-1. ~~Sprint 4～9~~ ✅
-2. **Sprint 10**：验收回归 + 三期 backlog 文档 + 声明二期关闭
+1. Sprint 1～10 ✅
+2. 二期关闭 ✅
+3. 三期从 `phase3-backlog.md` 排期
 
-## 11. 二期关闭标准
-
-满足以下全部条件即可在 Sprint 10 结束二期：
+## 11. 二期关闭标准（已满足）
 
 1. `phase2-checklist.md` §6.3 三项完成 ✅
-2. §10.1 表格内任务全部勾选
-3. `pytest` 全绿 + `verify-workflow.mjs` 通过
-4. §10.3 能力已写入三期 backlog，代码库无 scope creep
-5. 部署说明含 `APP_SECRET_KEY`、migration 010、re-login 提示
+2. §10.1 表格内 Sprint 10 任务全部勾选 ✅
+3. `pytest` 全绿 + `verify-workflow.mjs` 通过 ✅
+4. §10.3 能力已写入 `phase3-backlog.md` ✅
+5. 部署说明含 `APP_SECRET_KEY`、migration 011、re-login / Key 重配提示 ✅
+
+**状态：二期已关闭（2026-06-26）**
 
 ## 12. 与其他文档的关系
 
@@ -124,4 +125,5 @@
 - 看产品需求：`prd.md`
 - 看标准流程：`sop.md`
 - 看接口约束：`api.md`
-- 三期 backlog（Sprint 10 产出）：`phase3-backlog.md`（待建）
+- 三期 backlog：`phase3-backlog.md`
+- Sprint 10 回归：`regression-sprint10.md`

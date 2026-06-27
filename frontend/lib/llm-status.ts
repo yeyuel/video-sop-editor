@@ -3,6 +3,7 @@ export type LlmMeta = {
   llmMessage?: string;
   llmProviderId?: string;
   llmUsedFallback?: string;
+  storyboardCaptionsUpdated?: string;
 };
 
 export type ApiEnvelopeWithMeta<T> = {
@@ -103,9 +104,6 @@ export function describeLlmStatus(meta?: LlmMeta): {
 
 export function llmNoticeTone(
   tone: "success" | "error" | "warning"
-): "error" | "success" | undefined {
-  if (tone === "warning") {
-    return undefined;
-  }
+): "error" | "success" | "warning" {
   return tone;
 }

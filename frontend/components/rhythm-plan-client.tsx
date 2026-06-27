@@ -81,7 +81,7 @@ export function RhythmPlanClient({
   const [notice, setNotice] = useState<{
     message: string;
     title: string;
-    tone?: "error" | "success";
+    tone?: "error" | "success" | "warning";
   } | null>(null);
   const [isPending, startTransition] = useTransition();
   const { llmProgress, isLlmRunning, start, onProgress, finish } = useLlmProgress();

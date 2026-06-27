@@ -4,7 +4,7 @@
 
 本文档用于把二期工作拆成可跟踪事项。优先级分为 `P0 / P1 / P2`，Sprint 按迭代推进；勾选状态请在开发过程中持续维护。
 
-## 2. 当前状态概览（截至 2026-06-25）
+## 2. 当前状态概览（截至 2026-06-26）
 
 | 阶段 | 状态 | 说明 |
 |------|------|------|
@@ -16,9 +16,10 @@
 | Sprint 5（LLM 网关标准化） | ✅ 已完成 | Gateway、Provider 配置页、SSE 进度、Kimi 兼容、stream 回归 |
 | Sprint 6（LLM 业务质量） | ✅ 已完成 | 主题证据字段、导出平台化、rawBeat 切镜、LLM 二层排序、字幕写回 |
 | Sprint 7（用户与鉴权） | ✅ 已完成 | Session Token、用户 API 预留、LLM Key Fernet 加密 |
-| Sprint 8（P2 增强） | ✅ 核心已完成 | 校验四件套、CSV 导出、BGM 推荐工作流 |
+| Sprint 8（P2 增强） | ✅ 已完成 | 校验四件套、CSV 导出、BGM 推荐工作流 |
 | Sprint 9（交互统一） | ✅ 已完成 | TimeSecondsInput、AssetSelector、ConfirmDialog、列表布局统一 |
-| **二期收尾** | 🔄 规划中 | Sprint 9～10：交互统一 + 验收冻结（见 §10） |
+| Sprint 10（验收冻结） | ✅ 已完成 | validation 摘要、导出写回回归、phase3-backlog、部署说明 |
+| **二期** | ✅ **已关闭** | 见 `phase2-master.md` §11；三期见 `phase3-backlog.md` |
 
 ## 3. Sprint 迭代计划
 
@@ -137,28 +138,26 @@
 
 **验收标准**：导演账号走通全流程，时间输入行为一致，分镜素材选择可搜可分组，删除走 ConfirmDialog。
 
-### Sprint 10 — 验收冻结 + 三期 backlog（二期收尾 B）
+### Sprint 10 — 验收冻结 + 三期 backlog（二期收尾 B） ✅
 
 **目标**：正式关闭二期范围，未做能力写入 backlog，不做新大功能。
 
-- [ ] **导出写回完整性（轻量）**
-  - 评估导出 Markdown/JSON 是否需反向导入分镜字幕 / 标签（若成本高则只写评估结论）
-  - 至少保证：LLM 导出建议 → `segmentCaptions` 写回已有回归覆盖
-- [ ] **LLM 分镜建议可信度（ polish，非重构）**
-  - Prompt / validation 联动：生成后若 `issues` 非空，LLM 结果页顶部固定展示校验摘要
-  - 可选：分镜 LLM 失败时 meta 文案与主题 / 导出页完全一致（复用 `describeLlmStatus`）
-- [ ] **§6.4 远期 AI — 仅评估文档**
-  - 输出 `docs/phase3-backlog.md`（或 master 附录）：视频分析、自动标签、粗剪结构、OAuth 实装
-  - **不**在本 Sprint 写识别/粗剪代码
-- [ ] **二期验收清单**
-  - `phase2-checklist.md` 全部 P0/P1 勾选或显式标「移出二期」
+- [x] **导出写回完整性（轻量）**
+  - 评估结论：完整 Markdown/JSON 反向导入列入三期（见 `phase3-backlog.md` §5）
+  - LLM 导出建议 → `segmentCaptions` 写回：`test_regression_sprint10.py`
+- [x] **LLM 分镜建议可信度（ polish）**
+  - 生成后 `validation.issues` 非空时列表页顶部固定展示「校验摘要」面板
+  - 分镜 / 主题 / 导出 LLM meta 统一复用 `describeLlmStatus` + Toast warning 色调
+- [x] **§6.4 远期 AI — 仅评估文档**
+  - 已输出 `docs/phase3-backlog.md`（视频分析、自动标签、粗剪、OAuth）
+- [x] **二期验收清单**
+  - P0/P1 已勾选或标「移出二期」
   - `phase2-master.md` 状态改为「二期已关闭」
-  - README / 部署说明补：`APP_SECRET_KEY`、migration 010、导演 re-login 说明
-- [ ] **全量回归**
-  - `pytest tests/ -q` + LLM 子集 + workflow 脚本
-  - 手工 smoke：登录 → 建项（路线可选、地点校验开关）→ 导出 CSV
+  - `README.md` 补：`APP_SECRET_KEY`、migration 011、导演 re-login / Key 重配说明
+- [x] **全量回归**
+  - `pytest tests/ -q` + `verify-workflow.mjs`（见 `regression-sprint10.md`）
 
-**验收标准**：文档声明二期 closed；§6.3 完成；§6.4 / OAuth / 视频分析明确在三期 backlog。
+**验收标准**：文档声明二期 closed；§6.3 完成；§6.4 / OAuth / 视频分析在 `phase3-backlog.md`。
 
 ## 4. P0 必做项
 
@@ -178,7 +177,7 @@
 
 - [x] 明确数据库 schema 变更流程（`schemaversionentity` + 编号 migration）
 - [x] 每次新增字段都同步 migration、schema、api 文档（SOP 见 `schema-migration.md` §6）
-- [ ] 给音频分析、登录用户、LLM 配置相关数据结构补长期方案 → **Sprint 9 文档段（见下）；实现已落地 migration 008/009/011**
+- [x] 给音频分析、登录用户、LLM 配置相关数据结构补长期方案（见下表；migration 008/009/011 已落地）
 
 #### 数据结构长期方向（Sprint 9 文档对齐）
 
@@ -218,7 +217,7 @@
 
 ### 5.3 LLM 分镜建议
 
-- [ ] 在现有节奏、素材、主题基础上输出更可信的分镜建议 → **Sprint 10 polish（validation 摘要联动）**
+- [x] 在现有节奏、素材、主题基础上输出更可信的分镜建议 → **Sprint 10：validation 摘要面板 + 三期 backlog 深化**
 - [x] 后续支持「大模型建议顺序」作为二层排序来源之一（`merge_asset_order`，Sprint 6）
 - [x] 强化素材绑定和地点连续性校验（validation 文案 + 前端提示；地点顺序校验可选 `validateLocationOrder`）
 
@@ -227,7 +226,7 @@
 - [x] 让标题、标签、文案建议更贴近平台风格
 - [x] 预留后续多平台差异化策略（platformGuide 结构）
 - [x] 分镜字幕写回（`segmentCaptions` → subtitle，Sprint 6）
-- [ ] 将最终导出结果更完整写回时间线脚本 → **Sprint 10 评估；完整反向导入标三期**
+- [x] 将最终导出结果更完整写回时间线脚本 → **Sprint 10 评估：字幕写回已做；完整反向导入标三期（`phase3-backlog.md` §5）**
 
 ### 5.5 用户与鉴权
 
@@ -268,9 +267,9 @@
 
 ### 6.4 AI 深化能力
 
-- [ ] 引入更强的大模型分镜组织能力 → **三期 backlog（Sprint 10 只写评估）**
-- [ ] 研究更合理的镜头复用策略，但不一定进入标准主流程 → **三期 backlog**
-- [ ] 评估后续自动粗剪的结构准备 → **Sprint 10 文档评估，不写粗剪代码**
+- [x] 引入更强的大模型分镜组织能力 → **三期 backlog（`phase3-backlog.md` §3）**
+- [x] 研究更合理的镜头复用策略，但不一定进入标准主流程 → **三期 backlog**
+- [x] 评估后续自动粗剪的结构准备 → **三期 backlog §4；不写粗剪代码**
 
 ## 7. 二期边界（明确不做）
 
@@ -314,8 +313,8 @@ node scripts/verify-workflow.mjs
 5. ~~Sprint 7~~：用户鉴权收尾 ✅
 6. ~~Sprint 8~~：P2 校验与导出增强 ✅
 7. **Sprint 9**：交互统一 + 清单 / 文档对齐 ✅
-8. **Sprint 10**：验收冻结 + 三期 backlog 文档
-9. **二期关闭**：P0/P1 全部验收，§6.4 / 视频分析 / OAuth 实装移出
+8. ~~Sprint 10~~：验收冻结 + 三期 backlog 文档 ✅
+9. **二期已关闭** — 新需求请从 `phase3-backlog.md` 立项
 
 ## 10. 二期未完成项汇总与处置（截至 2026-06-25）
 
@@ -328,10 +327,10 @@ node scripts/verify-workflow.mjs
 | 分镜时间输入组件统一 | §6.3 | 9 | 小 | ✅ |
 | 过时 checklist 勾选同步 | 多处 | 9 | 小 |
 | §4.3 数据结构长期方案文档 | §4.3 | 9 | 小 |
-| 分镜 LLM + validation 摘要联动 | §5.3 | 10 | 小 |
-| 导出写回范围评估 | §5.4 | 10 | 小 |
-| 二期验收 + 部署说明 | — | 10 | 小 |
-| 全量回归 | §8 | 10 | 小 |
+| 分镜 LLM + validation 摘要联动 | §5.3 | 10 | 小 | ✅ |
+| 导出写回范围评估 | §5.4 | 10 | 小 | ✅ |
+| 二期验收 + 部署说明 | — | 10 | 小 | ✅ |
+| 全量回归 | §8 | 10 | 小 | ✅ |
 
 ### 10.2 Sprint 5 遗留（明确不阻塞二期关闭）
 
@@ -367,3 +366,6 @@ node scripts/verify-workflow.mjs
 - `schema-migration.md`
 - `regression-sprint3.md`
 - `regression-sprint5.md`
+- `regression-sprint9.md`
+- `regression-sprint10.md`
+- `phase3-backlog.md`

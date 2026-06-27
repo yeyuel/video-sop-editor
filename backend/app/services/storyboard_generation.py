@@ -113,6 +113,48 @@ def resolve_storyboard_beat_points(
     return rhythm.beatPoints
 
 
+def _dominant_beat_mode(
+    segments: list[StoryboardSegmentRead],
+    rhythm: RhythmPlanRead | None,
+) -> str:
+    for segment in segments:
+        if segment.beatMode and segment.beatMode != "none":
+            return segment.beatMode
+    if rhythm and rhythm.beatMode:
+        return rhythm.beatMode
+    return "none"
+
+
+def resolve_validation_beat_points(
+    rhythm: RhythmPlanRead | None,
+    segments: list[StoryboardSegmentRead],
+    target_duration_sec: float,
+) -> list[float]:
+    """与分镜生成使用同一套节拍网格，避免 coarse beatPoints 误报对齐失败。"""
+    if not rhythm:
+        collected: set[float] = set()
+        for segment in segments:
+            if segment.beatMode == "none":
+                continue
+            collected.update(segment.beatPoints)
+            collected.add(segment.startTime)
+            collected.add(segment.endTime)
+        return sorted(collected)
+
+    beat_mode = _dominant_beat_mode(segments, rhythm)
+    if beat_mode != "none":
+        resolved = resolve_storyboard_beat_points(
+            rhythm,
+            beat_mode=beat_mode,
+            target_duration_sec=max(int(round(target_duration_sec)), 1),
+            align_to_beat=True,
+        )
+        if resolved:
+            return resolved
+
+    return rhythm.beatPoints
+
+
 def _align_storyboard_plan_to_assets(
     ordered_assets: list[AssetRead],
     plan: list[dict[str, str]],
@@ -453,11 +495,10 @@ def build_storyboard_validation(
     else:
         location_continuity = True
         location_jump_issues = []
-    beat_alignment = (
-        check_beat_alignment(segments, rhythm.beatPoints if rhythm else [])
-        if beat_adaptation_enabled
-        else False
-    )
+    beat_alignment = False
+    if beat_adaptation_enabled:
+        validation_beats = resolve_validation_beat_points(rhythm, segments, target_duration)
+        beat_alignment = check_beat_alignment(segments, validation_beats)
     target_duration_reached = total_duration >= target_duration
     issues: list[str] = []
 
@@ -592,6 +633,27 @@ def resolve_segment_timing(
 
     if end_time <= current_time + 0.001:
         end_time = hard_end
+
+    if beat_points and not is_on_beat(end_time, beat_points, 0.001):
+        in_range = [
+            point
+            for point in beat_points
+            if point > current_time + 0.001 and point <= hard_end + 0.001
+        ]
+        if in_range:
+            end_time = in_range[-1]
+        elif end_time > beat_points[-1] + 0.001 and beat_points[-1] > current_time + 0.001:
+            end_time = beat_points[-1]
+        elif end_time > beat_points[-1] + 0.001 and is_on_beat(current_time, beat_points, 0.001):
+            end_time = beat_points[-1]
+        snapped_index = next(
+            (
+                idx
+                for idx, point in enumerate(beat_points)
+                if abs(point - end_time) <= 0.001
+            ),
+            snapped_index,
+        )
 
     segment_beats = [
         round(point, 2) for point in beat_points if current_time <= point <= end_time + 0.001
@@ -744,15 +806,17 @@ def check_beat_alignment(
     beat_points: list[float],
     tolerance: float = 0.05,
 ) -> bool:
-    if not segments or len(beat_points) < 2:
-        return False
+    beat_segments = [segment for segment in segments if segment.beatMode != "none"]
+    if not beat_segments:
+        return True
 
-    for segment in segments:
-        if not segment.beatPoints:
+    for segment in beat_segments:
+        reference = sorted(set(beat_points) | set(segment.beatPoints))
+        if not reference:
             return False
-        if not is_on_beat(segment.startTime, beat_points, tolerance):
+        if not is_on_beat(segment.startTime, reference, tolerance):
             return False
-        if not is_on_beat(segment.endTime, beat_points, tolerance):
+        if not is_on_beat(segment.endTime, reference, tolerance):
             return False
     return True
 

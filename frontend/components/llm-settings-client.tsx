@@ -56,7 +56,7 @@ export function LlmSettingsClient() {
   const [notice, setNotice] = useState<{
     message: string;
     title: string;
-    tone?: "error" | "success";
+    tone?: "error" | "success" | "warning";
   } | null>(null);
   const [loading, setLoading] = useState(true);
   const [isPending, startTransition] = useTransition();

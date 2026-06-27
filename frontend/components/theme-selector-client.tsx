@@ -89,7 +89,7 @@ export function ThemeSelectorClient({
   const [notice, setNotice] = useState<{
     message: string;
     title: string;
-    tone?: "error" | "success";
+    tone?: "error" | "success" | "warning";
   } | null>(null);
   const [isPending, startTransition] = useTransition();
   const [llmProgress, setLlmProgress] = useState<LlmProgressViewState | null>(null);

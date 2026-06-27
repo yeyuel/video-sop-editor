@@ -6,7 +6,7 @@ import { useEffect, useMemo, useState, useTransition } from "react";
 
 import { BlockingNotice, ToastNotice } from "@/components/async-status";
 import { LlmProgressOverlay } from "@/components/llm-progress-overlay";
-import { ConfirmDialog, EmptyState, InlineErrorBanner } from "@/components/ui-primitives";
+import { ConfirmDialog, EmptyState, InlineErrorBanner, ValidationIssuesPanel } from "@/components/ui-primitives";
 import {
   deleteStoryboardSegment,
   generateStoryboard,
@@ -363,7 +363,9 @@ export function StoryboardListClient({
 
         {error ? <InlineErrorBanner message={error} /> : null}
 
-        {bundle.validation.message ? (
+        <ValidationIssuesPanel issues={bundle.validation.issues} />
+
+        {bundle.validation.message && bundle.validation.issues.length === 0 ? (
           <div className="rounded-2xl border border-pine/10 bg-sand/45 px-4 py-3 text-sm text-ink/70">
             {bundle.validation.message}
           </div>

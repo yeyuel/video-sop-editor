@@ -4,6 +4,41 @@ import clsx from "clsx";
 import type { ReactNode } from "react";
 import { BlockingNotice } from "@/components/async-status";
 
+type ValidationIssuesPanelProps = {
+  className?: string;
+  issues: string[];
+  title?: string;
+};
+
+export function ValidationIssuesPanel({
+  className,
+  issues,
+  title = "校验摘要"
+}: ValidationIssuesPanelProps) {
+  if (issues.length === 0) {
+    return null;
+  }
+
+  return (
+    <div
+      className={clsx(
+        "rounded-2xl border border-sand/40 bg-sand/35 px-4 py-4 text-sm text-ink/75",
+        className
+      )}
+    >
+      <p className="font-medium text-ink">{title}</p>
+      <ul className="mt-3 space-y-2">
+        {issues.map((issue, index) => (
+          <li key={`${index}-${issue}`} className="flex gap-2 leading-6">
+            <span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-clay/70" />
+            <span>{issue}</span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
 type EmptyStateProps = {
   children?: ReactNode;
   message: string;

@@ -14,6 +14,11 @@ import {
   storyboardFunctionOptions
 } from "@/lib/storyboard-options";
 import { parseTimeSeconds, validateTimeSeconds } from "@/lib/time-input";
+import {
+  isOnBeat,
+  resolveSnappedSegmentTimes,
+  sliceBeatPointsInRange
+} from "@/lib/beat-snap";
 import type { Asset, StoryboardSegment } from "@/types/domain";
 
 type StoryboardSegmentEditorClientProps = {
@@ -22,6 +27,7 @@ type StoryboardSegmentEditorClientProps = {
   backHref: string;
   mode?: "create" | "edit";
   projectId: string;
+  rhythmBeatPoints?: number[];
   segment: StoryboardSegment;
   targetDurationSec: number;
   themeId?: string;
@@ -44,6 +50,7 @@ export function StoryboardSegmentEditorClient({
   backHref,
   mode = "edit",
   projectId,
+  rhythmBeatPoints = [],
   segment,
   targetDurationSec,
   themeId
@@ -56,7 +63,12 @@ export function StoryboardSegmentEditorClient({
   const [error, setError] = useState("");
   const [notice, setNotice] = useState<{ message: string; title: string } | null>(null);
   const [isPending, startTransition] = useTransition();
-  const beatModeEnabled = form.beatMode && form.beatMode !== "none";
+  const beatModeEnabled = Boolean(form.beatMode && form.beatMode !== "none");
+  const beatSnapEnabled = beatModeEnabled && rhythmBeatPoints.length >= 2;
+  const parsedStartTime = parseTimeSeconds(startTimeText, {
+    min: 0,
+    max: targetDurationSec
+  });
 
   useEffect(() => {
     if (!notice) {
@@ -83,11 +95,58 @@ export function StoryboardSegmentEditorClient({
     setNotice({ title: "保存失败", message });
   }
 
+  function applySnapToBothTimes() {
+    const snapped = resolveSnappedSegmentTimes(
+      startTimeText,
+      endTimeText,
+      rhythmBeatPoints,
+      targetDurationSec
+    );
+    if (!snapped) {
+      showError("无法吸附到节拍，请确认节奏页已有足够节拍点。");
+      return;
+    }
+
+    setStartTimeText(snapped.startTimeText);
+    setEndTimeText(snapped.endTimeText);
+    setBeatPointsText(snapped.beatPointsText);
+    setError("");
+  }
+
+  function resolveSubmitTimes():
+    | {
+        beatPointsText: string;
+        endTimeText: string;
+        startTimeText: string;
+      }
+    | null {
+    if (!beatSnapEnabled) {
+      return {
+        startTimeText,
+        endTimeText,
+        beatPointsText
+      };
+    }
+
+    return resolveSnappedSegmentTimes(
+      startTimeText,
+      endTimeText,
+      rhythmBeatPoints,
+      targetDurationSec
+    );
+  }
+
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError("");
 
-    const startError = validateTimeSeconds(startTimeText, {
+    const resolvedTimes = resolveSubmitTimes();
+    if (!resolvedTimes) {
+      showError("无法吸附到节拍，请检查开始/结束时间或节奏页节拍点。");
+      return;
+    }
+
+    const startError = validateTimeSeconds(resolvedTimes.startTimeText, {
       min: 0,
       max: targetDurationSec
     });
@@ -96,7 +155,7 @@ export function StoryboardSegmentEditorClient({
       return;
     }
 
-    const endError = validateTimeSeconds(endTimeText, {
+    const endError = validateTimeSeconds(resolvedTimes.endTimeText, {
       min: 0,
       max: targetDurationSec
     });
@@ -105,11 +164,11 @@ export function StoryboardSegmentEditorClient({
       return;
     }
 
-    const startTime = parseTimeSeconds(startTimeText, {
+    const startTime = parseTimeSeconds(resolvedTimes.startTimeText, {
       min: 0,
       max: targetDurationSec
     });
-    const endTime = parseTimeSeconds(endTimeText, {
+    const endTime = parseTimeSeconds(resolvedTimes.endTimeText, {
       min: 0,
       max: targetDurationSec
     });
@@ -123,13 +182,25 @@ export function StoryboardSegmentEditorClient({
       return;
     }
 
+    if (
+      beatSnapEnabled &&
+      (!isOnBeat(startTime, rhythmBeatPoints) || !isOnBeat(endTime, rhythmBeatPoints))
+    ) {
+      showError("起止时间仍需落在节奏页节拍点上，请使用吸附按钮。");
+      return;
+    }
+
     startTransition(async () => {
       try {
+        const beatPoints = beatSnapEnabled
+          ? sliceBeatPointsInRange(rhythmBeatPoints, startTime, endTime)
+          : parseNumberList(resolvedTimes.beatPointsText);
+
         const payload = {
           ...form,
           startTime,
           endTime,
-          beatPoints: parseNumberList(beatPointsText)
+          beatPoints
         };
 
         if (mode === "create") {
@@ -182,14 +253,34 @@ export function StoryboardSegmentEditorClient({
           label="开始（秒）"
           value={startTimeText}
           max={targetDurationSec}
+          beatPoints={rhythmBeatPoints}
+          enableBeatSnap={beatSnapEnabled}
           onValueChange={setStartTimeText}
         />
         <TimeSecondsInput
           label="结束（秒）"
           value={endTimeText}
           max={targetDurationSec}
+          beatPoints={rhythmBeatPoints}
+          beatSnapMin={parsedStartTime !== null ? parsedStartTime + 0.01 : 0}
+          enableBeatSnap={beatSnapEnabled}
           onValueChange={setEndTimeText}
         />
+
+        {beatSnapEnabled ? (
+          <div className="md:col-span-2 flex flex-wrap items-center gap-3 rounded-2xl border border-pine/10 bg-mist/55 px-4 py-3">
+            <p className="text-sm text-ink/70">
+              当前使用节奏页 {rhythmBeatPoints.length} 个节拍点。失焦或点击按钮可将时间吸附到最近节拍。
+            </p>
+            <button
+              type="button"
+              onClick={applySnapToBothTimes}
+              className="inline-flex rounded-full border border-pine/20 bg-white px-4 py-2 text-sm font-medium text-pine transition hover:bg-white/90"
+            >
+              一键吸附起止时间
+            </button>
+          </div>
+        ) : null}
 
         <div className="md:col-span-2">
           <AssetSelector

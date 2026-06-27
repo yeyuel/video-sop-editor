@@ -1,14 +1,18 @@
-from app.models.schemas import AssetRead, RhythmPlanRead
+from app.models.entities import ProjectEntity
+from app.models.schemas import AssetRead, RhythmPlanRead, StoryboardSegmentRead
 from app.services.storyboard_generation import (
     _align_storyboard_plan_to_assets,
     _normalize_storyboard_plan,
     _rhythm_context_for_llm,
     _storyboard_max_tokens,
+    build_storyboard_validation,
+    check_beat_alignment,
     generate_storyboard_segments,
     generate_storyboard_segments_from_plan,
     merge_asset_order,
     resolve_segment_timing,
     resolve_storyboard_beat_points,
+    resolve_validation_beat_points,
 )
 from app.services.llm.types import LlmCallResult
 
@@ -258,6 +262,133 @@ def test_align_storyboard_plan_preserves_asset_order() -> None:
     assert [item["assetId"] for item in aligned] == ["HEMU_002", "GENERAL_003"]
     assert aligned[0]["shotDescription"] == ""
     assert aligned[1]["subtitle"] == "过渡"
+
+
+def test_resolve_segment_timing_snaps_tail_end_to_last_beat_before_target() -> None:
+    beats = [0.0, 1.0, 2.0, 58.5, 59.0]
+
+    end_time, _, segment_beats = resolve_segment_timing(
+        current_time=59.0,
+        suggested_duration_sec=1.0,
+        target_duration_sec=60,
+        beat_points=beats,
+        beat_index=4,
+    )
+
+    assert end_time == 59.0
+    assert segment_beats[-1] == 59.0
+
+
+def test_resolve_segment_timing_snaps_hard_end_to_nearest_beat() -> None:
+    beats = [0.0, 1.0, 2.0, 3.0, 58.0]
+
+    end_time, _, _ = resolve_segment_timing(
+        current_time=58.0,
+        suggested_duration_sec=2.0,
+        target_duration_sec=60,
+        beat_points=beats,
+        beat_index=4,
+    )
+
+    assert end_time == 58.0
+
+
+def _segment_on_beats(
+    segment_id: str,
+    *,
+    start: float,
+    end: float,
+    beat_mode: str = "beat_2",
+    beat_points: list[float] | None = None,
+) -> StoryboardSegmentRead:
+    scoped = beat_points or [start, end]
+    return StoryboardSegmentRead(
+        id=segment_id,
+        startTime=start,
+        endTime=end,
+        assetId="A",
+        shotDescription="",
+        function="supporting",
+        rhythm="balanced",
+        beatMode=beat_mode,
+        beatPoints=scoped,
+        subtitle="",
+    )
+
+
+def test_check_beat_alignment_uses_fine_grid_and_segment_beats() -> None:
+    coarse = [0.0, 2.0, 4.0]
+    fine = [0.0, 0.5, 1.0, 1.5, 2.0, 2.5, 3.0, 3.5, 4.0]
+    segments = [
+        _segment_on_beats("seg_1", start=0.5, end=2.5, beat_points=[0.5, 1.0, 1.5, 2.0, 2.5]),
+    ]
+
+    assert check_beat_alignment(segments, coarse) is True
+    assert check_beat_alignment(segments, fine) is True
+
+
+def test_build_storyboard_validation_passes_beat_2_segments() -> None:
+    rhythm = RhythmPlanRead(
+        bgmStyle="氛围电子",
+        selectedTrackName="demo-track",
+        beatMode="beat_1",
+        beatPoints=[0.0, 2.0, 4.0, 6.0],
+        rawBeatPoints=[0.0, 0.5, 1.0, 1.5, 2.0, 2.5, 3.0, 3.5, 4.0, 4.5, 5.0, 5.5, 6.0],
+        coarseBeatPoints=[0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0],
+        rhythmNotes=[],
+        darkCutSuggestions=[],
+        photoMotionSuggestions=[],
+    )
+    project = ProjectEntity(
+        id="proj_1",
+        name="测试项目",
+        destination="阿勒泰",
+        platform="xiaohongshu",
+        target_duration_sec=6,
+        video_type="emotion_film",
+        style_preference="",
+        style_notes="",
+        route_text="",
+        media_root="",
+        status="draft",
+        selected_theme_id="",
+        validate_location_order=False,
+    )
+    segments = [
+        _segment_on_beats("seg_1", start=0.0, end=2.5, beat_points=[0.0, 0.5, 1.0, 1.5, 2.0, 2.5]),
+        _segment_on_beats("seg_2", start=2.5, end=6.0, beat_points=[2.5, 3.0, 3.5, 4.0, 4.5, 5.0, 5.5, 6.0]),
+    ]
+    assets = [_asset("A", 2.5)]
+
+    validation = build_storyboard_validation(project, segments, rhythm, assets)
+
+    assert validation.beatAlignmentPassed is True
+    assert not any("节拍点" in issue for issue in validation.issues)
+
+
+def test_resolve_validation_beat_points_matches_generation_grid() -> None:
+    rhythm = RhythmPlanRead(
+        bgmStyle="氛围电子",
+        selectedTrackName="demo-track",
+        beatMode="beat_1",
+        beatPoints=[0.0, 2.0, 4.0],
+        rawBeatPoints=[0.0, 0.5, 1.0, 1.5, 2.0, 2.5, 3.0, 3.5, 4.0],
+        coarseBeatPoints=[0.0, 1.0, 2.0, 3.0, 4.0],
+        rhythmNotes=[],
+        darkCutSuggestions=[],
+        photoMotionSuggestions=[],
+    )
+    segments = [_segment_on_beats("seg_1", start=0.5, end=2.5)]
+
+    validation_beats = resolve_validation_beat_points(rhythm, segments, 4.0)
+    generation_beats = resolve_storyboard_beat_points(
+        rhythm,
+        beat_mode="beat_2",
+        target_duration_sec=4,
+        align_to_beat=True,
+    )
+
+    assert validation_beats == generation_beats
 
 
 def test_generate_storyboard_segments_from_plan_uses_llm_copy_only() -> None:

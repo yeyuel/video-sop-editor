@@ -77,6 +77,7 @@ export default async function ProjectStoryboardEditPage({
             <StoryboardSegmentEditorClient
               assets={workspace.assets}
               projectId={projectId}
+              rhythmBeatPoints={workspace.rhythmPlan.beatPoints}
               segment={segment}
               targetDurationSec={workspace.project.targetDurationSec}
               backHref={`/projects/${projectId}/storyboard`}

@@ -115,6 +115,7 @@ export default async function ProjectStoryboardNewPage({
               mode="create"
               assets={workspace.assets}
               projectId={projectId}
+              rhythmBeatPoints={workspace.rhythmPlan.beatPoints}
               segment={initialSegment}
               targetDurationSec={workspace.project.targetDurationSec}
               themeId={workspace.project.selectedThemeId}
