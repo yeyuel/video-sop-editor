@@ -326,7 +326,7 @@ node scripts/verify-workflow.mjs
 | 列表 / 编辑 / 提示交互统一 | §6.3 | 9 | 中 | ✅ |
 | 素材选择器搜索 + 分组 | §6.3 | 9 | 中 | ✅ |
 | 分镜时间输入组件统一 | §6.3 | 9 | 小 | ✅ |
-| 过时 checklist 勾选同步 | 多处 | 9 | 小 |
+| 过时 checklist 勾选同步 | 多处 | 9 | 小 | ✅ |
 | §4.3 数据结构长期方案文档 | §4.3 | 9 | 小 |
 | 分镜 LLM + validation 摘要联动 | §5.3 | 10 | 小 | ✅ |
 | 导出写回范围评估 | §5.4 | 10 | 小 | ✅ |
@@ -369,4 +369,5 @@ node scripts/verify-workflow.mjs
 - `regression-sprint5.md`
 - `regression-sprint9.md`
 - `regression-sprint10.md`
+- `regression-sprint11.md`
 - `phase3-backlog.md`

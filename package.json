@@ -1,0 +1,12 @@
+{
+  "name": "video-sop-editor",
+  "private": true,
+  "scripts": {
+    "test:e2e": "playwright test",
+    "test:e2e:ui": "playwright test --ui",
+    "verify:workflow": "node scripts/verify-workflow.mjs"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.53.2"
+  }
+}

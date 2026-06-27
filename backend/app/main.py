@@ -1,3 +1,5 @@
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -17,7 +19,17 @@ from app.migrations import run_sqlite_migrations
 from app.services.seed import seed_demo_data
 from sqlmodel import Session
 
-app = FastAPI(title=settings.app_name)
+
+@asynccontextmanager
+async def lifespan(_: FastAPI):
+    create_db_and_tables()
+    run_sqlite_migrations()
+    with Session(engine) as session:
+        seed_demo_data(session)
+    yield
+
+
+app = FastAPI(title=settings.app_name, lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -28,14 +40,6 @@ app.add_middleware(
 )
 
 api_prefix = "/api/v1"
-
-
-@app.on_event("startup")
-def on_startup() -> None:
-    create_db_and_tables()
-    run_sqlite_migrations()
-    with Session(engine) as session:
-        seed_demo_data(session)
 
 
 app.include_router(llm_router, prefix=api_prefix)

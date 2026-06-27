@@ -17,6 +17,7 @@
 - `phase3-checklist.md`：三期执行清单。
 - `phase3-backlog.md`：三期需求池（二期移出项）。
 - `regression-sprint3.md`：Sprint 3 关键路径回归测试说明与运行命令。
+- `regression-sprint11.md`：Sprint 11 E2E / lifespan / 节拍网格回归。
 - `schema-migration.md`：数据库 migration 规范与字段变更检查清单。
 
 ## 能力专项

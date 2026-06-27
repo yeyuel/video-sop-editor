@@ -6,7 +6,7 @@
 - `backend/` — FastAPI 后端（领域模型、LLM、音频分析、导出）
 - `docs/` — 产品与技术文档
 
-**二期状态（Sprint 1～10）**：已关闭。三期规划见 [`docs/phase3-backlog.md`](docs/phase3-backlog.md)。
+**二期（Sprint 1～10）**：已关闭。**三期 Sprint 11 起**见 [`docs/phase3-master.md`](docs/phase3-master.md) / [`docs/phase3-checklist.md`](docs/phase3-checklist.md)。
 
 ## 技术栈
 
@@ -42,7 +42,7 @@ npm run dev
 
 浏览器访问：<http://127.0.0.1:3000>
 
-默认登录：导演账号（见 seed / 登录页说明）。
+默认登录：`director` / `root123`（seed 演示账号；导演可在用户管理页创建更多账号）。
 
 ## 环境变量
 
@@ -82,13 +82,42 @@ LLM_MODEL=gpt-4.1-mini
 
 ## 回归测试
 
+依赖分三层：**Python 测后端**（`backend/requirements.txt`）、**Node 测前端单元**（`frontend/package.json`）、**Playwright 测 E2E**（根目录 `package.json`）。Vitest / Playwright **不在** `requirements.txt` 里。
+
+### 后端（pytest）
+
 ```powershell
 cd backend
+pip install -r requirements.txt
 python -m pytest tests/ -q
 python -m pytest tests/test_llm_routes.py tests/test_llm_gateway.py tests/test_llm_model_catalog.py tests/test_llm_stream.py -q
+python -m pytest tests/test_regression_sprint11.py -q
+```
 
+### 前端 workflow 脚本
+
+```powershell
 cd ..
 node scripts/verify-workflow.mjs
+```
+
+### 前端单元测试（Vitest）
+
+```powershell
+cd frontend
+npm install
+npm run test:unit
+```
+
+### E2E（Playwright）
+
+Playwright 在**仓库根目录**安装；首次需下载 Chromium。测试会自动拉起后端（`8000`）与前端 dev（`3000`），或使用已运行的实例（本地开发时 `reuseExistingServer`）。
+
+```powershell
+cd ..   # 仓库根目录
+npm install
+npx playwright install chromium
+npm run test:e2e
 ```
 
 | 文档 | 范围 |
@@ -97,11 +126,14 @@ node scripts/verify-workflow.mjs
 | [`docs/regression-sprint5.md`](docs/regression-sprint5.md) | LLM / SSE |
 | [`docs/regression-sprint9.md`](docs/regression-sprint9.md) | 交互统一 |
 | [`docs/regression-sprint10.md`](docs/regression-sprint10.md) | 二期验收 |
+| [`docs/regression-sprint11.md`](docs/regression-sprint11.md) | lifespan、节拍网格、E2E |
 
 ## 文档索引
 
+- 三期总控：[`docs/phase3-master.md`](docs/phase3-master.md)
+- 三期清单：[`docs/phase3-checklist.md`](docs/phase3-checklist.md)
 - 二期总控：[`docs/phase2-master.md`](docs/phase2-master.md)
-- 执行清单：[`docs/phase2-checklist.md`](docs/phase2-checklist.md)
+- 二期清单：[`docs/phase2-checklist.md`](docs/phase2-checklist.md)
 - 三期 backlog：[`docs/phase3-backlog.md`](docs/phase3-backlog.md)
 - API：[`docs/api.md`](docs/api.md)
 - 迁移规范：[`docs/schema-migration.md`](docs/schema-migration.md)

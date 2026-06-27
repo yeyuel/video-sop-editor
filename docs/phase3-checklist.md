@@ -17,7 +17,7 @@
 | 阶段 | 状态 | 说明 |
 |------|------|------|
 | 二期 | ✅ 已关闭 | Sprint 1～10 |
-| Sprint 11（工程基线） | ⬜ 未开始 | E2E、lifespan、文档骨架 |
+| Sprint 11（工程基线） | ✅ 已完成 | E2E、lifespan、节拍网格对齐 |
 | Sprint 12（剪辑 + RBAC） | ⬜ 未开始 | **决策 1** |
 | Sprint 13（导出反向导入） | ⬜ 未开始 | JSON / CSV round-trip |
 | Sprint 14（LLM Vision） | ⬜ 未开始 | **决策 2** |
@@ -32,11 +32,11 @@
 ### Sprint 11 — 工程基线 + 三期立项
 
 - [x] 新增 `phase3-master.md` / 本清单 / 更新 `docs/README.md`
-- [ ] Playwright E2E：导演主流程 smoke（登录 → 主题 → BGM → 分镜 → 导出）
-- [ ] FastAPI `lifespan` 替换 `@app.on_event("startup")`
-- [ ] 前端节拍吸附网格与后端 `resolve_validation_beat_points` 对齐
-- [ ] `phase2-checklist.md` §10.1「过时勾选同步」补 ✅
-- [ ] 新增 `regression-sprint11.md`
+- [x] Playwright E2E：导演主流程 smoke（登录 → 主题 → BGM → 分镜 → 导出）
+- [x] FastAPI `lifespan` 替换 `@app.on_event("startup")`
+- [x] 前端节拍吸附网格与后端 `resolve_validation_beat_points` 对齐
+- [x] `phase2-checklist.md` §10.1「过时勾选同步」补 ✅
+- [x] 新增 `regression-sprint11.md`
 
 **验收：** pytest 全绿 + E2E 1 条通过 + verify-workflow 7 checks。
 

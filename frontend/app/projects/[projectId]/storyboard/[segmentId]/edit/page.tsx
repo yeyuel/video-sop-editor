@@ -5,6 +5,7 @@ import {
   getStoryboardBeatModeLabel,
   getStoryboardFunctionLabel
 } from "@/lib/storyboard-options";
+import { resolveSnapBeatPointsForSegment } from "@/lib/storyboard-beat-points";
 import { Topbar } from "@/components/topbar";
 import { WorkflowStepper } from "@/components/workflow-stepper";
 import { getStoryboardSegment, getWorkspace } from "@/lib/api";
@@ -25,6 +26,11 @@ export default async function ProjectStoryboardEditPage({
     getWorkspace(projectId),
     getStoryboardSegment(projectId, segmentId)
   ]);
+  const snapBeatPoints = resolveSnapBeatPointsForSegment(
+    workspace.rhythmPlan,
+    segment.beatMode,
+    workspace.project.targetDurationSec
+  );
 
   return (
     <main className="pb-12">
@@ -77,7 +83,7 @@ export default async function ProjectStoryboardEditPage({
             <StoryboardSegmentEditorClient
               assets={workspace.assets}
               projectId={projectId}
-              rhythmBeatPoints={workspace.rhythmPlan.beatPoints}
+              rhythmBeatPoints={snapBeatPoints}
               segment={segment}
               targetDurationSec={workspace.project.targetDurationSec}
               backHref={`/projects/${projectId}/storyboard`}

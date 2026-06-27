@@ -41,5 +41,11 @@ tmp/
 # Local uploads / media storage
 backend/storage/
 
+# Playwright / E2E
+playwright-report/
+test-results/
+backend/e2e/*.db
+backend/e2e/storage/
+
 # Local SQLite database
 backend/video_sop.db

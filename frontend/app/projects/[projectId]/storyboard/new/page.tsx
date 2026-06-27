@@ -2,6 +2,7 @@ import Link from "next/link";
 import { SectionCard } from "@/components/section-card";
 import { StoryboardSegmentEditorClient } from "@/components/storyboard-segment-editor-client";
 import { getStoryboardBeatModeLabel } from "@/lib/storyboard-options";
+import { resolveSnapBeatPointsForSegment } from "@/lib/storyboard-beat-points";
 import { Topbar } from "@/components/topbar";
 import { WorkflowStepper } from "@/components/workflow-stepper";
 import { getWorkspace } from "@/lib/api";
@@ -44,6 +45,15 @@ export default async function ProjectStoryboardNewPage({
     )
   );
   const endTime = Number((startTime + defaultDuration).toFixed(2));
+  const beatMode =
+    workspace.rhythmPlan.beatMode !== "none"
+      ? workspace.rhythmPlan.beatMode
+      : referenceSegment?.beatMode ?? "beat_1";
+  const snapBeatPoints = resolveSnapBeatPointsForSegment(
+    workspace.rhythmPlan,
+    beatMode,
+    workspace.project.targetDurationSec
+  );
 
   const initialSegment: StoryboardSegment = {
     id: "",
@@ -53,11 +63,8 @@ export default async function ProjectStoryboardNewPage({
     shotDescription: "",
     function: "",
     rhythm: referenceSegment?.rhythm ?? "balanced",
-    beatMode:
-      workspace.rhythmPlan.beatMode !== "none"
-        ? workspace.rhythmPlan.beatMode
-        : referenceSegment?.beatMode ?? "beat_1",
-    beatPoints: sliceBeatPoints(workspace.rhythmPlan.beatPoints, startTime, endTime),
+    beatMode,
+    beatPoints: sliceBeatPoints(snapBeatPoints, startTime, endTime),
     subtitle: ""
   };
 
@@ -115,7 +122,7 @@ export default async function ProjectStoryboardNewPage({
               mode="create"
               assets={workspace.assets}
               projectId={projectId}
-              rhythmBeatPoints={workspace.rhythmPlan.beatPoints}
+              rhythmBeatPoints={snapBeatPoints}
               segment={initialSegment}
               targetDurationSec={workspace.project.targetDurationSec}
               themeId={workspace.project.selectedThemeId}
