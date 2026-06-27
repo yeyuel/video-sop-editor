@@ -1,7 +1,19 @@
 # 三期 Backlog
 
 > 二期（Sprint 1～10）已关闭。本文档汇总**明确移出二期**的能力，供三期规划使用。  
-> 来源：`phase2-checklist.md` §7、§10.3、§6.4 及 Sprint 10 评估结论。
+> **总控与执行清单：** [`phase3-master.md`](phase3-master.md) · [`phase3-checklist.md`](phase3-checklist.md)
+
+## 0. 已锁定决策（2026-06-26）
+
+| # | 项 | 结论 |
+|---|-----|------|
+| 1 | 剪辑侧 | **开放**（Sprint 12） |
+| 2 | 视频分析 | **LLM Vision**（Sprint 14；Google Gemini + OpenAI GPT-4o 类） |
+| 3 | 镜头复用 | **允许，项目级开关 `allowAssetReuse`，默认关**（Sprint 15） |
+| 4 | OAuth Provider | **OpenAI + Google**（Sprint 16） |
+| 5 | 部署存储 | **单机 SQLite 继续**（Redis / 多实例 → 四期） |
+
+来源：`phase2-checklist.md` §7、§10.3、§6.4 及 Sprint 10 评估结论。
 
 ## 1. 产品边界（三期仍不做）
 
@@ -13,17 +25,17 @@
 
 | 项 | 现状（二期） | 三期目标 | 备注 |
 |----|------------|---------|------|
-| OAuth / Device Code | API stub 501 | 实装授权码 / 设备码流程 | 见 `phase2-llm-integration-standard.md` |
-| 多角色 RBAC | 导演 / 剪辑 + `uiEnabled` 门禁 | 项目级权限、LLM 配额分角色 | migration 008 已留用户表 |
-| Session 持久化 | SQLite `authsessionentity` | Redis + Refresh Token | 需部署拓扑变更 |
+| OAuth / Device Code | API stub 501 | 实装授权码 / 设备码流程 | **OpenAI + Google**（见 §0）；Sprint 16 |
+| 多角色 RBAC | 导演 / 剪辑 + `uiEnabled` 门禁 | 项目级权限、LLM 配额分角色 | **剪辑侧开放**；Sprint 12 |
+| Session 持久化 | SQLite `authsessionentity` | 维持 SQLite + 可选 Refresh Token 表 | **决策 5**：不迁 Redis；四期再评估 |
 
 ## 3. P1 候选 — 媒体与 AI 深化
 
 | 项 | 现状（二期） | 三期目标 | 备注 |
 |----|------------|---------|------|
-| 视频内容分析 | 无 | 镜头类型 / 场景 / 情绪自动建议 | 依赖模型与算力，需单独 PRD |
-| 素材自动标签 | 手工录入 tags | 上传后预填 emotion / visual tags | 可与视频分析合并立项 |
-| 更强分镜组织 | 规则 + LLM 二层排序 | 大模型全局编排、镜头复用策略 | 研究项，影响主流程口径 |
+| 视频内容分析 | 无 | 镜头类型 / 场景 / 情绪自动建议 | **LLM Vision**；Sprint 14 |
+| 素材自动标签 | 手工录入 tags | 上传后预填 emotion / visual tags | 与 Vision 合并；Sprint 14 |
+| 更强分镜组织 | 规则 + LLM 二层排序 | 大模型全局编排、镜头复用策略 | **复用开关**；Sprint 15 |
 | BGM 平台集成 | LLM 推荐歌名 + 用户上传 | 可选预览 / 版权元数据 API | 不做盗版下载链路 |
 | 音频分析缓存 | 每次上传全量分析 | 增量重分析、分析结果版本化 | 配合 BGM 工作流 |
 
@@ -65,6 +77,8 @@
 
 ## 7. 关联文档
 
+- 三期总控：`phase3-master.md`
+- 三期清单：`phase3-checklist.md`
 - 二期总控：`phase2-master.md`（状态：已关闭）
 - 执行清单：`phase2-checklist.md`
 - Sprint 10 回归：`regression-sprint10.md`

@@ -19,7 +19,8 @@
 | Sprint 8（P2 增强） | ✅ 已完成 | 校验四件套、CSV 导出、BGM 推荐工作流 |
 | Sprint 9（交互统一） | ✅ 已完成 | TimeSecondsInput、AssetSelector、ConfirmDialog、列表布局统一 |
 | Sprint 10（验收冻结） | ✅ 已完成 | validation 摘要、导出写回回归、phase3-backlog、部署说明 |
-| **二期** | ✅ **已关闭** | 见 `phase2-master.md` §11；三期见 `phase3-backlog.md` |
+| **二期** | ✅ **已关闭** | 见 `phase2-master.md` §11 |
+| **三期** | 🔄 **进行中** | 立项 2026-06-26；见 `phase3-master.md` |
 
 ## 3. Sprint 迭代计划
 

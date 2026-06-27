@@ -79,7 +79,7 @@
 
 ### 三期（新立项入口）
 
-见 [`phase3-backlog.md`](phase3-backlog.md)。
+见 [`phase3-master.md`](phase3-master.md) 与 [`phase3-checklist.md`](phase3-checklist.md)。已锁定：剪辑开放、LLM Vision、镜头复用开关、OpenAI/Google OAuth、单机 SQLite。
 
 ## 8. 已落地的主要能力
 
