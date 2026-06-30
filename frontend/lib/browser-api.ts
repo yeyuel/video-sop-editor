@@ -101,6 +101,7 @@ export type ProjectPayload = {
   mediaRoot: string;
   status?: string;
   validateLocationOrder?: boolean;
+  allowAssetReuse?: boolean;
 };
 
 export type AssetPayload = {

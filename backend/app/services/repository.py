@@ -248,6 +248,7 @@ class SqlRepository:
             status=payload.status,
             selected_theme_id="",
             validate_location_order=payload.validateLocationOrder,
+            allow_asset_reuse=payload.allowAssetReuse,
         )
         session.add(project)
         session.commit()
@@ -281,6 +282,7 @@ class SqlRepository:
         project.media_root = payload.mediaRoot
         project.status = payload.status
         project.validate_location_order = payload.validateLocationOrder
+        project.allow_asset_reuse = payload.allowAssetReuse
 
         session.add(project)
         session.commit()
@@ -940,6 +942,7 @@ class SqlRepository:
             target_duration_sec=target_duration,
             beat_mode=beat_mode,
             beat_points=beat_points,
+            allow_asset_reuse=bool(project.allow_asset_reuse),
         )
         self._replace_storyboard_segments(session, project_id, theme.id, segments)
         return self.get_storyboard_bundle(session, project_id)
@@ -999,6 +1002,7 @@ class SqlRepository:
                 beat_mode=beat_mode,
                 beat_points=beat_points,
                 llm_plan=llm_plan,
+                allow_asset_reuse=bool(project.allow_asset_reuse),
             )
         else:
             segments = generate_storyboard_segments(
@@ -1007,6 +1011,7 @@ class SqlRepository:
                 target_duration_sec=target_duration,
                 beat_mode=beat_mode,
                 beat_points=beat_points,
+                allow_asset_reuse=bool(project.allow_asset_reuse),
             )
 
         emit_progress(on_progress, "saving", "正在保存分镜时间线…", progress=95)
@@ -1404,6 +1409,7 @@ class SqlRepository:
             status=item.status,
             selectedThemeId=item.selected_theme_id,
             validateLocationOrder=bool(getattr(item, "validate_location_order", False)),
+            allowAssetReuse=bool(getattr(item, "allow_asset_reuse", False)),
         )
 
     @staticmethod

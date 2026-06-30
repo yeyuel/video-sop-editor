@@ -12,6 +12,7 @@ export type Project = {
   status: string;
   selectedThemeId: string;
   validateLocationOrder: boolean;
+  allowAssetReuse: boolean;
 };
 
 export type Asset = {
@@ -90,6 +91,9 @@ export type StoryboardValidation = {
   durationWithinTolerance: boolean;
   targetDurationReached: boolean;
   unboundSegmentCount: number;
+  assetReuseEnabled: boolean;
+  reusedAssetCount: number;
+  reusedSegmentCount: number;
   issues: string[];
   message: string;
 };

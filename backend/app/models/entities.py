@@ -47,6 +47,7 @@ class ProjectEntity(SQLModel, table=True):
     status: str
     selected_theme_id: str = ""
     validate_location_order: bool = False
+    allow_asset_reuse: bool = False
 
 
 class AssetEntity(SQLModel, table=True):

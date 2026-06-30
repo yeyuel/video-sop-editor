@@ -102,6 +102,7 @@ Base URL:
   "stylePreference": "情绪氛围片",
   "routeText": "将军山 - 喀纳斯 - 禾木",
   "validateLocationOrder": false,
+  "allowAssetReuse": false,
   "mediaRoot": "D:\\素材库\\阿勒泰项目",
   "status": "draft"
 }

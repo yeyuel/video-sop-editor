@@ -31,6 +31,7 @@ export default async function ProjectStoryboardPage({ params }: ProjectStoryboar
       >
         <StoryboardListClient
           projectId={projectId}
+          allowAssetReuse={workspace.project.allowAssetReuse}
           initialBundle={{
             segments: workspace.storyboard,
             validation: workspace.storyboardValidation

@@ -4,6 +4,7 @@ export type LlmMeta = {
   llmProviderId?: string;
   llmUsedFallback?: string;
   storyboardCaptionsUpdated?: string;
+  assetReuseEnabled?: string;
 };
 
 export type ApiEnvelopeWithMeta<T> = {

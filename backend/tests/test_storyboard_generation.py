@@ -426,3 +426,129 @@ def test_generate_storyboard_segments_from_plan_uses_llm_copy_only() -> None:
     assert segments[0].subtitle == "开场"
     assert segments[0].function == "supporting"
     assert segments[1].shotDescription == "将军山跟拍"
+
+
+def test_generate_storyboard_segments_without_reuse_stops_after_one_pass() -> None:
+    assets = [
+        _asset("HEMU_002", 1.0),
+        _asset("GENERAL_003", 1.2),
+    ]
+
+    segments = generate_storyboard_segments(
+        assets=assets,
+        theme_id="theme_001",
+        target_duration_sec=60,
+        beat_mode="none",
+        beat_points=[],
+        allow_asset_reuse=False,
+    )
+
+    assert len(segments) == 2
+    assert len({segment.assetId for segment in segments}) == 2
+
+
+def test_generate_storyboard_segments_with_reuse_cycles_assets() -> None:
+    assets = [
+        _asset("HEMU_002", 1.0),
+        _asset("GENERAL_003", 1.2),
+    ]
+
+    segments = generate_storyboard_segments(
+        assets=assets,
+        theme_id="theme_001",
+        target_duration_sec=6,
+        beat_mode="none",
+        beat_points=[],
+        allow_asset_reuse=True,
+    )
+
+    asset_ids = [segment.assetId for segment in segments]
+    assert len(asset_ids) > len(set(asset_ids))
+    assert round(segments[-1].endTime, 2) >= 6.0
+
+
+def test_generate_storyboard_segments_from_plan_allows_duplicate_asset_ids() -> None:
+    assets = [_asset("HEMU_002", 1.0)]
+    llm_plan = [
+        {
+            "assetId": "HEMU_002",
+            "shotDescription": "第一次",
+            "function": "opening_hook",
+            "rhythm": "linger",
+            "subtitle": "开场",
+        },
+        {
+            "assetId": "HEMU_002",
+            "shotDescription": "第二次",
+            "function": "supporting",
+            "rhythm": "balanced",
+            "subtitle": "复用",
+        },
+    ]
+
+    segments = generate_storyboard_segments_from_plan(
+        assets=assets,
+        theme_id="theme_001",
+        target_duration_sec=60,
+        beat_mode="none",
+        beat_points=[],
+        llm_plan=llm_plan,
+        allow_asset_reuse=True,
+    )
+
+    assert len(segments) >= 2
+    assert segments[0].shotDescription == "第一次"
+    assert segments[1].shotDescription == "第二次"
+
+
+def test_build_storyboard_validation_reports_asset_reuse_warnings() -> None:
+    project = ProjectEntity(
+        id="proj_1",
+        name="测试项目",
+        destination="阿勒泰",
+        platform="xiaohongshu",
+        target_duration_sec=4,
+        video_type="emotion_film",
+        style_preference="",
+        style_notes="",
+        route_text="",
+        media_root="",
+        status="draft",
+        selected_theme_id="",
+        validate_location_order=False,
+        allow_asset_reuse=True,
+    )
+    assets = [_asset("HEMU_002", 1.0)]
+    segments = [
+        StoryboardSegmentRead(
+            id="seg_1",
+            startTime=0.0,
+            endTime=1.0,
+            assetId="HEMU_002",
+            shotDescription="A",
+            function="supporting",
+            rhythm="balanced",
+            beatMode="none",
+            beatPoints=[0.0, 1.0],
+            subtitle="A",
+        ),
+        StoryboardSegmentRead(
+            id="seg_2",
+            startTime=1.0,
+            endTime=2.0,
+            assetId="HEMU_002",
+            shotDescription="B",
+            function="supporting",
+            rhythm="balanced",
+            beatMode="none",
+            beatPoints=[1.0, 2.0],
+            subtitle="B",
+        ),
+    ]
+
+    validation = build_storyboard_validation(project, segments, None, assets)
+
+    assert validation.assetReuseEnabled is True
+    assert validation.reusedAssetCount == 1
+    assert validation.reusedSegmentCount == 1
+    assert any("复用" in issue for issue in validation.issues)

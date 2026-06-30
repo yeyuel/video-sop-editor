@@ -75,6 +75,7 @@ class ProjectRead(BaseModel):
     status: str
     selectedThemeId: str = ""
     validateLocationOrder: bool = False
+    allowAssetReuse: bool = False
 
 
 class ProjectWriteRequest(BaseModel):
@@ -89,6 +90,7 @@ class ProjectWriteRequest(BaseModel):
     mediaRoot: str
     status: str = "draft"
     validateLocationOrder: bool = False
+    allowAssetReuse: bool = False
 
 
 class ProjectCreateRequest(ProjectWriteRequest):
@@ -249,6 +251,9 @@ class StoryboardValidationRead(BaseModel):
     durationWithinTolerance: bool = False
     targetDurationReached: bool
     unboundSegmentCount: int = 0
+    assetReuseEnabled: bool = False
+    reusedAssetCount: int = 0
+    reusedSegmentCount: int = 0
     issues: list[str] = Field(default_factory=list)
     message: str = ""
 

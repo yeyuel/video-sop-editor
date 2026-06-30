@@ -87,7 +87,8 @@ export function ProjectBasicsPrototype({
     routeText: project?.routeText ?? "",
     mediaRoot: project?.mediaRoot ?? "",
     status: project?.status ?? "draft",
-    validateLocationOrder: project?.validateLocationOrder ?? false
+    validateLocationOrder: project?.validateLocationOrder ?? false,
+    allowAssetReuse: project?.allowAssetReuse ?? false
   });
 
   useEffect(() => {
@@ -144,7 +145,8 @@ export function ProjectBasicsPrototype({
             routeText: updated.routeText,
             mediaRoot: updated.mediaRoot,
             status: updated.status,
-            validateLocationOrder: updated.validateLocationOrder
+            validateLocationOrder: updated.validateLocationOrder,
+            allowAssetReuse: updated.allowAssetReuse
           });
           setShowSuccess(true);
         }
@@ -292,6 +294,22 @@ export function ProjectBasicsPrototype({
             <p className="mt-2 text-xs text-ink/55">
               主要用于给 LLM 提供区域上下文，生成分镜与文案时会参考；不填也不影响主流程。
             </p>
+          </label>
+          <label className="flex items-start gap-3 md:col-span-2">
+            <input
+              type="checkbox"
+              checked={form.allowAssetReuse}
+              onChange={(event) =>
+                setForm({ ...form, allowAssetReuse: event.target.checked })
+              }
+              className="mt-1 h-4 w-4 rounded border-line text-pine focus:ring-pine/20"
+            />
+            <span className="text-sm text-ink/75">
+              <span className="block font-medium text-ink">允许镜头复用</span>
+              <span className="mt-1 block text-xs leading-5 text-ink/55">
+                开启后，分镜生成可多次使用同一素材以凑足目标时长；关闭时保持「一素材一分镜」规则（默认）。
+              </span>
+            </span>
           </label>
           <label className="flex items-start gap-3 md:col-span-2">
             <input

@@ -21,7 +21,7 @@
 | Sprint 12（剪辑 + RBAC） | ✅ 已完成 | **决策 1** |
 | Sprint 13（导出反向导入） | ✅ 已完成 | JSON / CSV round-trip |
 | Sprint 14（LLM Vision） | ✅ 已完成 | **决策 2**；2026-06-21 关闭 |
-| Sprint 15（全局分镜 + 复用） | ⬜ 未开始 | **决策 3** |
+| Sprint 15（全局分镜 + 复用） | ✅ 已完成 | **决策 3** |
 | Sprint 16（OAuth） | ⬜ 未开始 | **决策 4** |
 | Sprint 17（粗剪结构） | ⬜ 未开始 | EDL / 剪映 JSON |
 | Sprint 18（验收冻结） | ⬜ 未开始 | 三期关闭 |
@@ -139,32 +139,34 @@
 
 **项目开关**
 
-- [ ] migration 012：`allow_asset_reuse` default false
-- [ ] 新建 / 项目设置 UI 开关 + 说明文案
-- [ ] API / schema / `api.md` 同步
+- [x] migration 014：`allow_asset_reuse` default false
+- [x] 新建 / 项目设置 UI 开关 + 说明文案
+- [x] API / schema / `api.md` 同步
 
 **生成逻辑**
 
-- [ ] `allowAssetReuse=false`：保持现有一素材一次约束
-- [ ] `allowAssetReuse=true`：LLM / 规则生成允许多段同一 assetId
-- [ ] 全局编排 prompt：主题 + 全素材摘要 + 节拍 + 目标时长
-- [ ] validation：复用段数 / 同一素材总时长占比 warning（issues 非 hard fail）
+- [x] `allowAssetReuse=false`：保持现有一素材一次约束
+- [x] `allowAssetReuse=true`：LLM / 规则生成允许多段同一 assetId
+- [x] 全局编排 prompt：主题 + 全素材摘要 + 节拍 + 目标时长
+- [x] validation：复用段数 / 同一素材总时长占比 warning（issues 非 hard fail）
 
 **前端**
 
-- [ ] 分镜列表复用镜头 badge
-- [ ] 生成前读取开关；LLM meta 说明是否启用复用
+- [x] 分镜列表复用镜头 badge
+- [x] 生成前读取开关；LLM meta 说明是否启用复用
 
 **文档**
 
-- [ ] 更新 `prd.md` §4 / §5.3 镜头复用口径
+- [x] 更新 `prd.md` §4 / §5.3 镜头复用口径
 
 **测试**
 
-- [ ] 开关 off/on 各一套生成结果
-- [ ] `test_regression_sprint15.py`
+- [x] 开关 off/on 各一套生成结果
+- [x] `test_regression_sprint15.py`
 
 **验收：** 开关关行为与二期一致；开关开可生成同一素材 2+ 分镜且 validation 有提示。
+
+**Sprint 15：** ✅ 已完成（2026-06-21）
 
 ---
 

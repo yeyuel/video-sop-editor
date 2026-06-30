@@ -40,6 +40,9 @@
 | 9 | `009_encrypt_llm_api_keys` | LLM api_key 加密存储（enc:v1: 前缀） |
 | 10 | `010_project_location_validation` | 项目表新增 `validate_location_order`（地点顺序校验开关，默认关闭） |
 | 11 | `011_rhythm_bgm_recommendations` | 节奏表 `recommended_bgm`、`selected_bgm_id`、`bgm_phase`（BGM 推荐工作流） |
+| 12 | `012_llm_call_logs` | LLM 调用审计日志表 |
+| 13 | `013_asset_vision_analysis` | 素材 Vision 分析 JSON + status |
+| 14 | `014_allow_asset_reuse` | 项目表 `allow_asset_reuse`（镜头复用开关，默认关闭） |
 
 ## 5. 注意事项
 

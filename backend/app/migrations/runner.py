@@ -267,6 +267,20 @@ def _migration_012_llm_call_logs(session: Session) -> None:
     )
 
 
+def _migration_014_allow_asset_reuse(session: Session) -> None:
+    inspector = inspect(engine)
+    if "projectentity" not in inspector.get_table_names():
+        return
+
+    project_columns = {column["name"] for column in inspector.get_columns("projectentity")}
+    if "allow_asset_reuse" not in project_columns:
+        session.exec(
+            text(
+                "ALTER TABLE projectentity ADD COLUMN allow_asset_reuse INTEGER NOT NULL DEFAULT 0"
+            )
+        )
+
+
 def _migration_013_asset_vision_analysis(session: Session) -> None:
     inspector = inspect(engine)
     if "assetentity" not in inspector.get_table_names():
@@ -297,6 +311,7 @@ MIGRATIONS: list[tuple[int, str, object]] = [
     (11, "011_rhythm_bgm_recommendations", _migration_011_rhythm_bgm_recommendations),
     (12, "012_llm_call_logs", _migration_012_llm_call_logs),
     (13, "013_asset_vision_analysis", _migration_013_asset_vision_analysis),
+    (14, "014_allow_asset_reuse", _migration_014_allow_asset_reuse),
 ]
 
 

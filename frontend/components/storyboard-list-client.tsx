@@ -27,6 +27,7 @@ import {
 import type { StoryboardBundle } from "@/types/domain";
 
 type StoryboardListClientProps = {
+  allowAssetReuse: boolean;
   beatMode: string;
   initialBundle: StoryboardBundle;
   projectId: string;
@@ -36,6 +37,7 @@ type StoryboardListClientProps = {
 };
 
 export function StoryboardListClient({
+  allowAssetReuse,
   beatMode,
   initialBundle,
   projectId,
@@ -70,6 +72,14 @@ export function StoryboardListClient({
       {
         label: "素材绑定",
         value: bundle.validation.allSegmentsBoundToAsset ? "通过" : "未通过"
+      },
+      {
+        label: "镜头复用",
+        value: allowAssetReuse
+          ? bundle.validation.reusedAssetCount > 0
+            ? `${bundle.validation.reusedAssetCount} 素材 / ${bundle.validation.reusedSegmentCount} 段`
+            : "已启用"
+          : "未启用"
       },
       {
         label: "地点连续性",
@@ -111,8 +121,16 @@ export function StoryboardListClient({
         value: `${bundle.validation.totalDurationSec}s / ${bundle.validation.targetDurationSec}s`
       }
     ],
-    [bundle.validation]
+    [allowAssetReuse, bundle.validation]
   );
+
+  const assetReuseCounts = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const segment of bundle.segments) {
+      counts.set(segment.assetId, (counts.get(segment.assetId) ?? 0) + 1);
+    }
+    return counts;
+  }, [bundle.segments]);
 
   function showError(message: string) {
     setError(message);
@@ -206,12 +224,14 @@ export function StoryboardListClient({
         router.refresh();
         const validationNotice = showValidationNotice(nextBundle, alignToBeat);
         const llmNotice = describeLlmStatus(meta);
+        const reuseNote =
+          meta?.assetReuseEnabled === "true" ? " 项目已启用镜头复用。" : "";
         if (llmNotice) {
           setNotice({
             title: llmNotice.title,
             message: validationNotice
-              ? `${llmNotice.message} ${validationNotice.message}`
-              : llmNotice.message,
+              ? `${llmNotice.message}${reuseNote} ${validationNotice.message}`
+              : `${llmNotice.message}${reuseNote}`,
             tone: llmNoticeTone(llmNotice.tone)
           });
         } else if (validationNotice) {
@@ -322,7 +342,9 @@ export function StoryboardListClient({
             <div className="max-w-2xl">
               <p className="text-sm font-medium text-ink">时间线整理区</p>
               <p className="mt-1 text-sm leading-6 text-ink/65">
-                当前生成规则已按一期逻辑收敛为“默认不重复使用素材”。如果素材不足，系统会在素材用完时停止生成，并提示你补充素材或先把长素材切分后分别录入。
+                {allowAssetReuse
+                  ? "当前项目已启用镜头复用：生成时会轮用素材以尽量贴近目标时长，并在列表标注复用镜头。"
+                  : "当前生成规则为「一素材一分镜」。若素材不足，系统会在素材用完时停止生成，并提示补充素材或先将长素材切分后分别录入。"}
               </p>
               <label className="mt-3 inline-flex items-center gap-2 text-sm text-ink/70">
                 <input
@@ -366,7 +388,7 @@ export function StoryboardListClient({
           <div className="stat-cell border-pine/15 bg-sand/40">{bundle.validation.message}</div>
         ) : null}
 
-        <div className="grid gap-3 md:grid-cols-5">
+        <div className="grid gap-3 md:grid-cols-6">
           {validationItems.map((item) => (
             <div key={item.label} className="stat-cell">
               {item.label}：{item.value}
@@ -383,6 +405,12 @@ export function StoryboardListClient({
                 0,
                 Number((segment.endTime - segment.startTime).toFixed(2))
               );
+              const reuseTotal = assetReuseCounts.get(segment.assetId) ?? 1;
+              const reuseOccurrence = bundle.segments
+                .slice(0, index + 1)
+                .filter((item) => item.assetId === segment.assetId).length;
+              const showReuseBadge =
+                allowAssetReuse && reuseTotal > 1 && reuseOccurrence > 1;
 
               return (
                 <article
@@ -404,6 +432,10 @@ export function StoryboardListClient({
                         </span>
                         <span className="stat-pill">{duration}s</span>
                         <span className="badge">{getStoryboardFunctionLabel(segment.function)}</span>
+                        {allowAssetReuse && reuseTotal > 1 ? (
+                          <span className="badge-ai">×{reuseTotal}</span>
+                        ) : null}
+                        {showReuseBadge ? <span className="badge">复用</span> : null}
                       </div>
                       <h3 className="mt-3 text-lg font-semibold text-ink">
                         {segment.shotDescription}

@@ -19,7 +19,8 @@ export const fallbackProjects: Project[] = [
     mediaRoot: "D:\\素材库\\阿勒泰项目",
     status: "draft",
     selectedThemeId: "theme_001",
-    validateLocationOrder: false
+    validateLocationOrder: false,
+    allowAssetReuse: false
   }
 ];
 
@@ -35,6 +36,9 @@ const fallbackValidation: StoryboardValidation = {
   durationWithinTolerance: false,
   targetDurationReached: false,
   unboundSegmentCount: 0,
+  assetReuseEnabled: false,
+  reusedAssetCount: 0,
+  reusedSegmentCount: 0,
   issues: ["总时长 2.5s 低于目标 60s（差 57.5s）"],
   message: "总时长 2.5s 低于目标 60s（差 57.5s）"
 };

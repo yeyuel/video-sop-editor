@@ -189,11 +189,18 @@ def build_llm_storyboard_plan(
     on_progress: ProgressReporter | None = None,
 ) -> tuple[list[dict[str, str]] | None, dict[str, str]]:
     ordered_assets = order_assets_for_storyboard(assets)
+    allow_asset_reuse = bool(getattr(project, "allow_asset_reuse", False))
     emit_progress(
         on_progress,
         "preparing",
         f"正在整理主题「{theme.title}」与 {len(ordered_assets)} 条素材…",
         progress=10,
+    )
+    reuse_instruction = (
+        "You may include the same assetId in multiple segments when pacing or narrative "
+        "benefits from reuse. Prefer varied shotDescription/subtitle across reuse instances."
+        if allow_asset_reuse
+        else "Include every asset exactly once."
     )
     result = llm_suggestion_service.generate_json_result(
         system_prompt=(
@@ -201,7 +208,7 @@ def build_llm_storyboard_plan(
             "Return JSON only with a segments array. "
             "Each segment must include assetId, shotDescription, subtitle. "
             "Use ruleOrderedAssetIds as the baseline order, but you may reorder segments "
-            "when narrative flow improves. Include every asset exactly once. "
+            f"when narrative flow improves. {reuse_instruction} "
             "The segments array order is your preferred timeline order. "
             "Do not invent assetId values outside ruleOrderedAssetIds."
         ),
@@ -213,6 +220,7 @@ def build_llm_storyboard_plan(
                     "platform": project.platform,
                     "routeText": project.route_text,
                     "targetDurationSec": target_duration_sec,
+                    "allowAssetReuse": allow_asset_reuse,
                 },
                 "theme": _theme_context_for_llm(theme),
                 "rhythm": _rhythm_context_for_llm(rhythm, beat_mode),
@@ -238,14 +246,20 @@ def build_llm_storyboard_plan(
     emit_progress(on_progress, "building", "正在解析分镜脚本结构…", progress=86)
     normalized = _normalize_storyboard_plan(result, assets)
     if normalized:
-        llm_order = [item["assetId"] for item in normalized]
-        merged_assets = merge_asset_order(llm_order, ordered_assets)
-        plan = _align_storyboard_plan_to_assets(merged_assets, normalized)
+        if allow_asset_reuse:
+            plan = normalized
+        else:
+            llm_order = [item["assetId"] for item in normalized]
+            merged_assets = merge_asset_order(llm_order, ordered_assets)
+            plan = _align_storyboard_plan_to_assets(merged_assets, normalized)
     else:
         plan = None
     if plan is None:
         emit_progress(on_progress, "fallback", "LLM 分镜无效，准备回退到规则生成…", progress=88)
     meta = build_llm_meta(result, used_fallback=plan is None).as_dict()
+    meta["assetReuseEnabled"] = "true" if allow_asset_reuse else "false"
+    if allow_asset_reuse and plan is not None:
+        meta["llmMessage"] = f"{meta.get('llmMessage', '')} 项目已启用镜头复用。".strip()
     return plan, meta
 
 
@@ -278,12 +292,70 @@ def _normalize_storyboard_plan(
     return normalized or None
 
 
+def _build_segment_write(
+    *,
+    asset: AssetRead,
+    plan_item: dict[str, str] | None,
+    current_time: float,
+    target_duration_sec: int,
+    beat_mode: str,
+    safe_beats: list[float],
+    beat_index: int,
+) -> tuple[StoryboardSegmentWrite, float, int]:
+    if safe_beats:
+        end_time, beat_index, segment_beats = resolve_segment_timing(
+            current_time=current_time,
+            suggested_duration_sec=asset.suggestedDurationSec,
+            target_duration_sec=target_duration_sec,
+            beat_points=safe_beats,
+            beat_index=beat_index,
+        )
+    else:
+        end_time = min(
+            float(target_duration_sec),
+            current_time + max(asset.suggestedDurationSec, 0.5),
+        )
+        segment_beats = [round(current_time, 2), round(end_time, 2)]
+
+    fallback_function = asset.functionTags[0] if asset.functionTags else "supporting"
+    fallback_rhythm = rhythm_label(asset.informationDensity)
+    fallback_subtitle = subtitle_from_asset(asset)
+    shot_description = (
+        str(plan_item.get("shotDescription", "")).strip() if plan_item else ""
+    ) or f"{asset.location} - {asset.scene}"
+    function_name = normalize_storyboard_function(
+        str(plan_item.get("function", "")).strip() if plan_item else fallback_function,
+        fallback_function,
+    )
+    rhythm_text = (
+        str(plan_item.get("rhythm", "")).strip() if plan_item else ""
+    ) or fallback_rhythm
+    subtitle = (
+        str(plan_item.get("subtitle", "")).strip() if plan_item else ""
+    ) or fallback_subtitle
+
+    segment = StoryboardSegmentWrite(
+        id=f"seg_{uuid4().hex[:8]}",
+        startTime=round(current_time, 2),
+        endTime=round(end_time, 2),
+        assetId=asset.assetId,
+        shotDescription=shot_description,
+        function=function_name,
+        rhythm=rhythm_text,
+        beatMode=beat_mode,
+        beatPoints=segment_beats,
+        subtitle=subtitle,
+    )
+    return segment, round(end_time, 2), beat_index
+
+
 def generate_storyboard_segments(
     assets: list[AssetRead],
     theme_id: str,
     target_duration_sec: int,
     beat_mode: str,
     beat_points: list[float],
+    allow_asset_reuse: bool = False,
 ) -> list[StoryboardSegmentWrite]:
     if not assets:
         return []
@@ -293,41 +365,26 @@ def generate_storyboard_segments(
     beat_index = 0
     current_time = 0.0
     safe_beats = beat_points if len(beat_points) >= 2 and beat_mode != "none" else []
-    for asset in ordered_assets:
-        if current_time >= float(target_duration_sec):
-            break
+    asset_index = 0
 
-        if safe_beats:
-            end_time, beat_index, segment_beats = resolve_segment_timing(
-                current_time=current_time,
-                suggested_duration_sec=asset.suggestedDurationSec,
-                target_duration_sec=target_duration_sec,
-                beat_points=safe_beats,
-                beat_index=beat_index,
-            )
-        else:
-            end_time = min(
-                float(target_duration_sec),
-                current_time + max(asset.suggestedDurationSec, 0.5),
-            )
-            segment_beats = [round(current_time, 2), round(end_time, 2)]
+    while current_time < float(target_duration_sec):
+        if asset_index >= len(ordered_assets):
+            if not allow_asset_reuse:
+                break
+            asset_index = 0
 
-        function_name = asset.functionTags[0] if asset.functionTags else "supporting"
-        segments.append(
-            StoryboardSegmentWrite(
-                id=f"seg_{uuid4().hex[:8]}",
-                startTime=round(current_time, 2),
-                endTime=round(end_time, 2),
-                assetId=asset.assetId,
-                shotDescription=f"{asset.location} - {asset.scene}",
-                function=function_name,
-                rhythm=rhythm_label(asset.informationDensity),
-                beatMode=beat_mode,
-                beatPoints=segment_beats,
-                subtitle=subtitle_from_asset(asset),
-            )
+        asset = ordered_assets[asset_index]
+        asset_index += 1
+        segment, current_time, beat_index = _build_segment_write(
+            asset=asset,
+            plan_item=None,
+            current_time=current_time,
+            target_duration_sec=target_duration_sec,
+            beat_mode=beat_mode,
+            safe_beats=safe_beats,
+            beat_index=beat_index,
         )
-        current_time = round(end_time, 2)
+        segments.append(segment)
 
     return segments
 
@@ -339,78 +396,70 @@ def generate_storyboard_segments_from_plan(
     beat_mode: str,
     beat_points: list[float],
     llm_plan: list[dict[str, str]],
+    allow_asset_reuse: bool = False,
 ) -> list[StoryboardSegmentWrite]:
     asset_map = {asset.assetId: asset for asset in assets}
     planned_assets: list[tuple[AssetRead, dict[str, str] | None]] = []
-    used_asset_ids: set[str] = set()
 
-    for item in llm_plan:
-        asset_id = str(item.get("assetId", "")).strip()
-        asset = asset_map.get(asset_id)
-        if not asset or asset.assetId in used_asset_ids:
-            continue
-        planned_assets.append((asset, item))
-        used_asset_ids.add(asset.assetId)
+    if allow_asset_reuse:
+        for item in llm_plan:
+            asset_id = str(item.get("assetId", "")).strip()
+            asset = asset_map.get(asset_id)
+            if asset:
+                planned_assets.append((asset, item))
+        seen_asset_ids = {asset.assetId for asset, _ in planned_assets}
+        for asset in order_assets_for_storyboard(assets):
+            if asset.assetId not in seen_asset_ids:
+                planned_assets.append((asset, None))
+    else:
+        used_asset_ids: set[str] = set()
+        for item in llm_plan:
+            asset_id = str(item.get("assetId", "")).strip()
+            asset = asset_map.get(asset_id)
+            if not asset or asset.assetId in used_asset_ids:
+                continue
+            planned_assets.append((asset, item))
+            used_asset_ids.add(asset.assetId)
 
-    for asset in order_assets_for_storyboard(assets):
-        if asset.assetId not in used_asset_ids:
-            planned_assets.append((asset, None))
+        for asset in order_assets_for_storyboard(assets):
+            if asset.assetId not in used_asset_ids:
+                planned_assets.append((asset, None))
 
     segments: list[StoryboardSegmentWrite] = []
     beat_index = 0
     current_time = 0.0
     safe_beats = beat_points if len(beat_points) >= 2 and beat_mode != "none" else []
+
     for asset, plan_item in planned_assets:
         if current_time >= float(target_duration_sec):
             break
+        segment, current_time, beat_index = _build_segment_write(
+            asset=asset,
+            plan_item=plan_item,
+            current_time=current_time,
+            target_duration_sec=target_duration_sec,
+            beat_mode=beat_mode,
+            safe_beats=safe_beats,
+            beat_index=beat_index,
+        )
+        segments.append(segment)
 
-        if safe_beats:
-            end_time, beat_index, segment_beats = resolve_segment_timing(
+    if allow_asset_reuse:
+        ordered_assets = order_assets_for_storyboard(assets)
+        cycle_index = 0
+        while current_time < float(target_duration_sec) and ordered_assets:
+            asset = ordered_assets[cycle_index % len(ordered_assets)]
+            cycle_index += 1
+            segment, current_time, beat_index = _build_segment_write(
+                asset=asset,
+                plan_item=None,
                 current_time=current_time,
-                suggested_duration_sec=asset.suggestedDurationSec,
                 target_duration_sec=target_duration_sec,
-                beat_points=safe_beats,
+                beat_mode=beat_mode,
+                safe_beats=safe_beats,
                 beat_index=beat_index,
             )
-        else:
-            end_time = min(
-                float(target_duration_sec),
-                current_time + max(asset.suggestedDurationSec, 0.5),
-            )
-            segment_beats = [round(current_time, 2), round(end_time, 2)]
-
-        fallback_function = asset.functionTags[0] if asset.functionTags else "supporting"
-        fallback_rhythm = rhythm_label(asset.informationDensity)
-        fallback_subtitle = subtitle_from_asset(asset)
-        shot_description = (
-            str(plan_item.get("shotDescription", "")).strip() if plan_item else ""
-        ) or f"{asset.location} - {asset.scene}"
-        function_name = normalize_storyboard_function(
-            str(plan_item.get("function", "")).strip() if plan_item else fallback_function,
-            fallback_function,
-        )
-        rhythm_text = (
-            str(plan_item.get("rhythm", "")).strip() if plan_item else ""
-        ) or fallback_rhythm
-        subtitle = (
-            str(plan_item.get("subtitle", "")).strip() if plan_item else ""
-        ) or fallback_subtitle
-
-        segments.append(
-            StoryboardSegmentWrite(
-                id=f"seg_{uuid4().hex[:8]}",
-                startTime=round(current_time, 2),
-                endTime=round(end_time, 2),
-                assetId=asset.assetId,
-                shotDescription=shot_description,
-                function=function_name,
-                rhythm=rhythm_text,
-                beatMode=beat_mode,
-                beatPoints=segment_beats,
-                subtitle=subtitle,
-            )
-        )
-        current_time = round(end_time, 2)
+            segments.append(segment)
 
     return segments
 
@@ -488,6 +537,17 @@ def build_storyboard_validation(
     duration_within_tolerance = duration_within_target_tolerance(total_duration, target_duration)
     beat_adaptation_enabled = any(segment.beatMode != "none" for segment in segments)
     validate_location_order = bool(project and project.validate_location_order)
+    allow_asset_reuse = bool(project and getattr(project, "allow_asset_reuse", False))
+    asset_usage: dict[str, int] = {}
+    asset_duration: dict[str, float] = {}
+    for segment in segments:
+        if not segment.assetId or segment.assetId not in asset_map:
+            continue
+        asset_usage[segment.assetId] = asset_usage.get(segment.assetId, 0) + 1
+        duration = max(segment.endTime - segment.startTime, 0.0)
+        asset_duration[segment.assetId] = asset_duration.get(segment.assetId, 0.0) + duration
+    reused_asset_count = sum(1 for count in asset_usage.values() if count > 1)
+    reused_segment_count = sum(count - 1 for count in asset_usage.values() if count > 1)
     if validate_location_order:
         route_locations = parse_route_locations(project.route_text) if project and project.route_text else []
         location_continuity = check_location_continuity(segments, asset_map, route_locations)
@@ -519,6 +579,18 @@ def build_storyboard_validation(
             issues.append(
                 f"总时长 {total_duration}s 超出目标 {target_duration}s（多 {duration_delta}s）"
             )
+    if allow_asset_reuse and reused_asset_count:
+        for asset_id, count in sorted(asset_usage.items()):
+            if count <= 1:
+                continue
+            share_pct = (
+                round(asset_duration[asset_id] / total_duration * 100, 1)
+                if total_duration > 0
+                else 0.0
+            )
+            issues.append(
+                f"素材 {asset_id} 复用 {count} 段，合计时长占比 {share_pct}%"
+            )
 
     issues = dedupe_issue_messages(issues)
 
@@ -527,7 +599,18 @@ def build_storyboard_validation(
     elif issues:
         message = "；".join(issues)
     elif target_duration_reached or duration_within_tolerance:
-        message = "当前分镜总时长已经落在目标时长范围内。"
+        if allow_asset_reuse and reused_asset_count:
+            message = (
+                f"当前分镜总时长已经落在目标时长范围内；"
+                f"共 {reused_asset_count} 个素材被复用（额外 {reused_segment_count} 段）。"
+            )
+        else:
+            message = "当前分镜总时长已经落在目标时长范围内。"
+    elif allow_asset_reuse:
+        message = (
+            "素材已全部轮用，但当前总时长还未达到目标时长。"
+            "建议补充素材，或先将长素材切分后分别录入。"
+        )
     else:
         message = "素材已全部使用完，但当前总时长还未达到目标时长。建议补充素材，或先将长素材切分后分别录入。"
 
@@ -543,6 +626,9 @@ def build_storyboard_validation(
         durationWithinTolerance=duration_within_tolerance,
         targetDurationReached=target_duration_reached,
         unboundSegmentCount=unbound_segment_count,
+        assetReuseEnabled=allow_asset_reuse,
+        reusedAssetCount=reused_asset_count,
+        reusedSegmentCount=reused_segment_count,
         issues=issues,
         message=message,
     )
