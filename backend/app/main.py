@@ -17,7 +17,9 @@ from app.api.routes.themes import router as themes_router
 from app.core.config import settings
 from app.db import create_db_and_tables, engine
 from app.migrations import run_sqlite_migrations
+from app.runtime.shutdown import mark_shutting_down
 from app.services.seed import seed_demo_data
+from app.services.subprocess_runner import terminate_active_subprocesses
 from sqlmodel import Session
 
 
@@ -28,6 +30,9 @@ async def lifespan(_: FastAPI):
     with Session(engine) as session:
         seed_demo_data(session)
     yield
+    mark_shutting_down()
+    terminate_active_subprocesses()
+    engine.dispose()
 
 
 app = FastAPI(title=settings.app_name, lifespan=lifespan)

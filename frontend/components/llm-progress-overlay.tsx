@@ -37,17 +37,13 @@ export function LlmProgressOverlay({ state, visible }: LlmProgressOverlayProps) 
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink/25 px-6 backdrop-blur-sm">
-      <div className="w-full max-w-lg rounded-[28px] border border-white/70 bg-white/95 p-6 shadow-[0_28px_80px_rgba(25,34,41,0.16)]">
+      <div className="surface-panel w-full max-w-lg border-ai/15 p-6 shadow-ai">
         <div className="flex items-start justify-between gap-4">
           <div>
-            <p className="text-xs font-medium uppercase tracking-[0.18em] text-pine/70">
-              LLM 生成中
-            </p>
-            <h3 className="mt-1 text-xl font-semibold text-ink">{state.title}</h3>
+            <p className="badge-ai">LLM 生成中</p>
+            <h3 className="mt-2 text-xl font-semibold text-ink">{state.title}</h3>
           </div>
-          <div className="rounded-full bg-mist px-3 py-1 text-xs font-medium text-pine">
-            已用时 {formatElapsed(elapsedSec)}
-          </div>
+          <div className="stat-pill">已用时 {formatElapsed(elapsedSec)}</div>
         </div>
 
         <p className="mt-4 text-sm leading-6 text-ink/80">{state.message}</p>
@@ -55,9 +51,9 @@ export function LlmProgressOverlay({ state, visible }: LlmProgressOverlayProps) 
           <p className="mt-1 text-xs leading-5 text-ink/55">{state.detail}</p>
         ) : null}
 
-        <div className="mt-5 h-2 overflow-hidden rounded-full bg-mist">
+        <div className="mt-5 h-2 overflow-hidden rounded-full bg-sand">
           <div
-            className="h-full rounded-full bg-pine transition-all duration-500 ease-out"
+            className="h-full rounded-full bg-ai transition-all duration-500 ease-out"
             style={{ width: `${Math.max(progress, 8)}%` }}
           />
         </div>
@@ -74,7 +70,7 @@ export function LlmProgressOverlay({ state, visible }: LlmProgressOverlayProps) 
                 key={stage.id}
                 className={clsx(
                   "flex items-center gap-3 rounded-2xl px-3 py-2 text-sm transition",
-                  status === "active" && "bg-mist text-ink",
+                  status === "active" && "bg-ai-soft text-ink",
                   status === "done" && "text-ink/70",
                   status === "pending" && "text-ink/45"
                 )}
@@ -82,7 +78,7 @@ export function LlmProgressOverlay({ state, visible }: LlmProgressOverlayProps) 
                 <span
                   className={clsx(
                     "flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-xs font-semibold",
-                    status === "active" && "bg-pine text-white",
+                    status === "active" && "bg-ai text-white",
                     status === "done" && "bg-pine/15 text-pine",
                     status === "pending" && "bg-black/5 text-ink/35"
                   )}

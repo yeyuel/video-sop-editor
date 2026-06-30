@@ -3,7 +3,7 @@ from __future__ import annotations
 from fastapi import Depends, HTTPException, Request, status
 from sqlmodel import Session
 
-from app.db import get_session
+from app import db
 from app.models.schemas import AuthUserRead
 from app.services.repository import repository
 from app.services.session_service import resolve_auth_session
@@ -28,10 +28,7 @@ def extract_session_token(request: Request) -> str | None:
     return None
 
 
-def require_authenticated_user(
-    request: Request,
-    session: Session = Depends(get_session),
-) -> AuthUserRead:
+def require_authenticated_user(request: Request) -> AuthUserRead:
     token = extract_session_token(request)
     if not token:
         raise HTTPException(
@@ -39,13 +36,14 @@ def require_authenticated_user(
             detail="未登录或会话已失效",
         )
 
-    user = resolve_auth_session(session, token)
-    if not user:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="未登录或会话已失效",
-        )
-    return repository._map_user(user)
+    with Session(db.engine) as session:
+        user = resolve_auth_session(session, token)
+        if not user:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="未登录或会话已失效",
+            )
+        return repository._map_user(user)
 
 
 def require_project_editor(

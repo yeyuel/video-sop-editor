@@ -28,8 +28,11 @@ python -m venv .venv
 pip install -r requirements.txt
 copy .env.example .env
 python init_db.py
-uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
+python run_dev.py
+# 等价于：uvicorn app.main:app --reload --host 127.0.0.1 --port 8000 --timeout-graceful-shutdown 5
 ```
+
+停止服务时若仍有视频预览转码或 SSE 流式任务，进程会在数秒内自动中断 ffmpeg 并退出；超时后请再按一次 `Ctrl+C` 强制结束。
 
 ### 2. 前端
 
@@ -61,6 +64,7 @@ APP_ENV=development
 APP_NAME=video-sop-editor-api
 APP_HOST=127.0.0.1
 APP_PORT=8000
+APP_GRACEFUL_SHUTDOWN_SEC=5
 DATABASE_URL=sqlite:///./video_sop.db
 STORAGE_DIR=./storage
 

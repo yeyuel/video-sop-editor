@@ -87,5 +87,5 @@ def test_rhythm_plan_generate_stream_returns_sse_complete(regression_env: dict) 
     assert response.status_code == 200
     events = _parse_sse_events(response.text)
     complete = next(event for event in events if event.get("type") == "complete")
-    assert complete["data"]["beatPoints"]
+    assert complete["data"]["recommendedBgm"]
     assert "llmStatus" in complete["meta"]

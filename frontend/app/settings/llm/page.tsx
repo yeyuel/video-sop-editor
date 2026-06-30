@@ -24,7 +24,7 @@ export default async function LlmSettingsPage() {
         manageUsersHref="/settings/users"
       />
       <div className="mx-auto max-w-7xl px-6">
-        <section className="mb-6 rounded-xl2 border border-black/5 bg-white/80 p-6 shadow-card backdrop-blur">
+        <section className="surface-hero mb-6">
           <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
             <div>
               <p className="text-xs uppercase tracking-[0.22em] text-pine/70">LLM Gateway</p>
@@ -34,10 +34,7 @@ export default async function LlmSettingsPage() {
                 建议能力，但会使用此处保存的系统级 Provider 与 Key。
               </p>
             </div>
-            <Link
-              href="/"
-              className="inline-flex rounded-full border border-pine/15 bg-white/85 px-5 py-3 text-sm font-medium text-pine transition hover:border-pine/30 hover:bg-mist"
-            >
+            <Link href="/" className="btn-secondary">
               项目列表
             </Link>
           </div>

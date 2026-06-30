@@ -101,18 +101,15 @@ export function AssetListClient({
       />
 
       <div className="space-y-5">
-        <div className="rounded-[28px] border border-pine/10 bg-mist/70 p-4">
+        <div className="surface-muted p-4">
           <div className="flex flex-wrap items-center justify-between gap-4">
             <div className="max-w-2xl">
               <p className="text-sm font-medium text-ink">素材整理区</p>
-              <p className="mt-1 text-sm leading-6 text-ink/65">
-                每条素材对应一个可编辑卡片。点击「编辑素材」进入详情页，Enter 也可在聚焦卡片时进入编辑。
+              <p className="mt-1 text-sm leading-6 text-ink/55">
+                每条素材对应一个可编辑卡片。Enter 聚焦卡片时也可进入编辑。
               </p>
             </div>
-            <Link
-              href={`/projects/${projectId}/assets/new`}
-              className="inline-flex rounded-full bg-pine px-5 py-3 text-sm font-medium text-white transition hover:bg-pine/90"
-            >
+            <Link href={`/projects/${projectId}/assets/new`} className="btn-primary">
               新增素材
             </Link>
           </div>
@@ -122,10 +119,7 @@ export function AssetListClient({
 
         {assets.length === 0 ? (
           <EmptyState message="当前还没有素材，先新增第一条素材。">
-            <Link
-              href={`/projects/${projectId}/assets/new`}
-              className="inline-flex rounded-full bg-pine px-4 py-2 text-sm font-medium text-white transition hover:bg-pine/90"
-            >
+            <Link href={`/projects/${projectId}/assets/new`} className="btn-primary">
               新增素材
             </Link>
           </EmptyState>
@@ -140,7 +134,7 @@ export function AssetListClient({
                     router.push(`/projects/${projectId}/assets/${asset.assetId}/edit`);
                   }
                 }}
-                className="rounded-[30px] border border-black/5 bg-white/90 p-5 shadow-card transition hover:-translate-y-0.5 hover:shadow-[0_24px_56px_rgba(25,34,41,0.1)] focus:outline-none focus:ring-2 focus:ring-pine/20"
+                className="surface-panel p-5 transition hover:-translate-y-0.5 hover:shadow-card focus:outline-none focus:ring-2 focus:ring-pine/15"
               >
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div>
@@ -149,15 +143,15 @@ export function AssetListClient({
                       {asset.location} · {asset.scene}
                     </p>
                   </div>
-                  <div className="rounded-full bg-mist px-3 py-1 text-xs font-medium text-pine">
+                  <div className="badge border-pine/15 bg-mist text-pine">
                     {shotTypeLabelMap[asset.shotType] ?? asset.shotType}
                   </div>
                 </div>
                 <div className="mt-4 grid gap-3 text-sm text-ink/70 md:grid-cols-2">
-                  <div className="rounded-2xl bg-sand/55 px-4 py-3">
+                  <div className="surface-muted px-4 py-3">
                     相对路径：{asset.relativePath || "待补充"}
                   </div>
-                  <div className="rounded-2xl bg-sand/55 px-4 py-3">
+                  <div className="surface-muted px-4 py-3">
                     视频类型：{mediaTypeLabelMap[asset.mediaType] ?? asset.mediaType} · 建议时长：
                     {asset.suggestedDurationSec}s
                   </div>
@@ -165,7 +159,7 @@ export function AssetListClient({
                 <div className="mt-4 flex flex-wrap gap-2">
                   <Link
                     href={`/projects/${projectId}/assets/${asset.assetId}/edit`}
-                    className="inline-flex rounded-full bg-pine px-4 py-2 text-sm font-medium text-white transition hover:bg-pine/90"
+                    className="btn-primary px-4 py-2"
                   >
                     编辑素材
                   </Link>
@@ -175,7 +169,7 @@ export function AssetListClient({
                       setError("");
                       setConfirmAsset(asset);
                     }}
-                    className="inline-flex rounded-full border border-clay/20 bg-white px-4 py-2 text-sm font-medium text-clay transition hover:border-clay/35 hover:bg-[#fff6f2]"
+                    className="btn-danger px-4 py-2"
                   >
                     删除素材
                   </button>

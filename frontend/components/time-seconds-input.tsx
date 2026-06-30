@@ -2,6 +2,7 @@
 
 import clsx from "clsx";
 import { useState } from "react";
+import { AiFieldLabel, AiSuggestHint, aiInputClassName, clearSuggestedField } from "@/lib/ai-field-ui";
 import { snapTimeInputToBeat } from "@/lib/beat-snap";
 import {
   isPartialTimeSecondsInput,
@@ -9,6 +10,8 @@ import {
 } from "@/lib/time-input";
 
 type TimeSecondsInputProps = {
+  aiBadge?: string;
+  aiSuggested?: boolean;
   beatPoints?: number[];
   beatSnapMin?: number;
   className?: string;
@@ -25,6 +28,8 @@ type TimeSecondsInputProps = {
 };
 
 export function TimeSecondsInput({
+  aiBadge = "AI",
+  aiSuggested = false,
   beatPoints = [],
   beatSnapMin,
   className,
@@ -81,7 +86,9 @@ export function TimeSecondsInput({
   return (
     <label className={clsx("block", className)} htmlFor={id}>
       <div className="mb-2 flex items-center justify-between gap-2">
-        <span className="text-sm text-ink/75">{label}</span>
+        <AiFieldLabel badge={aiBadge} className="mb-0" suggested={aiSuggested}>
+          {label}
+        </AiFieldLabel>
         {canSnap ? (
           <button
             type="button"
@@ -111,8 +118,8 @@ export function TimeSecondsInput({
         }}
         onBlur={handleBlur}
         className={clsx(
-          "w-full rounded-2xl border bg-white px-4 py-3 outline-none transition focus:border-pine",
-          fieldError ? "border-clay/40" : "border-pine/30"
+          aiInputClassName(aiSuggested),
+          fieldError && "border-clay/40 focus:border-clay/40 focus:ring-clay/10"
         )}
       />
       {fieldError ? <p className="mt-2 text-xs text-clay">{fieldError}</p> : null}

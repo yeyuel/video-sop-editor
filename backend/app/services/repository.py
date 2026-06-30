@@ -2,6 +2,7 @@ import json
 import os
 import re
 from datetime import datetime, timezone
+from typing import Any
 from uuid import uuid4
 
 from sqlmodel import Session, delete, select
@@ -359,11 +360,101 @@ class SqlRepository:
         asset.information_density = payload.informationDensity
         asset.suggested_duration_sec = payload.suggestedDurationSec
         asset.function_tags = dumps_list(payload.functionTags)
+        asset.vision_analysis_status = "empty"
+        asset.vision_analysis_json = ""
 
         session.add(asset)
         session.commit()
         session.refresh(asset)
         return self._map_asset(asset)
+
+    def find_cached_vision_analysis(
+        self,
+        session: Session,
+        project_id: str,
+        *,
+        file_fingerprint: str,
+        exclude_asset_id: str,
+    ) -> tuple[str, dict[str, Any]] | None:
+        rows = session.exec(
+            select(AssetEntity).where(AssetEntity.project_id == project_id)
+        ).all()
+        for row in rows:
+            if row.asset_id == exclude_asset_id:
+                continue
+            if row.vision_analysis_status != "ready":
+                continue
+            try:
+                payload = json.loads(row.vision_analysis_json or "{}")
+            except json.JSONDecodeError:
+                continue
+            if payload.get("fileFingerprint") != file_fingerprint:
+                continue
+            prefilled = payload.get("prefilledFields") or []
+            if not prefilled:
+                continue
+            return row.asset_id, payload
+        return None
+
+    def update_asset_vision_status(
+        self,
+        session: Session,
+        project_id: str,
+        asset_id: str,
+        *,
+        status: str,
+        analysis_json: dict[str, Any],
+        prefilled_fields: list[str],
+    ) -> AssetRead | None:
+        asset = self.get_asset_entity(session, asset_id)
+        if not asset or asset.project_id != project_id:
+            return None
+
+        payload = dict(analysis_json)
+        payload["prefilledFields"] = prefilled_fields
+        asset.vision_analysis_status = status
+        asset.vision_analysis_json = json.dumps(payload, ensure_ascii=False)
+        if status == "ready" and prefilled_fields:
+            self._apply_vision_draft_to_asset(asset, payload, prefilled_fields)
+        session.add(asset)
+        session.commit()
+        session.refresh(asset)
+        return self._map_asset(asset)
+
+    @staticmethod
+    def _apply_vision_draft_to_asset(
+        asset: AssetEntity,
+        payload: dict[str, Any],
+        prefilled_fields: list[str],
+    ) -> None:
+        if "scene" in prefilled_fields:
+            scene = str(payload.get("scene", "")).strip()
+            if scene:
+                asset.scene = scene
+        if "shotType" in prefilled_fields:
+            shot_type = str(payload.get("shotType", "")).strip()
+            if shot_type:
+                asset.shot_type = shot_type
+        if "emotionTags" in prefilled_fields:
+            emotion_tags = payload.get("emotionTags", [])
+            if isinstance(emotion_tags, list):
+                cleaned = [str(item).strip() for item in emotion_tags if str(item).strip()]
+                if cleaned:
+                    asset.emotion_tags = dumps_list(cleaned)
+        if "visualTags" in prefilled_fields:
+            visual_tags = payload.get("visualTags", [])
+            if isinstance(visual_tags, list):
+                cleaned = [str(item).strip() for item in visual_tags if str(item).strip()]
+                if cleaned:
+                    asset.visual_tags = dumps_list(cleaned)
+        if "informationDensity" in prefilled_fields:
+            density = str(payload.get("informationDensity", "")).strip()
+            if density:
+                asset.information_density = density
+        if "suggestedDurationSec" in prefilled_fields:
+            duration = payload.get("suggestedDurationSec")
+            if isinstance(duration, (int, float)) and float(duration) > 0:
+                asset.suggested_duration_sec = float(duration)
 
     def delete_asset(self, session: Session, project_id: str, asset_id: str) -> bool:
         asset = self.get_asset_entity(session, asset_id)
@@ -1327,6 +1418,20 @@ class SqlRepository:
 
     @staticmethod
     def _map_asset(item: AssetEntity) -> AssetRead:
+        prefilled_fields: list[str] = []
+        vision_message = ""
+        raw_json = getattr(item, "vision_analysis_json", "") or ""
+        if raw_json.strip():
+            try:
+                parsed = json.loads(raw_json)
+                if isinstance(parsed, dict):
+                    raw_fields = parsed.get("prefilledFields", [])
+                    if isinstance(raw_fields, list):
+                        prefilled_fields = [str(field) for field in raw_fields if str(field).strip()]
+                    vision_message = str(parsed.get("message", "")).strip()
+            except json.JSONDecodeError:
+                pass
+
         return AssetRead(
             assetId=item.asset_id,
             location=item.location,
@@ -1339,6 +1444,9 @@ class SqlRepository:
             informationDensity=item.information_density,
             suggestedDurationSec=item.suggested_duration_sec,
             functionTags=loads_str_list(item.function_tags),
+            visionAnalysisStatus=getattr(item, "vision_analysis_status", "empty") or "empty",
+            visionPrefilledFields=prefilled_fields,
+            visionAnalysisMessage=vision_message,
         )
 
     @staticmethod

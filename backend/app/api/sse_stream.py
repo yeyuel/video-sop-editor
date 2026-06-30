@@ -9,7 +9,10 @@ from typing import Any
 from sqlmodel import Session
 
 from app.api.meta import merge_response_meta
-from app.db import engine
+from app import db
+from app.runtime.shutdown import is_shutting_down
+
+QUEUE_POLL_SEC = 1.0
 
 
 def format_sse(payload: dict[str, Any]) -> str:
@@ -45,7 +48,10 @@ def run_streaming_task(
 
     def worker() -> None:
         try:
-            with Session(engine) as session:
+            if is_shutting_down():
+                result_box["error"] = RuntimeError("服务正在关闭。")
+                return
+            with Session(db.engine) as session:
                 result_box["value"] = task(session, report)
         except Exception as exc:  # noqa: BLE001 - stream endpoint must surface errors
             result_box["error"] = exc
@@ -55,13 +61,20 @@ def run_streaming_task(
     thread = threading.Thread(target=worker, daemon=True)
     thread.start()
 
-    while True:
-        item = event_queue.get()
+    while not is_shutting_down():
+        try:
+            item = event_queue.get(timeout=QUEUE_POLL_SEC)
+        except queue.Empty:
+            continue
         if item is None:
             break
         yield format_sse(item)
 
     thread.join(timeout=0.2)
+
+    if is_shutting_down():
+        yield format_sse({"type": "error", "message": "服务正在关闭，流式任务已中断。"})
+        return
 
     if result_box["error"] is not None:
         yield format_sse(

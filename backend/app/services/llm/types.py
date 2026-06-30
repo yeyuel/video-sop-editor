@@ -15,6 +15,7 @@ class LlmErrorCode(StrEnum):
     PARSE_ERROR = "parse_error"
     UNSUPPORTED_AUTH = "unsupported_auth"
     NOT_IMPLEMENTED = "not_implemented"
+    VISION_UNSUPPORTED = "vision_unsupported"
 
 
 class LlmProviderStatus(StrEnum):
@@ -78,6 +79,7 @@ class ModelOption:
     label: str
     description: str = ""
     recommended: bool = False
+    supports_vision: bool = False
 
 
 @dataclass

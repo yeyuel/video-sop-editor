@@ -317,7 +317,7 @@ export function StoryboardListClient({
       />
 
       <div className="space-y-5">
-        <div className="rounded-[28px] border border-pine/10 bg-mist/70 p-4">
+        <div className="surface-muted p-4 md:p-5">
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div className="max-w-2xl">
               <p className="text-sm font-medium text-ink">时间线整理区</p>
@@ -329,7 +329,7 @@ export function StoryboardListClient({
                   type="checkbox"
                   checked={alignToBeat}
                   onChange={(event) => setAlignToBeat(event.target.checked)}
-                  className="h-4 w-4 rounded border-pine/30 text-pine focus:ring-pine"
+                  className="h-4 w-4 rounded border-line text-pine focus:ring-pine/20"
                 />
                 生成时适配节拍
               </label>
@@ -339,7 +339,7 @@ export function StoryboardListClient({
                 type="button"
                 onClick={handleGenerate}
                 disabled={isPending || Boolean(llmProgress)}
-                className="inline-flex rounded-full bg-pine px-5 py-3 text-sm font-medium text-white transition hover:bg-pine/90 disabled:cursor-not-allowed disabled:opacity-60"
+                className="btn-primary"
               >
                 {isPending ? "生成中..." : "生成分镜"}
               </button>
@@ -347,14 +347,11 @@ export function StoryboardListClient({
                 type="button"
                 onClick={handleGenerateWithLlm}
                 disabled={isPending || Boolean(llmProgress)}
-                className="inline-flex rounded-full border border-pine/20 bg-white px-5 py-3 text-sm font-medium text-pine transition hover:bg-white disabled:cursor-not-allowed disabled:opacity-60"
+                className="btn-ai"
               >
                 {isPending ? "处理中..." : "LLM 建议分镜"}
               </button>
-              <Link
-                href={`/projects/${projectId}/storyboard/new`}
-                className="inline-flex rounded-full border border-pine/20 bg-white px-5 py-3 text-sm font-medium text-pine transition hover:bg-white"
-              >
+              <Link href={`/projects/${projectId}/storyboard/new`} className="btn-secondary">
                 手工新增分镜
               </Link>
             </div>
@@ -366,17 +363,12 @@ export function StoryboardListClient({
         <ValidationIssuesPanel issues={bundle.validation.issues} />
 
         {bundle.validation.message && bundle.validation.issues.length === 0 ? (
-          <div className="rounded-2xl border border-pine/10 bg-sand/45 px-4 py-3 text-sm text-ink/70">
-            {bundle.validation.message}
-          </div>
+          <div className="stat-cell border-pine/15 bg-sand/40">{bundle.validation.message}</div>
         ) : null}
 
         <div className="grid gap-3 md:grid-cols-5">
           {validationItems.map((item) => (
-            <div
-              key={item.label}
-              className="rounded-2xl bg-sand/60 px-4 py-3 text-sm text-ink/70"
-            >
+            <div key={item.label} className="stat-cell">
               {item.label}：{item.value}
             </div>
           ))}
@@ -385,7 +377,7 @@ export function StoryboardListClient({
         {bundle.segments.length === 0 ? (
           <EmptyState message="还没有分镜时间线。请先确认主题和节奏规划，再生成当前项目的分镜。" />
         ) : (
-          <div className="space-y-4">
+          <div className="timeline-rail">
             {bundle.segments.map((segment, index) => {
               const duration = Math.max(
                 0,
@@ -401,90 +393,69 @@ export function StoryboardListClient({
                       router.push(`/projects/${projectId}/storyboard/${segment.id}/edit`);
                     }
                   }}
-                  className="rounded-[30px] border border-black/5 bg-white/90 p-5 shadow-card transition hover:-translate-y-0.5 hover:shadow-[0_24px_56px_rgba(25,34,41,0.1)] focus:outline-none focus:ring-2 focus:ring-pine/20"
+                  className="surface-panel relative p-5 transition hover:-translate-y-0.5 hover:shadow-card focus:outline-none focus:ring-2 focus:ring-pine/15"
                 >
+                  <span className="timeline-node">{String(index + 1).padStart(2, "0")}</span>
                   <div className="flex flex-wrap items-start justify-between gap-4">
-                    <div className="flex min-w-0 items-start gap-4">
-                      <div className="flex h-14 w-14 shrink-0 flex-col items-center justify-center rounded-[20px] bg-pine text-white shadow-[0_16px_32px_rgba(47,94,82,0.18)]">
-                        <span className="text-[11px] uppercase tracking-[0.18em] text-white/70">
-                          shot
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="stat-pill">
+                          {segment.startTime}s – {segment.endTime}s
                         </span>
-                        <span className="text-lg font-semibold leading-none">
-                          {String(index + 1).padStart(2, "0")}
-                        </span>
+                        <span className="stat-pill">{duration}s</span>
+                        <span className="badge">{getStoryboardFunctionLabel(segment.function)}</span>
                       </div>
-                      <div className="min-w-0">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <span className="rounded-full bg-sand px-3 py-1 text-xs font-medium text-ink/65">
-                            {segment.startTime}s - {segment.endTime}s
-                          </span>
-                          <span className="rounded-full bg-mist px-3 py-1 text-xs font-medium text-ink/65">
-                            {duration}s
-                          </span>
-                          <span className="rounded-full bg-mist px-3 py-1 text-xs font-medium text-ink/65">
-                            {getStoryboardFunctionLabel(segment.function)}
-                          </span>
-                        </div>
-                        <h3 className="mt-3 text-lg font-semibold text-ink">
-                          {segment.shotDescription}
-                        </h3>
-                        <p className="mt-2 text-sm leading-6 text-ink/65">{segment.subtitle}</p>
-                      </div>
+                      <h3 className="mt-3 text-lg font-semibold text-ink">
+                        {segment.shotDescription}
+                      </h3>
+                      <p className="mt-2 text-sm leading-6 text-ink/65">{segment.subtitle}</p>
                     </div>
                     <div className="flex flex-wrap items-center gap-2">
                       <Link
                         href={`/projects/${projectId}/storyboard/${segment.id}/edit`}
-                        className="inline-flex rounded-full bg-pine px-4 py-2 text-sm font-medium text-white transition hover:bg-pine/90"
+                        className="btn-primary px-4 py-2"
                       >
                         编辑
                       </Link>
                       <Link
                         href={`/projects/${projectId}/storyboard/new?after=${segment.id}`}
-                        className="inline-flex rounded-full border border-pine/20 bg-white px-4 py-2 text-sm font-medium text-pine transition hover:bg-mist"
+                        className="btn-secondary px-4 py-2"
                       >
                         后插一条
                       </Link>
-                      <div className="flex items-center rounded-full border border-pine/20 bg-white p-1">
+                      <div className="flex items-center rounded-full border border-line bg-white p-1">
                         <button
                           type="button"
                           onClick={() => handleMove(segment.id, "up")}
                           disabled={isPending || Boolean(llmProgress) || index === 0}
-                          className="inline-flex rounded-full px-3 py-1.5 text-sm font-medium text-pine transition hover:bg-mist disabled:cursor-not-allowed disabled:opacity-40"
+                          className="btn-ghost px-3 py-1.5 disabled:cursor-not-allowed disabled:opacity-40"
                         >
                           上移
                         </button>
                         <button
                           type="button"
                           onClick={() => handleMove(segment.id, "down")}
-                          disabled={isPending || Boolean(llmProgress) || index === bundle.segments.length - 1}
-                          className="inline-flex rounded-full px-3 py-1.5 text-sm font-medium text-pine transition hover:bg-mist disabled:cursor-not-allowed disabled:opacity-40"
+                          disabled={
+                            isPending ||
+                            Boolean(llmProgress) ||
+                            index === bundle.segments.length - 1
+                          }
+                          className="btn-ghost px-3 py-1.5 disabled:cursor-not-allowed disabled:opacity-40"
                         >
                           下移
                         </button>
                       </div>
-                      <button
-                        type="button"
-                        onClick={() => handleDelete(segment.id)}
-                        className="inline-flex rounded-full border border-clay/20 bg-white px-4 py-2 text-sm font-medium text-clay transition hover:bg-[#fff4ee]"
-                      >
+                      <button type="button" onClick={() => handleDelete(segment.id)} className="btn-danger px-4 py-2">
                         删除
                       </button>
                     </div>
                   </div>
 
                   <div className="mt-5 grid gap-3 md:grid-cols-3 xl:grid-cols-4">
-                    <div className="rounded-2xl bg-mist px-4 py-3 text-sm text-ink/70">
-                      时间：{segment.startTime}s - {segment.endTime}s
-                    </div>
-                    <div className="rounded-2xl bg-mist px-4 py-3 text-sm text-ink/70">
-                      时长：{duration}s
-                    </div>
-                    <div className="rounded-2xl bg-mist px-4 py-3 text-sm text-ink/70">
-                      素材：{segment.assetId}
-                    </div>
-                    <div className="rounded-2xl bg-mist px-4 py-3 text-sm text-ink/70">
-                      节拍：{getStoryboardBeatModeLabel(segment.beatMode)}
-                    </div>
+                    <div className="stat-cell">时间：{segment.startTime}s – {segment.endTime}s</div>
+                    <div className="stat-cell">时长：{duration}s</div>
+                    <div className="stat-cell">素材：{segment.assetId}</div>
+                    <div className="stat-cell">节拍：{getStoryboardBeatModeLabel(segment.beatMode)}</div>
                   </div>
                 </article>
               );

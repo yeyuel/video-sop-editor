@@ -13,6 +13,31 @@ type WorkflowStepperProps = {
   hrefMap?: Partial<Record<WorkflowStepId, string>>;
 };
 
+function StepStatus({
+  isActive,
+  isCompleted,
+  isEnabled
+}: {
+  isActive: boolean;
+  isCompleted: boolean;
+  isEnabled: boolean;
+}) {
+  if (isActive) {
+    return (
+      <span className="inline-flex items-center gap-1.5 rounded-full bg-white/15 px-2 py-0.5 text-[10px] font-medium">
+        进行中
+      </span>
+    );
+  }
+  if (isCompleted) {
+    return <span className="badge border-pine/15 bg-mist text-pine">已完成</span>;
+  }
+  if (isEnabled) {
+    return <span className="text-[10px] font-medium text-ink/40">待处理</span>;
+  }
+  return <span className="text-[10px] font-medium text-ink/30">未启用</span>;
+}
+
 export function WorkflowStepper({
   currentStep,
   enabledSteps = implementedWorkflowSteps,
@@ -20,36 +45,66 @@ export function WorkflowStepper({
   hrefMap
 }: WorkflowStepperProps) {
   return (
-    <div className="rounded-xl2 border border-black/5 bg-white/90 p-4 shadow-card backdrop-blur">
-      <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-6">
+    <div className="surface-panel overflow-hidden p-3 md:p-4">
+      <div className="mb-3 flex items-center justify-between gap-3 px-1">
+        <p className="text-sm text-ink/50">制作流程</p>
+        <span className="stat-pill">
+          {completedSteps.length}/{workflowSteps.length}
+        </span>
+      </div>
+
+      <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-6">
         {workflowSteps.map((step, index) => {
           const isActive = step.id === currentStep;
           const isEnabled = enabledSteps.includes(step.id);
           const isCompleted = completedSteps.includes(step.id);
           const href = hrefMap?.[step.id];
           const commonClassName = clsx(
-            "flex h-full min-h-[116px] flex-col justify-between rounded-2xl border px-5 py-3 transition",
-            isActive && "border-pine bg-pine text-white",
-            isCompleted && !isActive && "border-pine/15 bg-mist text-pine",
-            isEnabled && !isActive && !isCompleted && "border-black/5 bg-sand/70 text-ink",
-            !isEnabled && !isActive && "border-black/5 bg-white text-ink/45",
-            href && isEnabled && "hover:-translate-y-0.5"
+            "group relative flex h-full min-h-[100px] flex-col justify-between rounded-2xl border px-4 py-3.5 transition duration-200",
+            isActive &&
+              "border-pine bg-pine text-white shadow-lift",
+            isCompleted &&
+              !isActive &&
+              "border-line bg-mist/50 text-pine",
+            isEnabled &&
+              !isActive &&
+              !isCompleted &&
+              "border-line bg-white text-ink hover:-translate-y-0.5 hover:border-pine/20 hover:shadow-soft",
+            !isEnabled && !isActive && "border-line bg-sand/50 text-ink/35",
+            href && isEnabled && "cursor-pointer"
           );
           const content = (
             <>
-              <div className="flex items-center justify-between gap-2">
-                <p className="text-xs uppercase tracking-[0.2em]">0{index + 1}</p>
+              <div className="flex items-start justify-between gap-2">
                 <span
                   className={clsx(
-                    "text-xs font-medium",
-                    isActive ? "text-white/80" : "text-pine/60"
+                    "inline-flex h-7 w-7 items-center justify-center rounded-full text-[11px] font-semibold",
+                    isActive
+                      ? "bg-white/15 text-white"
+                      : isCompleted
+                        ? "bg-pine/10 text-pine"
+                        : "bg-sand text-ink/45"
                   )}
                 >
-                  {isCompleted ? "已完成" : isActive ? "进行中" : "待处理"}
+                  {String(index + 1).padStart(2, "0")}
                 </span>
+                <StepStatus
+                  isActive={isActive}
+                  isCompleted={isCompleted}
+                  isEnabled={isEnabled}
+                />
               </div>
-              <p className="mt-2 text-base font-semibold">{step.label}</p>
-              <p className="mt-1 text-xs leading-5 opacity-80">{step.shortDescription}</p>
+              <div>
+                <p className="mt-3 text-[15px] font-semibold leading-snug">{step.label}</p>
+                <p
+                  className={clsx(
+                    "mt-1.5 text-xs leading-5",
+                    isActive ? "text-white/75" : "text-ink/45"
+                  )}
+                >
+                  {step.shortDescription}
+                </p>
+              </div>
             </>
           );
 
@@ -62,11 +117,6 @@ export function WorkflowStepper({
               ) : (
                 <div className={commonClassName}>{content}</div>
               )}
-              {index < workflowSteps.length - 1 ? (
-                <div className="pointer-events-none absolute -right-5 top-1/2 hidden w-5 -translate-y-1/2 xl:flex items-center justify-center">
-                  <span className="text-xl leading-none text-pine/25">→</span>
-                </div>
-              ) : null}
             </div>
           );
         })}

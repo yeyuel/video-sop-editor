@@ -24,7 +24,7 @@ export default async function UsersSettingsPage() {
         manageUsersHref=""
       />
       <div className="mx-auto max-w-7xl px-6">
-        <section className="mb-6 rounded-xl2 border border-black/5 bg-white/80 p-6 shadow-card backdrop-blur">
+        <section className="surface-hero mb-6">
           <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
             <div>
               <p className="text-xs uppercase tracking-[0.22em] text-pine/70">Director Only</p>
@@ -34,10 +34,7 @@ export default async function UsersSettingsPage() {
                 （导演）。新建用户默认不开放登录，需手动勾选「允许登录」。
               </p>
             </div>
-            <Link
-              href="/settings/llm"
-              className="inline-flex rounded-full border border-pine/15 bg-white/85 px-5 py-3 text-sm font-medium text-pine transition hover:border-pine/30 hover:bg-mist"
-            >
+            <Link href="/settings/llm" className="btn-secondary">
               LLM 配置
             </Link>
           </div>

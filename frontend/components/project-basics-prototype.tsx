@@ -14,6 +14,8 @@ type ProjectBasicsPrototypeProps = {
   project?: Project;
   submitLabel?: string;
   backHref?: string;
+  /** 嵌入 SectionCard 时隐藏外层卡片与重复标题 */
+  embedded?: boolean;
 };
 
 type ProjectFormState = Omit<ProjectPayload, "targetDurationSec"> & {
@@ -67,7 +69,8 @@ export function ProjectBasicsPrototype({
   mode,
   project,
   submitLabel = mode === "create" ? "保存并进入素材录入" : "保存项目",
-  backHref = "/"
+  backHref = "/",
+  embedded = false
 }: ProjectBasicsPrototypeProps) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
@@ -164,13 +167,15 @@ export function ProjectBasicsPrototype({
       />
       <ToastNotice visible={showSuccess} title="保存成功" message="项目内容已经更新。" />
 
-      <div className="rounded-xl2 border border-black/5 bg-white/90 p-6 shadow-card backdrop-blur">
-        <div className="mb-6">
-          <h2 className="text-2xl font-semibold text-ink">项目基本信息</h2>
-          <p className="mt-2 text-sm leading-6 text-ink/70">
-            这一页只处理项目基础配置。创建完成后再进入素材录入，保持输入专注。
-          </p>
-        </div>
+      <div className={embedded ? undefined : "surface-panel p-6 md:p-7"}>
+        {!embedded ? (
+          <div className="mb-6">
+            <h2 className="text-2xl font-semibold text-ink">项目基本信息</h2>
+            <p className="mt-2 text-sm leading-6 text-ink/70">
+              这一页只处理项目基础配置。创建完成后再进入素材录入，保持输入专注。
+            </p>
+          </div>
+        ) : null}
 
         <form className="grid gap-5 md:grid-cols-2" onSubmit={handleSubmit}>
           <label className="block">
@@ -180,7 +185,7 @@ export function ProjectBasicsPrototype({
               value={form.name}
               onChange={(event) => setForm({ ...form, name: event.target.value })}
               placeholder="例如：阿勒泰雪国片"
-              className="w-full rounded-2xl border border-pine/30 bg-white px-4 py-3 outline-none transition focus:border-pine"
+              className="input-field"
             />
           </label>
           <label className="block">
@@ -188,7 +193,7 @@ export function ProjectBasicsPrototype({
             <select
               value={form.platform}
               onChange={(event) => setForm({ ...form, platform: event.target.value })}
-              className="w-full rounded-2xl border border-pine/30 bg-white px-4 py-3 outline-none transition focus:border-pine"
+              className="input-field"
             >
               {platformOptions.map((option) => (
                 <option key={option.value} value={option.value}>
@@ -204,7 +209,7 @@ export function ProjectBasicsPrototype({
               value={form.destination}
               onChange={(event) => setForm({ ...form, destination: event.target.value })}
               placeholder="例如：阿勒泰"
-              className="w-full rounded-2xl border border-pine/30 bg-white px-4 py-3 outline-none transition focus:border-pine"
+              className="input-field"
             />
           </label>
           <label className="block">
@@ -221,7 +226,7 @@ export function ProjectBasicsPrototype({
                 }
               }}
               placeholder="例如：15"
-              className="w-full rounded-2xl border border-pine/30 bg-white px-4 py-3 outline-none transition focus:border-pine"
+              className="input-field"
             />
           </label>
           <label className="block">
@@ -229,7 +234,7 @@ export function ProjectBasicsPrototype({
             <select
               value={form.videoType}
               onChange={(event) => setForm({ ...form, videoType: event.target.value })}
-              className="w-full rounded-2xl border border-pine/30 bg-white px-4 py-3 outline-none transition focus:border-pine"
+              className="input-field"
             >
               {videoTypeOptions.map((option) => (
                 <option key={option.value} value={option.value}>
@@ -245,7 +250,7 @@ export function ProjectBasicsPrototype({
               value={form.mediaRoot}
               onChange={(event) => setForm({ ...form, mediaRoot: event.target.value })}
               placeholder="例如：D:\\素材库\\阿勒泰项目"
-              className="w-full rounded-2xl border border-pine/30 bg-white px-4 py-3 outline-none transition focus:border-pine"
+              className="input-field"
             />
           </label>
           <label className="block md:col-span-2">
@@ -253,7 +258,7 @@ export function ProjectBasicsPrototype({
             <select
               value={form.stylePreference}
               onChange={(event) => setForm({ ...form, stylePreference: event.target.value })}
-              className="w-full rounded-2xl border border-pine/30 bg-white px-4 py-3 outline-none transition focus:border-pine"
+              className="input-field"
             >
               {styleOptions.map((option) => (
                 <option key={option.value} value={option.value}>
@@ -269,7 +274,7 @@ export function ProjectBasicsPrototype({
               value={form.styleNotes}
               onChange={(event) => setForm({ ...form, styleNotes: event.target.value })}
               placeholder="可选，例如：冷蓝色调、旁白克制、以空镜和回望人物为主"
-              className="w-full rounded-2xl border border-pine/30 bg-white px-4 py-3 outline-none transition focus:border-pine"
+              className="input-field"
             />
             <p className="mt-2 text-xs text-ink/55">
               可以补充色调、旁白语气、镜头组织方式等细节偏好。
@@ -282,7 +287,7 @@ export function ProjectBasicsPrototype({
               onChange={(event) => setForm({ ...form, routeText: event.target.value })}
               placeholder="例如：将军山、喀纳斯、禾木（可写区域范围，供 LLM 理解本次旅行覆盖范围）"
               rows={4}
-              className="w-full rounded-2xl border border-pine/30 bg-white px-4 py-3 outline-none transition focus:border-pine"
+              className="input-field"
             />
             <p className="mt-2 text-xs text-ink/55">
               主要用于给 LLM 提供区域上下文，生成分镜与文案时会参考；不填也不影响主流程。
@@ -295,7 +300,7 @@ export function ProjectBasicsPrototype({
               onChange={(event) =>
                 setForm({ ...form, validateLocationOrder: event.target.checked })
               }
-              className="mt-1 h-4 w-4 rounded border-pine/30 text-pine focus:ring-pine"
+              className="mt-1 h-4 w-4 rounded border-line text-pine focus:ring-pine/20"
             />
             <span className="text-sm text-ink/75">
               <span className="block font-medium text-ink">校验分镜地点顺序</span>
@@ -310,17 +315,10 @@ export function ProjectBasicsPrototype({
             </div>
           ) : null}
           <div className="flex flex-wrap gap-3 md:col-span-2">
-            <button
-              type="submit"
-              disabled={isPending}
-              className="inline-flex rounded-full bg-pine px-5 py-3 text-sm font-medium text-white transition hover:bg-pine/90 disabled:cursor-not-allowed disabled:opacity-60"
-            >
+            <button type="submit" disabled={isPending} className="btn-primary">
               {isPending ? "保存中..." : submitLabel}
             </button>
-            <Link
-              href={backHref}
-              className="inline-flex rounded-full border border-pine/20 bg-white px-5 py-3 text-sm font-medium text-pine transition hover:bg-mist"
-            >
+            <Link href={backHref} className="btn-secondary">
               返回项目列表
             </Link>
           </div>

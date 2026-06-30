@@ -22,7 +22,7 @@ export function ValidationIssuesPanel({
   return (
     <div
       className={clsx(
-        "rounded-2xl border border-sand/40 bg-sand/35 px-4 py-4 text-sm text-ink/75",
+        "rounded-2xl border border-line bg-sand/40 px-4 py-4 text-sm text-ink/75",
         className
       )}
     >
@@ -65,7 +65,7 @@ type ConfirmDialogProps = {
 
 export function EmptyState({ children, message }: EmptyStateProps) {
   return (
-    <div className="rounded-2xl border border-dashed border-pine/20 bg-white px-4 py-8 text-center text-sm text-ink/60">
+    <div className="surface-muted px-4 py-10 text-center text-sm text-ink/60">
       <p>{message}</p>
       {children ? <div className="mt-4 flex justify-center gap-3">{children}</div> : null}
     </div>
@@ -114,7 +114,7 @@ export function ConfirmDialog({
         description="请稍候，操作完成前请不要关闭页面。"
       />
       <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink/35 px-6">
-        <div className="w-full max-w-md rounded-xl2 border border-black/5 bg-white p-6 shadow-card">
+        <div className="surface-panel w-full max-w-md p-6 shadow-card">
           {subtitle ? (
             <p className="text-xs uppercase tracking-[0.22em] text-clay/80">{subtitle}</p>
           ) : null}
@@ -126,21 +126,11 @@ export function ConfirmDialog({
               type="button"
               onClick={onConfirm}
               disabled={isPending}
-              className={clsx(
-                "inline-flex rounded-full px-5 py-3 text-sm font-medium text-white transition disabled:cursor-not-allowed disabled:opacity-60",
-                confirmTone === "danger"
-                  ? "bg-clay hover:bg-clay/90"
-                  : "bg-pine hover:bg-pine/90"
-              )}
+              className={confirmTone === "danger" ? "btn-danger-solid" : "btn-primary"}
             >
               {isPending ? "处理中..." : confirmLabel}
             </button>
-            <button
-              type="button"
-              onClick={onCancel}
-              disabled={isPending}
-              className="inline-flex rounded-full border border-pine/20 bg-white px-5 py-3 text-sm font-medium text-pine transition hover:bg-mist disabled:cursor-not-allowed disabled:opacity-60"
-            >
+            <button type="button" onClick={onCancel} disabled={isPending} className="btn-secondary">
               {cancelLabel}
             </button>
           </div>

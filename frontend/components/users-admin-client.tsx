@@ -207,7 +207,7 @@ export function UsersAdminClient({ currentUserId }: UsersAdminClientProps) {
 
   return (
     <div className="grid gap-6 lg:grid-cols-[1fr_1.1fr]">
-      <section className="rounded-xl2 border border-black/5 bg-white/80 p-6 shadow-card backdrop-blur">
+      <section className="surface-panel p-6">
         <p className="text-xs uppercase tracking-[0.22em] text-pine/70">
           {editingUser ? "Edit User" : "New User"}
         </p>
@@ -228,9 +228,7 @@ export function UsersAdminClient({ currentUserId }: UsersAdminClientProps) {
               readOnly={Boolean(editingUser)}
               value={username}
               onChange={(event) => setUsername(event.target.value)}
-              className={`mt-2 w-full rounded-2xl border border-black/10 px-4 py-3 text-sm outline-none ring-pine/20 focus:ring-2 ${
-                editingUser ? "bg-sand/45 text-ink/75" : "bg-white"
-              }`}
+              className={`input-field mt-2 ${editingUser ? "bg-sand/45 text-ink/75" : ""}`}
               placeholder="例如 editor_a"
               autoComplete="off"
             />
@@ -241,7 +239,7 @@ export function UsersAdminClient({ currentUserId }: UsersAdminClientProps) {
             <input
               value={displayName}
               onChange={(event) => setDisplayName(event.target.value)}
-              className="mt-2 w-full rounded-2xl border border-black/10 bg-white px-4 py-3 text-sm outline-none ring-pine/20 focus:ring-2"
+              className="input-field mt-2"
               placeholder="例如 剪辑 A"
             />
           </label>
@@ -256,7 +254,7 @@ export function UsersAdminClient({ currentUserId }: UsersAdminClientProps) {
               minLength={editingUser ? undefined : 6}
               value={password}
               onChange={(event) => setPassword(event.target.value)}
-              className="mt-2 w-full rounded-2xl border border-black/10 bg-white px-4 py-3 text-sm outline-none ring-pine/20 focus:ring-2"
+              className="input-field mt-2"
               placeholder={editingUser ? "留空则不修改" : "至少 6 位"}
               autoComplete={editingUser ? "new-password" : "new-password"}
             />
@@ -274,20 +272,20 @@ export function UsersAdminClient({ currentUserId }: UsersAdminClientProps) {
                   setUiEnabled(true);
                 }
               }}
-              className="mt-2 w-full rounded-2xl border border-black/10 bg-white px-4 py-3 text-sm outline-none ring-pine/20 focus:ring-2 disabled:bg-sand/45 disabled:text-ink/60"
+              className="input-field mt-2 disabled:bg-sand/45 disabled:text-ink/60"
             >
               <option value="editor">剪辑</option>
               <option value="director">导演</option>
             </select>
           </label>
 
-          <label className="flex items-start gap-3 rounded-2xl border border-black/8 bg-mist/50 px-4 py-4">
+          <label className="surface-muted flex items-start gap-3 px-4 py-4">
             <input
               type="checkbox"
               checked={uiEnabled}
               disabled={isEditingSelf || role === "director"}
               onChange={(event) => setUiEnabled(event.target.checked)}
-              className="mt-1 h-4 w-4 rounded border-black/20 text-pine focus:ring-pine/30 disabled:opacity-60"
+              className="mt-1 h-4 w-4 rounded border-line text-pine focus:ring-pine/20 disabled:opacity-60"
             />
             <span>
               <span className="block text-sm font-medium text-ink">允许登录</span>
@@ -306,7 +304,7 @@ export function UsersAdminClient({ currentUserId }: UsersAdminClientProps) {
               <button
                 type="button"
                 onClick={resetCreateForm}
-                className="inline-flex flex-1 items-center justify-center rounded-full border border-pine/15 bg-white px-5 py-3 text-sm font-medium text-pine transition hover:bg-mist"
+                className="btn-secondary flex-1"
               >
                 取消编辑
               </button>
@@ -314,7 +312,7 @@ export function UsersAdminClient({ currentUserId }: UsersAdminClientProps) {
             <button
               type="submit"
               disabled={isPending}
-              className="inline-flex flex-1 items-center justify-center rounded-full bg-pine px-5 py-3 text-sm font-medium text-white transition hover:bg-pine/90 disabled:opacity-60"
+              className="btn-primary flex-1"
             >
               {isPending ? "保存中…" : editingUser ? "保存修改" : "创建用户"}
             </button>
@@ -322,7 +320,7 @@ export function UsersAdminClient({ currentUserId }: UsersAdminClientProps) {
         </form>
       </section>
 
-      <section className="rounded-xl2 border border-black/5 bg-white/80 p-6 shadow-card backdrop-blur">
+      <section className="surface-panel p-6">
         <p className="text-xs uppercase tracking-[0.22em] text-pine/70">User List</p>
         <h2 className="mt-2 text-2xl font-semibold text-ink">已有用户</h2>
         <p className="mt-2 text-sm leading-6 text-ink/70">共 {users.length} 个账号。</p>
@@ -372,7 +370,7 @@ export function UsersAdminClient({ currentUserId }: UsersAdminClientProps) {
                         <button
                           type="button"
                           onClick={() => startEdit(user)}
-                          className="rounded-full border border-pine/15 px-3 py-1.5 text-xs font-medium text-pine transition hover:bg-mist"
+                          className="btn-secondary px-3 py-1.5 text-xs"
                         >
                           编辑
                         </button>
@@ -380,7 +378,7 @@ export function UsersAdminClient({ currentUserId }: UsersAdminClientProps) {
                           type="button"
                           disabled={isSelf || isPending}
                           onClick={() => handleDelete(user)}
-                          className="rounded-full border border-clay/20 px-3 py-1.5 text-xs font-medium text-clay transition hover:bg-[#fff5ef] disabled:cursor-not-allowed disabled:opacity-45"
+                          className="btn-danger px-3 py-1.5 text-xs disabled:cursor-not-allowed disabled:opacity-45"
                         >
                           删除
                         </button>

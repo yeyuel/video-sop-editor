@@ -267,6 +267,22 @@ def _migration_012_llm_call_logs(session: Session) -> None:
     )
 
 
+def _migration_013_asset_vision_analysis(session: Session) -> None:
+    inspector = inspect(engine)
+    if "assetentity" not in inspector.get_table_names():
+        return
+
+    asset_columns = {column["name"] for column in inspector.get_columns("assetentity")}
+    if "vision_analysis_json" not in asset_columns:
+        session.exec(
+            text("ALTER TABLE assetentity ADD COLUMN vision_analysis_json TEXT DEFAULT ''")
+        )
+    if "vision_analysis_status" not in asset_columns:
+        session.exec(
+            text("ALTER TABLE assetentity ADD COLUMN vision_analysis_status TEXT DEFAULT 'empty'")
+        )
+
+
 MIGRATIONS: list[tuple[int, str, object]] = [
     (1, "001_legacy_columns", _migration_001_legacy_columns),
     (2, "002_rhythm_analysis_metrics", _migration_002_rhythm_analysis_metrics),
@@ -280,6 +296,7 @@ MIGRATIONS: list[tuple[int, str, object]] = [
     (10, "010_project_location_validation", _migration_010_project_location_validation),
     (11, "011_rhythm_bgm_recommendations", _migration_011_rhythm_bgm_recommendations),
     (12, "012_llm_call_logs", _migration_012_llm_call_logs),
+    (13, "013_asset_vision_analysis", _migration_013_asset_vision_analysis),
 ]
 
 

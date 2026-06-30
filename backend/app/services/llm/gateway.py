@@ -225,6 +225,118 @@ class LlmGateway:
 
         return last_error
 
+    def generate_vision_json_with_config(
+        self,
+        *,
+        config: ResolvedLlmConfig,
+        system_prompt: str,
+        user_prompt: str,
+        image_urls: list[str],
+        temperature: float = 0.2,
+        max_tokens: int | None = 2048,
+        on_progress: ProgressReporter | None = None,
+    ) -> LlmCallResult:
+        auth_header, auth_error, auth_message = resolve_authorization_header(config)
+        if auth_error:
+            return LlmCallResult.failure(
+                auth_error,
+                auth_message,
+                provider_id=config.provider_id,
+                model=config.model,
+            )
+
+        content: list[dict[str, Any]] = [{"type": "text", "text": user_prompt}]
+        for image_url in image_urls:
+            content.append({"type": "image_url", "image_url": {"url": image_url}})
+
+        payload: dict[str, Any] = {
+            "model": config.model,
+            "temperature": resolve_temperature(config.model, temperature),
+            "messages": [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": content},
+            ],
+        }
+        if should_disable_kimi_thinking(config.provider_id, config.model):
+            payload["thinking"] = {"type": "disabled"}
+        if max_tokens is not None:
+            payload["max_tokens"] = max_tokens
+
+        url = _chat_completions_url(config.base_url)
+        raw_payload = json.dumps(payload).encode("utf-8")
+        http_request = request.Request(
+            url,
+            data=raw_payload,
+            headers={
+                "Authorization": auth_header or "",
+                "Content-Type": "application/json",
+            },
+            method="POST",
+        )
+        emit_progress(
+            on_progress,
+            "calling_llm",
+            f"Vision 模型 {config.model} 正在分析图像…",
+            progress=55,
+        )
+        try:
+            with request.urlopen(http_request, timeout=config.timeout_sec) as response:
+                response_payload = json.loads(response.read().decode("utf-8"))
+        except TimeoutError:
+            return LlmCallResult.failure(
+                LlmErrorCode.TIMEOUT,
+                f"Vision 请求超时（>{config.timeout_sec}s）。",
+                provider_id=config.provider_id,
+                model=config.model,
+            )
+        except error.HTTPError as exc:
+            error_body = exc.read().decode("utf-8", errors="replace")[:240]
+            if exc.code in {401, 403}:
+                return LlmCallResult.failure(
+                    LlmErrorCode.AUTH_INVALID,
+                    "LLM API Key 无效或无权访问 Vision 模型。",
+                    provider_id=config.provider_id,
+                    model=config.model,
+                )
+            detail = f"Vision 服务返回 HTTP {exc.code}。"
+            if error_body:
+                detail = f"{detail} {error_body}"
+            return LlmCallResult.failure(
+                LlmErrorCode.HTTP_ERROR,
+                detail,
+                provider_id=config.provider_id,
+                model=config.model,
+            )
+        except error.URLError as exc:
+            return LlmCallResult.failure(
+                LlmErrorCode.NETWORK,
+                f"无法连接 Vision 服务：{exc.reason}",
+                provider_id=config.provider_id,
+                model=config.model,
+            )
+        except json.JSONDecodeError:
+            return LlmCallResult.failure(
+                LlmErrorCode.PARSE_ERROR,
+                "Vision 响应不是合法 JSON。",
+                provider_id=config.provider_id,
+                model=config.model,
+            )
+
+        parsed = self._extract_json_payload(response_payload)
+        if parsed is None:
+            detail = self._describe_empty_llm_response(response_payload)
+            return LlmCallResult.failure(
+                LlmErrorCode.EMPTY_RESPONSE,
+                detail,
+                provider_id=config.provider_id,
+                model=config.model,
+            )
+        return LlmCallResult.success(
+            parsed,
+            provider_id=config.provider_id,
+            model=config.model,
+        )
+
     def test_connection(self, config: ResolvedLlmConfig) -> tuple[LlmCallResult, int, str]:
         started = time.perf_counter()
         result = self.generate_json_with_config(

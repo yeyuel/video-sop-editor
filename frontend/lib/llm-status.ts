@@ -17,6 +17,8 @@ export type LlmModelOption = {
   label: string;
   description: string;
   recommended: boolean;
+  supportsVision?: boolean;
+  visionSource?: string;
 };
 
 export type LlmProvider = {
@@ -92,7 +94,8 @@ export function describeLlmStatus(meta?: LlmMeta): {
     empty_response: "LLM 空响应",
     parse_error: "LLM 解析失败",
     unsupported_auth: "不支持的鉴权方式",
-    not_implemented: "功能尚未接入"
+    not_implemented: "功能尚未接入",
+    vision_unsupported: "模型不支持 Vision"
   };
 
   return {

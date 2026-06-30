@@ -1,14 +1,23 @@
 import type {
   Asset,
+  AssetVisionPrefill,
   ExportDocument,
   ExportPlan,
+  LlmVisionCapability,
   NarrativeTheme,
   Project,
   RhythmPlan,
   StoryboardBundle,
   StoryboardSegment
 } from "@/types/domain";
-import type { ApiEnvelopeWithMeta, LlmMeta, LlmProvider, LlmStatus, LlmTestResult } from "@/lib/llm-status";
+import type {
+  ApiEnvelopeWithMeta,
+  LlmMeta,
+  LlmModelOption,
+  LlmProvider,
+  LlmStatus,
+  LlmTestResult
+} from "@/lib/llm-status";
 import { getBrowserApiBaseUrl, readApiErrorDetail } from "@/lib/api-base";
 import { postLlmStream, postLlmStreamFormData, type LlmStreamProgressEvent } from "@/lib/llm-stream";
 
@@ -168,6 +177,80 @@ export function deleteAsset(projectId: string, assetId: string): Promise<void> {
   return request<void>(`/projects/${projectId}/assets/${assetId}`, {
     method: "DELETE"
   });
+}
+
+export type MediaLibraryNode = {
+  name: string;
+  relativePath: string;
+  nodeType: "directory" | "file";
+  mediaKind?: "video" | "image" | "audio" | null;
+  mediaType?: string | null;
+  sizeBytes?: number;
+  hasAsset?: boolean;
+  children?: MediaLibraryNode[];
+};
+
+export type MediaLibraryScanResult = {
+  mediaRoot: string;
+  fileCount: number;
+  directoryCount: number;
+  truncated: boolean;
+  tree: MediaLibraryNode;
+};
+
+export type MediaLibraryHealth = {
+  ok: boolean;
+  mediaRoot: string;
+  message: string;
+};
+
+export function getMediaLibraryHealth(projectId: string): Promise<MediaLibraryHealth> {
+  return request<MediaLibraryHealth>(`/projects/${projectId}/assets/media-library/health`);
+}
+
+export function scanMediaLibrary(projectId: string): Promise<MediaLibraryScanResult> {
+  return request<MediaLibraryScanResult>(`/projects/${projectId}/assets/media-library/scan`);
+}
+
+export type MediaPreviewQuality = "fast" | "original";
+
+export function getMediaPreviewUrl(
+  projectId: string,
+  relativePath: string,
+  options?: { quality?: MediaPreviewQuality }
+): string {
+  const query = new URLSearchParams({ relativePath });
+  if (options?.quality) {
+    query.set("quality", options.quality);
+  }
+  return `${getBrowserApiBaseUrl()}/projects/${projectId}/assets/media-library/preview?${query.toString()}`;
+}
+
+export function getMediaPosterUrl(projectId: string, relativePath: string): string {
+  const query = new URLSearchParams({ relativePath });
+  return `${getBrowserApiBaseUrl()}/projects/${projectId}/assets/media-library/poster?${query.toString()}`;
+}
+
+export function getAssetVisionCapability(
+  projectId: string,
+  model?: string
+): Promise<LlmVisionCapability> {
+  const query = model ? `?model=${encodeURIComponent(model)}` : "";
+  return request<LlmVisionCapability>(
+    `/projects/${projectId}/assets/vision-capability${query}`
+  );
+}
+
+export function analyzeAssetVisionStream(
+  projectId: string,
+  assetId: string,
+  onEvent: (event: LlmStreamProgressEvent | { type: "complete"; data: AssetVisionPrefill; meta?: LlmMeta } | { type: "error"; message: string }) => void
+): Promise<{ data: AssetVisionPrefill; meta?: LlmMeta }> {
+  return postLlmStream<AssetVisionPrefill>(
+    `/projects/${projectId}/assets/${assetId}/vision-analyze/stream`,
+    {},
+    onEvent
+  );
 }
 
 export function generateThemes(projectId: string, count = 3): Promise<NarrativeTheme[]> {
@@ -477,6 +560,19 @@ export function testActiveLlmProvider(): Promise<RequestWithMetaResult<LlmTestRe
 
 export function getLlmProviders(): Promise<LlmProvider[]> {
   return requestLlmAdmin<LlmProvider[]>("/providers");
+}
+
+export function getLlmProviderModels(
+  providerId: string,
+  options?: { live?: boolean }
+): Promise<LlmModelOption[]> {
+  const query = options?.live ? "?live=true" : "";
+  return requestLlmAdmin<LlmModelOption[]>(`/providers/${providerId}/models${query}`);
+}
+
+export function getLlmVisionCapability(model?: string): Promise<LlmVisionCapability> {
+  const query = model ? `?model=${encodeURIComponent(model)}` : "";
+  return requestLlmAdmin<LlmVisionCapability>(`/vision-capability${query}`);
 }
 
 export function getLlmStatus(): Promise<LlmStatus> {

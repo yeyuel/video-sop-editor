@@ -62,6 +62,8 @@ class AssetEntity(SQLModel, table=True):
     information_density: str
     suggested_duration_sec: float
     function_tags: str
+    vision_analysis_json: str = ""
+    vision_analysis_status: str = "empty"
 
 
 class ThemeEntity(SQLModel, table=True):

@@ -20,7 +20,7 @@
 | Sprint 11（工程基线） | ✅ 已完成 | E2E、lifespan、节拍网格对齐 |
 | Sprint 12（剪辑 + RBAC） | ✅ 已完成 | **决策 1** |
 | Sprint 13（导出反向导入） | ✅ 已完成 | JSON / CSV round-trip |
-| Sprint 14（LLM Vision） | ⬜ 未开始 | **决策 2** |
+| Sprint 14（LLM Vision） | ✅ 已完成 | **决策 2**；2026-06-21 关闭 |
 | Sprint 15（全局分镜 + 复用） | ⬜ 未开始 | **决策 3** |
 | Sprint 16（OAuth） | ⬜ 未开始 | **决策 4** |
 | Sprint 17（粗剪结构） | ⬜ 未开始 | EDL / 剪映 JSON |
@@ -100,29 +100,38 @@
 
 **PRD 与设计**
 
-- [ ] 编写 `docs/prd-video-analysis.md`（帧数、成本、字段、失败策略）
-- [ ] migration 013：`vision_analysis_json`、`vision_analysis_status`
+- [x] 编写 `docs/prd-video-analysis.md`（帧数、成本、字段、失败策略）
+- [x] migration 013：`vision_analysis_json`、`vision_analysis_status`
 
 **后端**
 
-- [ ] ffmpeg 抽帧服务（可配置 interval / max_frames）
-- [ ] Vision 分析 service：结构化 JSON 输出
-- [ ] 支持 Provider：**Google Gemini Vision** + **OpenAI GPT-4o 类**（配置切换）
-- [ ] 异步任务 + SSE 进度（复用现有 LLM 流式模式）
-- [ ] 音频文件 hash 缓存（同 BGM 不重分析，P1）
+- [x] ffmpeg 抽帧服务（可配置 interval / max_frames）
+- [x] Vision 分析 service：结构化 JSON 输出
+- [x] 支持 Provider：**Google Gemini Vision** + **OpenAI GPT-4o 类** + **Kimi k2.5/k2.6**（配置切换）
+- [x] 实时模型能力检测（`GET /models` + 启发式 + 缓存）
+- [x] 异步任务 + SSE 进度（复用现有 LLM 流式模式）
+- [x] 视频文件 hash 缓存（同文件不重分析，按 fingerprint 复用 Vision 结果）
 
 **前端**
 
-- [ ] 素材表单：「AI 分析」按钮 + 进度 + 预填高亮
-- [ ] 预填字段待确认态；保存后写入正式 tags
-- [ ] 分析失败 InlineErrorBanner + 手工录入不受影响
+- [x] 素材表单：「AI 分析」按钮 + 进度 + 预填高亮
+- [x] Vision 分析 `LlmProgressOverlay` 阶段进度（与主题/分镜/节奏等 LLM 页一致）
+- [x] 预填字段待确认态；保存后写入正式 tags
+- [x] 分析失败 InlineErrorBanner + 手工录入不受影响
+- [x] LLM 设置：非 Vision 模型自动提示
+- [x] 录入页连续录入：目录扫描 session 持久化、保存后跳下一条未录入文件
+- [x] 录入/素材 workflow UI 对齐设计 token（`ProjectPageLayout`、深绿 + 紫 AI）
+
+**前端 UI：** ✅ 已完成（2026-06-21）
 
 **测试**
 
-- [ ] fixture / mock Vision 响应（CI 不调真实 API）
-- [ ] `test_regression_sprint14.py`
+- [x] fixture / mock Vision 响应（CI 不调真实 API）
+- [x] `test_regression_sprint14.py`
 
 **验收：** 上传样例视频 → 分析 → ≥3 字段预填 → 人工改后保存。
+
+**Sprint 14：** ✅ 已完成（2026-06-21）
 
 ---
 
@@ -232,6 +241,7 @@
 | 项 | Sprint | 说明 |
 |----|--------|------|
 | CSV 反向导入 | 13 | P1 |
+| 音频文件 hash 缓存（BGM 节拍识别） | — | P1，移出 Sprint 14 |
 | 粗剪结构导出 | 17 | P1 |
 | LLM 调用审计 UI 增强 | 12 | P1 |
 | Markdown 反向导入 | 四期 | 非 P0 |

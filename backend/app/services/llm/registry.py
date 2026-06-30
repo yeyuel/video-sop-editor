@@ -68,6 +68,14 @@ PROVIDER_REGISTRY: dict[str, ProviderDefinition] = {
         default_model="glm-4-flash",
         docs_url="https://open.bigmodel.cn/dev/api",
     ),
+    "google": _provider(
+        provider_id="google",
+        provider_name="Google Gemini",
+        auth_types=["api_key"],
+        default_base_url="https://generativelanguage.googleapis.com/v1beta/openai",
+        default_model="gemini-2.0-flash",
+        docs_url="https://ai.google.dev/gemini-api/docs",
+    ),
 }
 
 

@@ -16,6 +16,7 @@ from app.models.schemas import (
     LlmProviderRead,
     LlmProviderTestRead,
     LlmStatusRead,
+    LlmVisionCapabilityRead,
 )
 from app.services.llm.audit_log import list_recent_llm_calls
 from app.services.llm.auth import evaluate_config_status
@@ -28,6 +29,11 @@ from app.services.llm.config_store import (
     set_active_provider_id,
 )
 from app.services.llm.gateway import llm_gateway
+from app.services.llm.model_capabilities import (
+    infer_vision_support,
+    model_supports_vision,
+    resolve_provider_models_with_capabilities,
+)
 from app.services.llm.registry import get_provider, list_models
 from app.services.llm.types import LlmProviderStatus
 
@@ -36,6 +42,17 @@ router = APIRouter(prefix="/llm", tags=["llm"])
 
 def _parse_bool(value: str) -> bool:
     return value.strip().lower() in {"true", "1", "yes"}
+
+
+def _model_option_read(item: dict[str, object]) -> LlmModelOptionRead:
+    return LlmModelOptionRead(
+        modelId=str(item["modelId"]),
+        label=str(item["label"]),
+        description=str(item.get("description", "")),
+        recommended=_parse_bool(str(item.get("recommended", "false"))),
+        supportsVision=_parse_bool(str(item.get("supportsVision", "false"))),
+        visionSource=str(item.get("visionSource", "catalog")),
+    )
 
 
 def _build_test_response(
@@ -105,6 +122,8 @@ def list_llm_providers(
                     label=str(model["label"]),
                     description=str(model.get("description", "")),
                     recommended=_parse_bool(str(model.get("recommended", "false"))),
+                    supportsVision=infer_vision_support(str(model["modelId"])),
+                    visionSource="catalog",
                 )
                 for model in item.get("models", [])
             ],
@@ -117,11 +136,32 @@ def list_llm_providers(
 @router.get("/providers/{provider_id}/models", response_model=ApiResponse)
 def list_llm_provider_models(
     provider_id: str,
+    session: Session = Depends(get_session),
+    live: bool = False,
     _: AuthUserRead = Depends(require_director_user),
 ) -> ApiResponse:
     provider = get_provider(provider_id)
     if not provider:
         raise HTTPException(status_code=404, detail="LLM provider not found")
+
+    if live:
+        try:
+            config = resolve_provider_config(session, provider_id)
+        except ValueError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        models, source, message = resolve_provider_models_with_capabilities(
+            session,
+            config,
+            live=True,
+        )
+        return ApiResponse(
+            data=[_model_option_read(item) for item in models],
+            meta={
+                "visionSource": source,
+                "llmMessage": message,
+            },
+        )
+
     return ApiResponse(
         data=[
             LlmModelOptionRead(
@@ -129,9 +169,44 @@ def list_llm_provider_models(
                 label=item.label,
                 description=item.description,
                 recommended=item.recommended,
+                supportsVision=infer_vision_support(item.model_id),
+                visionSource="catalog",
             )
             for item in list_models(provider_id)
         ]
+    )
+
+
+@router.get("/vision-capability", response_model=ApiResponse)
+def get_active_vision_capability(
+    session: Session = Depends(get_session),
+    model: str | None = None,
+    _: AuthUserRead = Depends(require_director_user),
+) -> ApiResponse:
+    config = resolve_active_config(session)
+    target_model = model or config.model
+    supports, source, message = model_supports_vision(
+        session,
+        config,
+        model_id=target_model,
+        prefer_live=True,
+    )
+    hint = ""
+    if not supports:
+        hint = (
+            f"模型 {target_model} 不支持图像分析。"
+            "请切换到 gpt-4o、gemini-2.0-flash 或 kimi-k2.5/k2.6 等多模态模型。"
+        )
+    return ApiResponse(
+        data=LlmVisionCapabilityRead(
+            providerId=config.provider_id,
+            providerName=config.provider_name,
+            model=target_model,
+            supportsVision=supports,
+            visionSource=source,
+            message=hint or message,
+            configured=bool(config.api_key.strip()),
+        )
     )
 
 

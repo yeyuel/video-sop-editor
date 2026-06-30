@@ -26,6 +26,31 @@ export type Asset = {
   informationDensity: string;
   suggestedDurationSec: number;
   functionTags: string[];
+  visionAnalysisStatus?: string;
+  visionPrefilledFields?: string[];
+  visionAnalysisMessage?: string;
+};
+
+export type AssetVisionPrefill = {
+  scene: string;
+  shotType: string;
+  emotionTags: string[];
+  visualTags: string[];
+  informationDensity: string;
+  suggestedDurationSec: number;
+  prefilledFields: string[];
+  visionAnalysisStatus: string;
+  message: string;
+};
+
+export type LlmVisionCapability = {
+  providerId: string;
+  providerName: string;
+  model: string;
+  supportsVision: boolean;
+  visionSource: string;
+  message: string;
+  configured: boolean;
 };
 
 export type NarrativeTheme = {

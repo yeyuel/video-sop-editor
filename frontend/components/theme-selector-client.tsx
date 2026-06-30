@@ -34,20 +34,15 @@ function ThemeCard({
   return (
     <article
       className={[
-        "rounded-xl2 border p-5 shadow-card transition",
+        "surface-panel p-5 transition",
         isSelected
-          ? "border-pine bg-mist ring-2 ring-pine/15"
-          : "border-black/5 bg-white/90 hover:border-pine/25"
+          ? "border-pine/30 bg-sand/50 ring-2 ring-pine/10"
+          : "hover:border-pine/20"
       ].join(" ")}
     >
       <div className="flex items-center justify-between gap-3">
         <h3 className="text-lg font-semibold text-ink">{theme.title}</h3>
-        <span
-          className={[
-            "rounded-full px-3 py-1 text-xs",
-            isSelected ? "bg-pine text-white" : "bg-white/85 text-pine"
-          ].join(" ")}
-        >
+        <span className={isSelected ? "badge-ai" : "badge"}>
           {isSelected ? "当前已选" : theme.coreEmotion}
         </span>
       </div>
@@ -67,10 +62,8 @@ function ThemeCard({
         onClick={() => onSelect(theme.id)}
         disabled={disabled || isSelected}
         className={[
-          "mt-5 inline-flex rounded-full px-4 py-2 text-sm font-medium transition disabled:cursor-not-allowed disabled:opacity-60",
-          isSelected
-            ? "border border-pine/20 bg-white text-pine"
-            : "bg-pine text-white hover:bg-pine/90"
+          "mt-5 disabled:cursor-not-allowed disabled:opacity-60",
+          isSelected ? "btn-secondary" : "btn-primary"
         ].join(" ")}
       >
         {isSelected ? "当前已选主题" : "设为当前主题"}
@@ -204,7 +197,7 @@ export function ThemeSelectorClient({
         tone={notice?.tone}
         visible={Boolean(notice)}
       />
-      <div className="rounded-[28px] border border-pine/10 bg-mist/70 p-4">
+      <div className="surface-muted p-4 md:p-5">
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div className="max-w-2xl">
             <p className="text-sm font-medium text-ink">主题选择区</p>
@@ -217,7 +210,7 @@ export function ThemeSelectorClient({
               type="button"
               onClick={handleGenerate}
               disabled={isPending || Boolean(llmProgress)}
-              className="inline-flex rounded-full bg-pine px-5 py-3 text-sm font-medium text-white transition hover:bg-pine/90 disabled:cursor-not-allowed disabled:opacity-60"
+              className="btn-primary"
             >
               {isPending ? "生成中..." : themes.length > 0 ? "重新生成主题" : "生成主题方向"}
             </button>
@@ -225,7 +218,7 @@ export function ThemeSelectorClient({
               type="button"
               onClick={handleGenerateWithLlm}
               disabled={isPending || Boolean(llmProgress)}
-              className="inline-flex rounded-full border border-pine/20 bg-white px-5 py-3 text-sm font-medium text-pine transition hover:bg-mist disabled:cursor-not-allowed disabled:opacity-60"
+              className="btn-ai"
             >
               {isPending ? "处理中..." : "LLM 建议主题"}
             </button>
@@ -242,9 +235,7 @@ export function ThemeSelectorClient({
           {selectedTheme ? (
             <section className="space-y-3">
               <div className="flex items-center gap-2">
-                <span className="rounded-full bg-pine px-3 py-1 text-xs font-medium text-white">
-                  当前已选主题
-                </span>
+                <span className="badge-ai">当前已选主题</span>
                 <p className="text-sm text-ink/60">后续节奏与分镜会优先参考这一方向。</p>
               </div>
               <ThemeCard

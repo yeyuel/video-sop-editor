@@ -7,6 +7,7 @@ import { BlockingNotice, ToastNotice } from "@/components/async-status";
 import {
   activateLlmProvider,
   getLlmAuditLogs,
+  getLlmProviderModels,
   getLlmProviderStatus,
   getLlmProviders,
   getLlmStatus,
@@ -15,7 +16,7 @@ import {
   testLlmProvider
 } from "@/lib/browser-api";
 import type { LlmAuditLog } from "@/lib/browser-api";
-import type { LlmProvider, LlmStatus, LlmTestResult } from "@/lib/llm-status";
+import type { LlmModelOption, LlmProvider, LlmStatus, LlmTestResult } from "@/lib/llm-status";
 
 const STATUS_LABELS: Record<string, string> = {
   configured: "已配置",
@@ -63,7 +64,8 @@ function formatAuditEndpoint(endpoint: string): string {
     "export-plan:suggest": "导出方案建议",
     "export-plan/suggest/stream": "导出方案建议（流式）",
     "rhythm-plan/bgm-recommend": "BGM 推荐",
-    "rhythm-plan/bgm-recommend/stream": "BGM 推荐（流式）"
+    "rhythm-plan/bgm-recommend/stream": "BGM 推荐（流式）",
+    "vision-analyze/stream": "素材 Vision 分析"
   };
   return labels[path] ?? path.replace(/\//g, " · ");
 }
@@ -94,7 +96,7 @@ function auditStatusClass(status: string) {
 
 function LlmAuditSection({ logs }: { logs: LlmAuditLog[] }) {
   return (
-    <section className="rounded-xl2 border border-black/5 bg-white/80 p-6 shadow-card">
+    <section className="surface-panel p-6">
       <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <p className="text-xs uppercase tracking-[0.22em] text-pine/70">Audit Log</p>
@@ -174,6 +176,8 @@ export function LlmSettingsClient() {
   const [testResult, setTestResult] = useState<LlmTestResult | null>(null);
   const [useCustomModel, setUseCustomModel] = useState(false);
   const [auditLogs, setAuditLogs] = useState<LlmAuditLog[]>([]);
+  const [modelOptions, setModelOptions] = useState<LlmModelOption[]>([]);
+  const [liveModelsMessage, setLiveModelsMessage] = useState("");
 
   const loadProviderForm = useCallback(async (providerId: string, providerList: LlmProvider[]) => {
     const status = await getLlmProviderStatus(providerId);
@@ -184,6 +188,19 @@ export function LlmSettingsClient() {
     setUseCustomModel(!isKnownModel(nextModel, provider));
     setModel(nextModel);
     setApiKey("");
+
+    let options = provider?.models ?? [];
+    setLiveModelsMessage("");
+    if (status.configured) {
+      try {
+        options = await getLlmProviderModels(providerId, { live: true });
+      } catch (loadError) {
+        setLiveModelsMessage(
+          loadError instanceof Error ? loadError.message : "无法获取实时模型能力，已使用静态列表。"
+        );
+      }
+    }
+    setModelOptions(options);
   }, []);
 
   const refreshAll = useCallback(
@@ -368,7 +385,9 @@ export function LlmSettingsClient() {
   }
 
   const selectedProvider = providers.find((item) => item.providerId === selectedProviderId);
-  const modelOptions = selectedProvider?.models ?? [];
+  const resolvedModelOptions = modelOptions.length > 0 ? modelOptions : (selectedProvider?.models ?? []);
+  const selectedModelOption = resolvedModelOptions.find((item) => item.modelId === model);
+  const selectedModelSupportsVision = selectedModelOption?.supportsVision ?? false;
   const isActiveProvider = selectedProvider?.isActive ?? activeStatus?.providerId === selectedProviderId;
   const canActivate = Boolean(selectedProviderId && providerStatus?.configured && !isActiveProvider);
   const canTest = Boolean(
@@ -390,7 +409,7 @@ export function LlmSettingsClient() {
         visible={Boolean(notice)}
       />
 
-      <section className="rounded-xl2 border border-black/5 bg-white/80 p-6 shadow-card">
+      <section className="surface-hero">
         <p className="text-xs uppercase tracking-[0.22em] text-pine/70">Active Provider</p>
         <div className="mt-3 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
           <div>
@@ -418,7 +437,7 @@ export function LlmSettingsClient() {
             type="button"
             onClick={handleTestActive}
             disabled={loading || isPending || !canTestActive}
-            className="inline-flex rounded-full border border-pine/20 bg-white px-5 py-3 text-sm font-medium text-pine transition hover:bg-mist disabled:cursor-not-allowed disabled:opacity-60"
+            className="btn-secondary"
           >
             {isPending ? "测试中..." : "测试当前生效 Provider"}
           </button>
@@ -439,14 +458,14 @@ export function LlmSettingsClient() {
                 className={[
                   "w-full rounded-2xl border px-4 py-4 text-left transition disabled:cursor-not-allowed disabled:opacity-60",
                   selected
-                    ? "border-pine bg-mist shadow-card"
-                    : "border-black/5 bg-white/85 hover:border-pine/20"
+                    ? "border-pine/30 bg-sand/60 shadow-soft"
+                    : "border-line bg-white hover:border-pine/20"
                 ].join(" ")}
               >
                 <div className="flex items-center justify-between gap-3">
                   <span className="font-medium text-ink">{provider.providerName}</span>
                   {provider.isActive ? (
-                    <span className="rounded-full bg-white px-2 py-1 text-xs text-pine">生效中</span>
+                    <span className="badge-ai">生效中</span>
                   ) : null}
                 </div>
                 <p className="mt-2 text-xs text-ink/60">{provider.providerId}</p>
@@ -458,7 +477,7 @@ export function LlmSettingsClient() {
           })}
         </aside>
 
-        <section className="rounded-xl2 border border-black/5 bg-white/85 p-6 shadow-card">
+        <section className="surface-panel p-6">
           <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
             <div>
               <p className="text-xs uppercase tracking-[0.22em] text-pine/70">API Key Config</p>
@@ -494,15 +513,19 @@ export function LlmSettingsClient() {
                 value={baseUrl}
                 onChange={(event) => setBaseUrl(event.target.value)}
                 placeholder="https://api.example.com/v1"
-                className="w-full rounded-2xl border border-pine/20 bg-white px-4 py-3 text-base text-ink outline-none transition focus:border-pine"
+                className="input-field"
               />
             </label>
 
             <label className="block">
               <span className="mb-2 block text-sm text-ink/75">Model</span>
-              {modelOptions.length > 0 && !useCustomModel ? (
+              {resolvedModelOptions.length > 0 && !useCustomModel ? (
                 <select
-                  value={modelOptions.some((item) => item.modelId === model) ? model : modelOptions[0]?.modelId ?? model}
+                  value={
+                    resolvedModelOptions.some((item) => item.modelId === model)
+                      ? model
+                      : resolvedModelOptions[0]?.modelId ?? model
+                  }
                   onChange={(event) => {
                     const nextValue = event.target.value;
                     if (nextValue === "__custom__") {
@@ -511,12 +534,13 @@ export function LlmSettingsClient() {
                     }
                     setModel(nextValue);
                   }}
-                  className="w-full rounded-2xl border border-pine/20 bg-white px-4 py-3 text-base text-ink outline-none transition focus:border-pine"
+                  className="input-field"
                 >
-                  {modelOptions.map((option) => (
+                  {resolvedModelOptions.map((option) => (
                     <option key={option.modelId} value={option.modelId}>
                       {option.label}
                       {option.recommended ? "（推荐）" : ""}
+                      {option.supportsVision ? " · Vision" : ""}
                     </option>
                   ))}
                   <option value="__custom__">自定义 Model ID...</option>
@@ -526,15 +550,31 @@ export function LlmSettingsClient() {
                   value={model}
                   onChange={(event) => setModel(event.target.value)}
                   placeholder={selectedProvider?.defaultModel ?? "gpt-4.1-mini"}
-                  className="w-full rounded-2xl border border-pine/20 bg-white px-4 py-3 text-base text-ink outline-none transition focus:border-pine"
+                  className="input-field"
                 />
               )}
-              {modelOptions.length > 0 ? (
-                <div className="mt-2 flex flex-wrap items-center gap-3 text-xs text-ink/60">
+              {resolvedModelOptions.length > 0 ? (
+                <div className="mt-2 space-y-2 text-xs text-ink/60">
                   <span>
-                    {modelOptions.find((item) => item.modelId === model)?.description ??
+                    {selectedModelOption?.description ??
                       "可从官方模型列表选择，避免填错 Model ID。"}
                   </span>
+                  {providerStatus?.configured ? (
+                    <p className="text-ink/50">
+                      {liveModelsMessage ||
+                        (selectedModelOption?.visionSource === "live"
+                          ? "模型 Vision 能力来自 Provider 实时列表。"
+                          : selectedModelOption?.visionSource === "cache"
+                            ? "模型 Vision 能力来自缓存的实时列表。"
+                            : "模型 Vision 能力来自本地目录推断。")}
+                    </p>
+                  ) : null}
+                  {!selectedModelSupportsVision && model.trim() ? (
+                    <p className="rounded-xl border border-amber-200/80 bg-amber-50 px-3 py-2 text-amber-900">
+                      当前模型不支持图像分析，素材「AI 分析」将无法使用。请切换到带 Vision
+                      标记的模型（如 gpt-4o、gemini-2.0-flash、kimi-k2.5/k2.6）。
+                    </p>
+                  ) : null}
                   {useCustomModel ? (
                     <button
                       type="button"
@@ -574,11 +614,11 @@ export function LlmSettingsClient() {
                   providerStatus?.configured ? "已配置，输入新 Key 可覆盖" : "请输入 API Key"
                 }
                 autoComplete="off"
-                className="w-full rounded-2xl border border-pine/20 bg-white px-4 py-3 text-base text-ink outline-none transition focus:border-pine"
+                className="input-field"
               />
             </label>
 
-            <div className="rounded-2xl border border-pine/10 bg-sand/50 px-4 py-3 text-sm leading-6 text-ink/70">
+            <div className="stat-cell">
               默认地址与模型可在上方修改。若服务端 `.env` 中也配置了{" "}
               <code className="text-pine">LLM_API_KEY</code>，数据库中的 Key 会优先生效。
             </div>
@@ -593,7 +633,7 @@ export function LlmSettingsClient() {
               <button
                 type="submit"
                 disabled={loading || isPending || !selectedProviderId}
-                className="inline-flex rounded-full bg-pine px-5 py-3 text-sm font-medium text-white transition hover:bg-pine/90 disabled:cursor-not-allowed disabled:opacity-60"
+                className="btn-primary"
               >
                 {isPending ? "保存中..." : "保存配置"}
               </button>
@@ -601,7 +641,7 @@ export function LlmSettingsClient() {
                 type="button"
                 onClick={handleTest}
                 disabled={loading || isPending || !canTest}
-                className="inline-flex rounded-full border border-pine/20 bg-white px-5 py-3 text-sm font-medium text-pine transition hover:bg-mist disabled:cursor-not-allowed disabled:opacity-60"
+                className="btn-secondary"
               >
                 {isPending ? "测试中..." : "测试连接"}
               </button>
@@ -610,14 +650,12 @@ export function LlmSettingsClient() {
                   type="button"
                   onClick={handleActivate}
                   disabled={loading || isPending || !canActivate}
-                  className="inline-flex rounded-full border border-pine/20 bg-white px-5 py-3 text-sm font-medium text-pine transition hover:bg-mist disabled:cursor-not-allowed disabled:opacity-60"
+                  className="btn-ai"
                 >
                   {isPending ? "处理中..." : "设为生效"}
                 </button>
               ) : (
-                <span className="inline-flex items-center rounded-full border border-pine/20 bg-mist px-5 py-3 text-sm font-medium text-pine">
-                  当前已生效
-                </span>
+                <span className="badge-ai px-4 py-2.5 text-sm">当前已生效</span>
               )}
             </div>
 

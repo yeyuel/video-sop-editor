@@ -93,7 +93,7 @@ export function ProjectHistoryClient({
   return (
     <>
       {projectStats.length === 0 ? (
-        <div className="rounded-xl2 border border-dashed border-pine/25 bg-white/70 p-8 text-center text-ink/65">
+        <div className="surface-panel border-dashed p-8 text-center text-ink/65">
           当前还没有项目。可以先从右上角创建一个新项目。
         </div>
       ) : (
@@ -101,13 +101,11 @@ export function ProjectHistoryClient({
           {projectStats.map((project) => (
             <article
               key={project.id}
-              className="grid gap-5 rounded-xl2 border border-black/5 bg-white/90 p-6 shadow-card backdrop-blur lg:grid-cols-[1.4fr_0.9fr]"
+              className="surface-panel grid gap-5 p-6 lg:grid-cols-[1.4fr_0.9fr]"
             >
               <div>
                 <div className="flex flex-wrap items-center gap-3">
-                  <span className="rounded-full bg-mist px-3 py-1 text-xs font-medium text-pine">
-                    当前阶段：{project.stageLabel}
-                  </span>
+                  <span className="badge">当前阶段：{project.stageLabel}</span>
                   <span className="text-xs uppercase tracking-[0.22em] text-pine/65">
                     {platformLabelMap[project.platform] ?? project.platform}
                   </span>
@@ -118,16 +116,12 @@ export function ProjectHistoryClient({
                   {project.routeText ? ` · ${project.routeText}` : ""}
                 </p>
                 <div className="mt-4 grid gap-3 text-sm text-ink/70 md:grid-cols-3">
-                  <div className="rounded-2xl bg-sand/70 px-4 py-3">
-                    目标时长 {project.targetDurationSec}s
-                  </div>
-                  <div className="rounded-2xl bg-sand/70 px-4 py-3">
-                    已录入素材 {project.assetCount} 条
-                  </div>
-                  <div className="rounded-2xl bg-sand/70 px-4 py-3">状态 {project.status}</div>
+                  <div className="stat-cell">目标时长 {project.targetDurationSec}s</div>
+                  <div className="stat-cell">已录入素材 {project.assetCount} 条</div>
+                  <div className="stat-cell">状态 {project.status}</div>
                 </div>
               </div>
-              <div className="flex flex-col justify-between gap-4 rounded-2xl border border-black/5 bg-sand/45 p-4">
+              <div className="surface-muted flex flex-col justify-between gap-4 p-4">
                 <div>
                   <p className="text-sm font-medium text-ink">工作台入口</p>
                   <p className="mt-2 text-sm leading-6 text-ink/65">
@@ -135,23 +129,16 @@ export function ProjectHistoryClient({
                   </p>
                 </div>
                 <div className="flex flex-wrap gap-2">
-                  <Link
-                    href={`/projects/${project.id}`}
-                    className="inline-flex rounded-full bg-pine px-4 py-2 text-sm font-medium text-white transition hover:bg-pine/90"
-                  >
+                  <Link href={`/projects/${project.id}`} className="btn-primary px-4 py-2">
                     进入项目
                   </Link>
                   <Link
                     href={`/projects/${project.id}/assets`}
-                    className="inline-flex rounded-full border border-pine/20 bg-white px-4 py-2 text-sm font-medium text-pine transition hover:bg-mist"
+                    className="btn-secondary px-4 py-2"
                   >
                     素材列表
                   </Link>
-                  <button
-                    type="button"
-                    onClick={() => openConfirm(project)}
-                    className="inline-flex rounded-full border border-clay/20 bg-white px-4 py-2 text-sm font-medium text-clay transition hover:border-clay/35 hover:bg-[#fff6f2]"
-                  >
+                  <button type="button" onClick={() => openConfirm(project)} className="btn-danger px-4 py-2">
                     删除项目
                   </button>
                 </div>
@@ -163,7 +150,7 @@ export function ProjectHistoryClient({
 
       {confirmProject ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink/35 px-6">
-          <div className="w-full max-w-md rounded-xl2 border border-black/5 bg-white p-6 shadow-card">
+          <div className="surface-panel w-full max-w-md p-6 shadow-card">
             <p className="text-xs uppercase tracking-[0.22em] text-clay/80">Delete Project</p>
             <h3 className="mt-3 text-2xl font-semibold text-ink">确认删除项目？</h3>
             <p className="mt-3 text-sm leading-6 text-ink/70">
@@ -176,16 +163,11 @@ export function ProjectHistoryClient({
                 type="button"
                 onClick={handleDelete}
                 disabled={isPending}
-                className="inline-flex rounded-full bg-clay px-5 py-3 text-sm font-medium text-white transition hover:bg-clay/90 disabled:cursor-not-allowed disabled:opacity-60"
+                className="btn-danger-solid"
               >
                 {isPending ? "删除中..." : "确认删除"}
               </button>
-              <button
-                type="button"
-                onClick={closeConfirm}
-                disabled={isPending}
-                className="inline-flex rounded-full border border-pine/20 bg-white px-5 py-3 text-sm font-medium text-pine transition hover:bg-mist disabled:cursor-not-allowed disabled:opacity-60"
-              >
+              <button type="button" onClick={closeConfirm} disabled={isPending} className="btn-secondary">
                 取消
               </button>
             </div>

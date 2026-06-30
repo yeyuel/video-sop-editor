@@ -55,6 +55,17 @@ export const EXPORT_LLM_STAGES: LlmStageDefinition[] = [
   { id: "saving", label: "保存导出信息" }
 ];
 
+export const VISION_LLM_STAGES: LlmStageDefinition[] = [
+  { id: "preparing", label: "准备素材与路径" },
+  { id: "checking_model", label: "检查 Vision 模型" },
+  { id: "extracting_frames", label: "ffmpeg 抽取关键帧" },
+  { id: "calling_vision", label: "Vision 模型分析" },
+  { id: "configuring", label: "加载模型配置" },
+  { id: "calling_llm", label: "模型推理中" },
+  { id: "parsing", label: "解析分析结果" },
+  { id: "complete", label: "写入预填字段" }
+];
+
 export const LLM_TEST_STAGES: LlmStageDefinition[] = [
   { id: "configuring", label: "加载模型配置" },
   { id: "calling_llm", label: "测试模型连通性" },

@@ -14,6 +14,12 @@ import {
   type ExportImportResult
 } from "@/lib/browser-api";
 import { describeLlmStatus, llmNoticeTone } from "@/lib/llm-status";
+import {
+  aiInputClassName,
+  AiFieldLabel,
+  AiSuggestHint,
+  clearSuggestedField
+} from "@/lib/ai-field-ui";
 import { EXPORT_LLM_STAGES } from "@/lib/llm-progress-stages";
 import { useLlmProgress } from "@/lib/use-llm-progress";
 import type {
@@ -49,6 +55,32 @@ function statusTone(passed: boolean) {
   return passed ? "text-pine" : "text-amber-700";
 }
 
+type ExportSuggestField = "title" | "shortTitle" | "tags" | "description" | "coverSuggestion";
+
+function detectSuggestedFields(
+  before: ExportPlan,
+  beforeTags: string,
+  after: ExportPlan
+): ExportSuggestField[] {
+  const fields: ExportSuggestField[] = [];
+  if (after.title.trim() && after.title !== before.title) {
+    fields.push("title");
+  }
+  if (after.shortTitle.trim() && after.shortTitle !== before.shortTitle) {
+    fields.push("shortTitle");
+  }
+  if (after.tags.length > 0 && joinTags(after.tags) !== beforeTags) {
+    fields.push("tags");
+  }
+  if (after.description.trim() && after.description !== before.description) {
+    fields.push("description");
+  }
+  if (after.coverSuggestion.trim() && after.coverSuggestion !== before.coverSuggestion) {
+    fields.push("coverSuggestion");
+  }
+  return fields;
+}
+
 export function ExportPlanClient({
   projectId,
   initialPlan,
@@ -73,6 +105,7 @@ export function ExportPlanClient({
   const [conflictStrategy, setConflictStrategy] = useState<ConflictStrategy>("overwrite");
   const [importFields, setImportFields] = useState({ subtitle: true, function: false });
   const [importPreview, setImportPreview] = useState<ExportImportResult | null>(null);
+  const [llmSuggestedFields, setLlmSuggestedFields] = useState<ExportSuggestField[]>([]);
 
   const validationItems = useMemo(
     () => [
@@ -146,6 +179,7 @@ export function ExportPlanClient({
         });
         setPlan(nextPlan);
         setTagsText(joinTags(nextPlan.tags));
+        setLlmSuggestedFields([]);
         router.refresh();
         setNotice({ title: "导出信息已保存", message: "标题、标签和文案已写入项目。" });
       } catch (submitError) {
@@ -175,10 +209,13 @@ export function ExportPlanClient({
     setError("");
     start("导出文案建议", EXPORT_LLM_STAGES);
     startTransition(async () => {
+      const beforePlan = plan;
+      const beforeTags = tagsText;
       try {
         const { data: nextPlan, meta } = await suggestExportPlanWithLlm(projectId, onProgress);
         setPlan(nextPlan);
         setTagsText(joinTags(nextPlan.tags));
+        setLlmSuggestedFields(detectSuggestedFields(beforePlan, beforeTags, nextPlan));
         router.refresh();
         const llmNotice = describeLlmStatus(meta);
         const captionCount = Number(meta?.storyboardCaptionsUpdated ?? 0);
@@ -331,7 +368,7 @@ export function ExportPlanClient({
         visible={Boolean(notice)}
       />
 
-      <div className="rounded-xl2 border border-black/5 bg-white/90 p-5 shadow-card">
+      <div className="surface-panel p-5">
         <h3 className="text-lg font-semibold text-ink">导出前校验</h3>
         <p className="mt-1 text-sm text-ink/65">
           汇总分镜时长、素材绑定、地点顺序与导出文案一致性，便于发布前快速排查。
@@ -340,7 +377,7 @@ export function ExportPlanClient({
           {validationItems.map((item) => (
             <div
               key={item.label}
-              className="rounded-2xl border border-pine/10 bg-sand/40 px-4 py-3"
+              className="stat-cell"
             >
               <p className="text-xs uppercase tracking-[0.18em] text-ink/45">{item.label}</p>
               <p className={`mt-1 text-sm font-medium ${statusTone(item.passed)}`}>
@@ -364,72 +401,88 @@ export function ExportPlanClient({
       </div>
 
       <form className="grid gap-5 md:grid-cols-2" onSubmit={handleSave}>
+        {llmSuggestedFields.length > 0 ? (
+          <AiSuggestHint className="md:col-span-2" count={llmSuggestedFields.length} />
+        ) : null}
         <label className="block md:col-span-2">
-          <span className="mb-2 block text-sm text-ink/75">标题</span>
+          <AiFieldLabel suggested={llmSuggestedFields.includes("title")}>标题</AiFieldLabel>
           <input
             required
             value={plan.title}
-            onChange={(event) => setPlan({ ...plan, title: event.target.value })}
+            onChange={(event) => {
+              setPlan({ ...plan, title: event.target.value });
+              setLlmSuggestedFields((current) => clearSuggestedField(current, "title"));
+            }}
             placeholder="例如：原来冬天的阿勒泰，真的像童话"
-            className="w-full rounded-2xl border border-pine/30 bg-white px-4 py-3 outline-none transition focus:border-pine"
+            className={aiInputClassName(llmSuggestedFields.includes("title"))}
           />
         </label>
         <label className="block">
-          <span className="mb-2 block text-sm text-ink/75">短标题</span>
+          <AiFieldLabel suggested={llmSuggestedFields.includes("shortTitle")}>短标题</AiFieldLabel>
           <input
             value={plan.shortTitle}
-            onChange={(event) => setPlan({ ...plan, shortTitle: event.target.value })}
+            onChange={(event) => {
+              setPlan({ ...plan, shortTitle: event.target.value });
+              setLlmSuggestedFields((current) => clearSuggestedField(current, "shortTitle"));
+            }}
             placeholder="例如：阿勒泰雪国童话"
-            className="w-full rounded-2xl border border-pine/30 bg-white px-4 py-3 outline-none transition focus:border-pine"
+            className={aiInputClassName(llmSuggestedFields.includes("shortTitle"))}
           />
         </label>
         <label className="block">
-          <span className="mb-2 block text-sm text-ink/75">标签</span>
+          <AiFieldLabel suggested={llmSuggestedFields.includes("tags")}>标签</AiFieldLabel>
           <input
             required
             value={tagsText}
-            onChange={(event) => setTagsText(event.target.value)}
+            onChange={(event) => {
+              setTagsText(event.target.value);
+              setLlmSuggestedFields((current) => clearSuggestedField(current, "tags"));
+            }}
             placeholder="例如：阿勒泰，旅行剪辑，冬日雪景"
-            className="w-full rounded-2xl border border-pine/30 bg-white px-4 py-3 outline-none transition focus:border-pine"
+            className={aiInputClassName(llmSuggestedFields.includes("tags"))}
           />
         </label>
         <label className="block md:col-span-2">
-          <span className="mb-2 block text-sm text-ink/75">文案</span>
+          <AiFieldLabel suggested={llmSuggestedFields.includes("description")}>文案</AiFieldLabel>
           <textarea
             required
             rows={5}
             value={plan.description}
-            onChange={(event) => setPlan({ ...plan, description: event.target.value })}
+            onChange={(event) => {
+              setPlan({ ...plan, description: event.target.value });
+              setLlmSuggestedFields((current) => clearSuggestedField(current, "description"));
+            }}
             placeholder="填写最终导出时带上的描述文案，后续可以替换成 LLM 建议结果。"
-            className="w-full rounded-2xl border border-pine/30 bg-white px-4 py-3 outline-none transition focus:border-pine"
+            className={aiInputClassName(llmSuggestedFields.includes("description"))}
           />
         </label>
         <label className="block md:col-span-2">
-          <span className="mb-2 block text-sm text-ink/75">封面建议</span>
+          <AiFieldLabel suggested={llmSuggestedFields.includes("coverSuggestion")}>
+            封面建议
+          </AiFieldLabel>
           <textarea
             rows={3}
             value={plan.coverSuggestion}
-            onChange={(event) => setPlan({ ...plan, coverSuggestion: event.target.value })}
+            onChange={(event) => {
+              setPlan({ ...plan, coverSuggestion: event.target.value });
+              setLlmSuggestedFields((current) => clearSuggestedField(current, "coverSuggestion"));
+            }}
             placeholder="例如：优先使用禾木木屋群远景，标题放在右下角"
-            className="w-full rounded-2xl border border-pine/30 bg-white px-4 py-3 outline-none transition focus:border-pine"
+            className={aiInputClassName(llmSuggestedFields.includes("coverSuggestion"))}
           />
         </label>
         {error ? (
           <p className="text-sm text-red-600 md:col-span-2">{error}</p>
         ) : null}
         <div className="flex flex-wrap gap-3 md:col-span-2">
-          <button
-            type="submit"
-            disabled={isPending || isLlmRunning}
-            className="inline-flex rounded-full bg-pine px-5 py-3 text-sm font-medium text-white transition hover:bg-pine/90 disabled:cursor-not-allowed disabled:opacity-60"
-          >
+          <button type="submit" disabled={isPending || isLlmRunning} className="btn-primary">
             {isPending ? "保存中..." : "保存导出信息"}
           </button>
           <button
             type="button"
             onClick={handleSuggestWithLlm}
             disabled={isPending || isLlmRunning}
-            className="inline-flex rounded-full border border-pine/20 bg-white px-5 py-3 text-sm font-medium text-pine transition hover:bg-mist disabled:cursor-not-allowed disabled:opacity-60"
+            className="btn-ai"
           >
             {isPending ? "处理中..." : "LLM 建议文案"}
           </button>
@@ -437,7 +490,7 @@ export function ExportPlanClient({
             type="button"
             onClick={() => handlePreview("markdown")}
             disabled={isPending || isLlmRunning}
-            className="inline-flex rounded-full border border-pine/20 bg-white px-5 py-3 text-sm font-medium text-pine transition hover:bg-mist disabled:cursor-not-allowed disabled:opacity-60"
+            className="btn-secondary"
           >
             预览 Markdown
           </button>
@@ -445,7 +498,7 @@ export function ExportPlanClient({
             type="button"
             onClick={() => handlePreview("json")}
             disabled={isPending || isLlmRunning}
-            className="inline-flex rounded-full border border-pine/20 bg-white px-5 py-3 text-sm font-medium text-pine transition hover:bg-mist disabled:cursor-not-allowed disabled:opacity-60"
+            className="btn-secondary"
           >
             预览 JSON
           </button>
@@ -453,7 +506,7 @@ export function ExportPlanClient({
             type="button"
             onClick={() => handlePreview("yaml")}
             disabled={isPending || isLlmRunning}
-            className="inline-flex rounded-full border border-pine/20 bg-white px-5 py-3 text-sm font-medium text-pine transition hover:bg-mist disabled:cursor-not-allowed disabled:opacity-60"
+            className="btn-secondary"
           >
             预览 YAML
           </button>
@@ -461,14 +514,14 @@ export function ExportPlanClient({
             type="button"
             onClick={() => handlePreview("csv")}
             disabled={isPending || isLlmRunning}
-            className="inline-flex rounded-full border border-pine/20 bg-white px-5 py-3 text-sm font-medium text-pine transition hover:bg-mist disabled:cursor-not-allowed disabled:opacity-60"
+            className="btn-secondary"
           >
             预览 CSV
           </button>
         </div>
       </form>
 
-      <div className="rounded-xl2 border border-black/5 bg-white/90 p-5 shadow-card">
+      <div className="surface-panel p-5">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <h3 className="text-lg font-semibold text-ink">导出预览</h3>
@@ -478,27 +531,13 @@ export function ExportPlanClient({
           </div>
           {preview ? (
             <div className="flex flex-wrap items-center gap-3">
-              <span className="rounded-full bg-mist px-3 py-1 text-xs text-pine">
-                {preview.format.toUpperCase()}
-              </span>
-              <span className="rounded-full bg-mist px-3 py-1 text-xs text-pine">
-                {preview.fileName}
-              </span>
-              <span className="rounded-full bg-mist px-3 py-1 text-xs text-ink/60">
-                {preview.content.length.toLocaleString()} 字符
-              </span>
-              <button
-                type="button"
-                onClick={handleCopyPreview}
-                className="inline-flex rounded-full border border-pine/20 bg-white px-4 py-2 text-xs font-medium text-pine transition hover:bg-mist"
-              >
+              <span className="stat-pill">{preview.format.toUpperCase()}</span>
+              <span className="stat-pill">{preview.fileName}</span>
+              <span className="badge">{preview.content.length.toLocaleString()} 字符</span>
+              <button type="button" onClick={handleCopyPreview} className="btn-secondary px-4 py-2 text-xs">
                 复制内容
               </button>
-              <button
-                type="button"
-                onClick={handleDownload}
-                className="inline-flex rounded-full bg-pine px-4 py-2 text-xs font-medium text-white transition hover:bg-pine/90"
-              >
+              <button type="button" onClick={handleDownload} className="btn-primary px-4 py-2 text-xs">
                 下载当前预览
               </button>
             </div>
@@ -508,11 +547,11 @@ export function ExportPlanClient({
           readOnly
           value={preview?.content ?? ""}
           placeholder="先保存并生成一个导出预览。"
-          className="mt-4 min-h-[320px] w-full rounded-2xl border border-pine/20 bg-sand/30 px-4 py-3 font-mono text-sm outline-none"
+          className="input-field mt-4 min-h-[320px] font-mono bg-sand/30"
         />
       </div>
 
-      <div className="rounded-xl2 border border-black/5 bg-white/90 p-5 shadow-card">
+      <div className="surface-panel p-5">
         <div className="flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
           <div>
             <p className="text-xs uppercase tracking-[0.22em] text-pine/70">Round-trip Import</p>
@@ -522,7 +561,7 @@ export function ExportPlanClient({
             </p>
           </div>
           {importFileName ? (
-            <span className="rounded-full bg-mist px-3 py-1 text-xs text-pine">{importFileName}</span>
+            <span className="badge">{importFileName}</span>
           ) : null}
         </div>
 
@@ -544,7 +583,7 @@ export function ExportPlanClient({
                 setImportFormat(event.target.value as ImportFormat);
                 setImportPreview(null);
               }}
-              className="w-full rounded-2xl border border-pine/20 bg-white px-4 py-3 text-base text-ink outline-none transition focus:border-pine"
+              className="input-field"
             >
               <option value="json">导出 JSON（schemaVersion 1.0）</option>
               <option value="csv">导出 CSV（分镜表）</option>
@@ -553,7 +592,7 @@ export function ExportPlanClient({
         </div>
 
         <div className="mt-4 grid gap-4 lg:grid-cols-2">
-          <fieldset className="rounded-2xl border border-pine/10 bg-sand/30 px-4 py-3">
+          <fieldset className="surface-muted px-4 py-3">
             <legend className="px-1 text-sm text-ink/75">冲突策略</legend>
             <div className="mt-2 space-y-2 text-sm text-ink/70">
               <label className="flex items-center gap-2">
@@ -576,7 +615,7 @@ export function ExportPlanClient({
               </label>
             </div>
           </fieldset>
-          <fieldset className="rounded-2xl border border-pine/10 bg-sand/30 px-4 py-3">
+          <fieldset className="surface-muted px-4 py-3">
             <legend className="px-1 text-sm text-ink/75">写回字段</legend>
             <div className="mt-2 space-y-2 text-sm text-ink/70">
               <label className="flex items-center gap-2">
@@ -612,7 +651,7 @@ export function ExportPlanClient({
               setImportPreview(null);
             }}
             placeholder="上传 JSON / CSV，或直接粘贴导出内容。"
-            className="min-h-[160px] w-full rounded-2xl border border-pine/20 bg-sand/30 px-4 py-3 font-mono text-xs outline-none transition focus:border-pine"
+            className="input-field min-h-[160px] font-mono text-xs bg-sand/30"
           />
         </label>
 
@@ -621,7 +660,7 @@ export function ExportPlanClient({
             type="button"
             onClick={() => runImport(true)}
             disabled={isPending || isLlmRunning || !importContent.trim()}
-            className="inline-flex rounded-full border border-pine/20 bg-white px-5 py-3 text-sm font-medium text-pine transition hover:bg-mist disabled:cursor-not-allowed disabled:opacity-60"
+            className="btn-secondary"
           >
             {isPending ? "处理中..." : "预览 diff（dry-run）"}
           </button>
@@ -629,7 +668,7 @@ export function ExportPlanClient({
             type="button"
             onClick={() => runImport(false)}
             disabled={isPending || isLlmRunning || !importContent.trim()}
-            className="inline-flex rounded-full bg-pine px-5 py-3 text-sm font-medium text-white transition hover:bg-pine/90 disabled:cursor-not-allowed disabled:opacity-60"
+            className="btn-primary"
           >
             {isPending ? "处理中..." : "应用导入"}
           </button>

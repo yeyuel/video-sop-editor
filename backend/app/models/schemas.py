@@ -111,6 +111,40 @@ class AssetRead(BaseModel):
     informationDensity: str
     suggestedDurationSec: float
     functionTags: list[str]
+    visionAnalysisStatus: str = "empty"
+    visionPrefilledFields: list[str] = Field(default_factory=list)
+    visionAnalysisMessage: str = ""
+
+
+class AssetVisionPrefillRead(BaseModel):
+    scene: str = ""
+    shotType: str = ""
+    emotionTags: list[str] = Field(default_factory=list)
+    visualTags: list[str] = Field(default_factory=list)
+    informationDensity: str = ""
+    suggestedDurationSec: float = 0
+    prefilledFields: list[str] = Field(default_factory=list)
+    visionAnalysisStatus: str = "ready"
+    message: str = ""
+
+
+class MediaLibraryNodeRead(BaseModel):
+    name: str
+    relativePath: str
+    nodeType: str
+    mediaKind: str | None = None
+    mediaType: str | None = None
+    sizeBytes: int = 0
+    hasAsset: bool = False
+    children: list["MediaLibraryNodeRead"] = Field(default_factory=list)
+
+
+class MediaLibraryScanRead(BaseModel):
+    mediaRoot: str
+    fileCount: int
+    directoryCount: int
+    truncated: bool = False
+    tree: MediaLibraryNodeRead
 
 
 class AssetWriteRequest(BaseModel):
@@ -376,6 +410,18 @@ class LlmModelOptionRead(BaseModel):
     label: str
     description: str = ""
     recommended: bool = False
+    supportsVision: bool = False
+    visionSource: str = "catalog"
+
+
+class LlmVisionCapabilityRead(BaseModel):
+    providerId: str
+    providerName: str
+    model: str
+    supportsVision: bool
+    visionSource: str = "catalog"
+    message: str = ""
+    configured: bool = False
 
 
 class LlmProviderConfigWriteRequest(BaseModel):

@@ -268,15 +268,11 @@ export function StoryboardSegmentEditorClient({
         />
 
         {beatSnapEnabled ? (
-          <div className="md:col-span-2 flex flex-wrap items-center gap-3 rounded-2xl border border-pine/10 bg-mist/55 px-4 py-3">
+          <div className="surface-muted md:col-span-2 flex flex-wrap items-center gap-3 px-4 py-3">
             <p className="text-sm text-ink/70">
               当前使用节奏页 {rhythmBeatPoints.length} 个节拍点。失焦或点击按钮可将时间吸附到最近节拍。
             </p>
-            <button
-              type="button"
-              onClick={applySnapToBothTimes}
-              className="inline-flex rounded-full border border-pine/20 bg-white px-4 py-2 text-sm font-medium text-pine transition hover:bg-white/90"
-            >
+            <button type="button" onClick={applySnapToBothTimes} className="btn-secondary px-4 py-2">
               一键吸附起止时间
             </button>
           </div>
@@ -296,9 +292,7 @@ export function StoryboardSegmentEditorClient({
           <select
             value={form.function}
             onChange={(event) => setForm({ ...form, function: event.target.value })}
-            className={`w-full rounded-2xl border border-pine/30 bg-white px-4 py-3 outline-none transition focus:border-pine ${
-              form.function ? "text-ink" : "text-ink/45"
-            }`}
+            className={`input-field ${form.function ? "text-ink" : "text-ink/45"}`}
           >
             {storyboardFunctionOptions.map((option) => (
               <option key={option.value || "none"} value={option.value}>
@@ -307,13 +301,7 @@ export function StoryboardSegmentEditorClient({
             ))}
           </select>
           <div className="mt-2 flex flex-wrap items-center gap-2">
-            <span
-              className={`rounded-full px-2.5 py-1 text-xs ${
-                form.function
-                  ? "bg-mist text-ink/70"
-                  : "bg-sand text-ink/50 ring-1 ring-inset ring-pine/10"
-              }`}
-            >
+            <span className={form.function ? "badge" : "stat-pill"}>
               {form.function ? "已设置功能标签" : "当前未设置"}
             </span>
             <p className="text-xs text-ink/55">功能标签为可选项，先不标注也可以保存。</p>
@@ -325,7 +313,7 @@ export function StoryboardSegmentEditorClient({
           <input
             value={form.shotDescription}
             onChange={(event) => setForm({ ...form, shotDescription: event.target.value })}
-            className="w-full rounded-2xl border border-pine/30 bg-white px-4 py-3 outline-none transition focus:border-pine"
+            className="input-field"
           />
         </label>
 
@@ -334,7 +322,7 @@ export function StoryboardSegmentEditorClient({
           <input
             value={form.rhythm}
             onChange={(event) => setForm({ ...form, rhythm: event.target.value })}
-            className="w-full rounded-2xl border border-pine/30 bg-white px-4 py-3 outline-none transition focus:border-pine"
+            className="input-field"
           />
         </label>
         <label className="block">
@@ -342,9 +330,7 @@ export function StoryboardSegmentEditorClient({
           <select
             value={form.beatMode}
             onChange={(event) => setForm({ ...form, beatMode: event.target.value })}
-            className={`w-full rounded-2xl border border-pine/30 bg-white px-4 py-3 outline-none transition focus:border-pine ${
-              beatModeEnabled ? "text-ink" : "text-ink/45"
-            }`}
+            className={`input-field ${beatModeEnabled ? "text-ink" : "text-ink/45"}`}
           >
             {storyboardBeatModeOptions.map((option) => (
               <option key={option.value} value={option.value}>
@@ -353,13 +339,7 @@ export function StoryboardSegmentEditorClient({
             ))}
           </select>
           <div className="mt-2 flex flex-wrap items-center gap-2">
-            <span
-              className={`rounded-full px-2.5 py-1 text-xs ${
-                beatModeEnabled
-                  ? "bg-mist text-ink/70"
-                  : "bg-sand text-ink/50 ring-1 ring-inset ring-pine/10"
-              }`}
-            >
+            <span className={beatModeEnabled ? "badge" : "stat-pill"}>
               {beatModeEnabled ? "已设置节拍模式" : "当前不启用节拍"}
             </span>
             <p className="text-xs text-ink/55">节拍模式为可选项，关闭节拍后也可以先保存。</p>
@@ -371,7 +351,7 @@ export function StoryboardSegmentEditorClient({
           <input
             value={form.subtitle}
             onChange={(event) => setForm({ ...form, subtitle: event.target.value })}
-            className="w-full rounded-2xl border border-pine/30 bg-white px-4 py-3 outline-none transition focus:border-pine"
+            className="input-field"
           />
         </label>
 
@@ -381,28 +361,21 @@ export function StoryboardSegmentEditorClient({
             rows={4}
             value={beatPointsText}
             onChange={(event) => setBeatPointsText(event.target.value)}
-            className="w-full rounded-2xl border border-pine/30 bg-white px-4 py-3 outline-none transition focus:border-pine"
+            className="input-field"
           />
         </label>
 
         <InlineErrorBanner className="md:col-span-2" message={error} />
 
         <div className="flex flex-wrap gap-3 md:col-span-2">
-          <button
-            type="submit"
-            disabled={isPending}
-            className="inline-flex rounded-full bg-pine px-5 py-3 text-sm font-medium text-white transition hover:bg-pine/90 disabled:cursor-not-allowed disabled:opacity-60"
-          >
+          <button type="submit" disabled={isPending} className="btn-primary">
             {isPending
               ? "保存中..."
               : mode === "create"
                 ? "新增并返回列表"
                 : "保存并返回列表"}
           </button>
-          <Link
-            href={backHref}
-            className="inline-flex rounded-full border border-pine/20 bg-white px-5 py-3 text-sm font-medium text-pine transition hover:bg-mist"
-          >
+          <Link href={backHref} className="btn-secondary">
             返回分镜列表
           </Link>
           <span className="self-center text-xs text-ink/45">Esc 返回列表</span>

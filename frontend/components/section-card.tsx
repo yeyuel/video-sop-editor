@@ -6,6 +6,7 @@ type SectionCardProps = PropsWithChildren<{
   title: string;
   description?: string;
   className?: string;
+  eyebrow?: string;
 }>;
 
 export function SectionCard({
@@ -13,20 +14,25 @@ export function SectionCard({
   title,
   description,
   className,
+  eyebrow,
   children
 }: SectionCardProps) {
   return (
     <section
       id={id}
-      className={clsx(
-        "scroll-mt-24 rounded-xl2 border border-black/5 bg-white/90 p-6 shadow-card backdrop-blur",
-        className
-      )}
+      className={clsx("surface-panel scroll-mt-28 p-6", className)}
     >
-      <div className="mb-4">
-        <h2 className="text-xl font-semibold tracking-tight">{title}</h2>
+      <div className="mb-5">
+        {eyebrow ? (
+          <p className="text-[11px] font-medium uppercase tracking-[0.24em] text-pine/70">
+            {eyebrow}
+          </p>
+        ) : null}
+        <h2 className={clsx("text-xl font-semibold tracking-tight text-ink", eyebrow && "mt-2")}>
+          {title}
+        </h2>
         {description ? (
-          <p className="mt-1 text-sm leading-6 text-ink/70">{description}</p>
+          <p className="mt-2 text-sm leading-7 text-ink/65">{description}</p>
         ) : null}
       </div>
       {children}

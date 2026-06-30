@@ -166,9 +166,7 @@ export function AssetSelector({ assets, onChange, projectId, value }: AssetSelec
               setLocationFilter(event.target.value);
               setHighlightedAssetId("");
             }}
-            className={`w-full rounded-2xl border border-pine/30 bg-white px-4 py-3 outline-none transition focus:border-pine ${
-              locationFilter ? "text-ink" : "text-ink/45"
-            }`}
+            className={`input-field ${locationFilter ? "text-ink" : "text-ink/45"}`}
           >
             <option value="">全部地点</option>
             {locationOptions.map((location) => (
@@ -191,7 +189,7 @@ export function AssetSelector({ assets, onChange, projectId, value }: AssetSelec
             }}
             onKeyDown={handleAssetKeyDown}
             placeholder="搜索素材 ID 或素材描述"
-            className="w-full rounded-2xl border border-pine/30 bg-white px-4 py-3 outline-none transition focus:border-pine"
+            className="input-field"
           />
         </div>
       </div>
@@ -204,7 +202,7 @@ export function AssetSelector({ assets, onChange, projectId, value }: AssetSelec
       </div>
 
       {selectedAsset ? (
-        <div className="mt-3 rounded-2xl border border-pine/15 bg-white p-4 shadow-sm">
+        <div className="surface-panel mt-3 p-4">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div className="min-w-0">
               <p className="text-sm font-semibold text-ink">{selectedAsset.assetId}</p>
@@ -218,15 +216,11 @@ export function AssetSelector({ assets, onChange, projectId, value }: AssetSelec
             <div className="flex flex-wrap items-center gap-2">
               <Link
                 href={`/projects/${projectId}/assets/${selectedAsset.assetId}/edit`}
-                className="inline-flex rounded-full border border-pine/20 bg-white px-3 py-1.5 text-xs font-medium text-pine transition hover:bg-mist"
+                className="btn-secondary px-3 py-1.5 text-xs"
               >
                 查看素材详情
               </Link>
-              <button
-                type="button"
-                onClick={clearSelectedAsset}
-                className="inline-flex rounded-full border border-clay/20 bg-white px-3 py-1.5 text-xs font-medium text-clay transition hover:bg-[#fff4ee]"
-              >
+              <button type="button" onClick={clearSelectedAsset} className="btn-danger px-3 py-1.5 text-xs">
                 清空已选
               </button>
             </div>
@@ -234,13 +228,13 @@ export function AssetSelector({ assets, onChange, projectId, value }: AssetSelec
         </div>
       ) : null}
 
-      <div className="mt-3 max-h-80 space-y-4 overflow-y-auto rounded-2xl border border-pine/10 bg-mist/55 p-3">
+      <div className="surface-muted tree-scroll mt-3 max-h-80 space-y-4 overflow-y-auto p-3">
         {groupedAssets.length === 0 ? (
           <p className="text-sm text-ink/55">没有匹配到素材，可以留空后继续保存。</p>
         ) : (
           groupedAssets.map(([location, groupAssets]) => (
             <section key={location}>
-              <div className="sticky top-0 z-10 mb-2 rounded-full bg-white/90 px-3 py-1 text-xs font-medium text-pine shadow-sm">
+              <div className="sticky top-0 z-10 mb-2 rounded-full border border-line bg-white px-3 py-1 text-xs font-medium text-pine shadow-soft">
                 {location}
                 <span className="ml-2 text-ink/45">{groupAssets.length} 条</span>
               </div>
@@ -276,13 +270,9 @@ export function AssetSelector({ assets, onChange, projectId, value }: AssetSelec
                         </p>
                       </div>
                       {isActive ? (
-                        <span className="ml-3 rounded-full bg-pine px-2 py-1 text-xs text-white">
-                          已选
-                        </span>
+                        <span className="badge-ai">已选</span>
                       ) : isHighlighted ? (
-                        <span className="ml-3 rounded-full bg-sand px-2 py-1 text-xs text-ink/70">
-                          回车选择
-                        </span>
+                        <span className="badge">回车选择</span>
                       ) : null}
                     </button>
                   );

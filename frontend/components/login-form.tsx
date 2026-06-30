@@ -97,7 +97,7 @@ export function LoginForm() {
           <select
             value={username}
             onChange={(event) => setUsername(event.target.value)}
-            className="w-full rounded-2xl border border-pine/20 bg-white px-4 py-3 text-base text-ink outline-none transition focus:border-pine"
+            className="input-field"
           >
             {loginOptions.map((option) => (
               <option key={option.username} value={option.username}>
@@ -114,7 +114,7 @@ export function LoginForm() {
             required
             value={username}
             onChange={(event) => setUsername(event.target.value)}
-            className="w-full rounded-2xl border border-pine/20 bg-white px-4 py-3 text-base text-ink outline-none transition focus:border-pine"
+            className="input-field"
             placeholder="请输入用户名"
             autoComplete="username"
           />
@@ -129,12 +129,12 @@ export function LoginForm() {
           value={password}
           onChange={(event) => setPassword(event.target.value)}
           placeholder="请输入密码"
-          className="w-full rounded-2xl border border-pine/20 bg-white px-4 py-3 text-base text-ink outline-none transition focus:border-pine"
+          className="input-field"
           autoComplete="current-password"
         />
       </label>
 
-      <div className="rounded-2xl border border-pine/10 bg-sand/50 px-4 py-3 text-sm leading-6 text-ink/70">
+      <div className="stat-cell text-sm leading-6">
         仅「允许登录」的账号可以进入工作台。导演可在用户管理页创建账号并控制是否开放登录。
         {selectedOption ? (
           <span className="mt-1 block">
@@ -150,11 +150,7 @@ export function LoginForm() {
         </div>
       ) : null}
 
-      <button
-        type="submit"
-        disabled={submitting}
-        className="inline-flex w-full items-center justify-center rounded-full bg-pine px-5 py-3 text-sm font-medium text-white transition hover:bg-pine/90 disabled:cursor-not-allowed disabled:opacity-60"
-      >
+      <button type="submit" disabled={submitting} className="btn-primary w-full">
         {submitting ? "登录中..." : "进入工作台"}
       </button>
     </form>

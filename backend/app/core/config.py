@@ -44,6 +44,13 @@ class Settings(BaseSettings):
         validation_alias=AliasChoices("LLM_MAX_RETRIES", "OPENAI_MAX_RETRIES"),
     )
     app_secret_key: str = Field(default="", alias="APP_SECRET_KEY")
+    vision_frame_interval_sec: float = Field(default=2.0, alias="VISION_FRAME_INTERVAL_SEC")
+    vision_max_frames: int = Field(default=6, alias="VISION_MAX_FRAMES")
+    vision_use_mock: bool = Field(default=False, alias="VISION_USE_MOCK")
+    media_preview_max_width: int = Field(default=1280, alias="MEDIA_PREVIEW_MAX_WIDTH")
+    media_preview_crf: int = Field(default=28, alias="MEDIA_PREVIEW_CRF")
+    media_preview_preset: str = Field(default="ultrafast", alias="MEDIA_PREVIEW_PRESET")
+    app_graceful_shutdown_sec: int = Field(default=5, alias="APP_GRACEFUL_SHUTDOWN_SEC")
 
     model_config = SettingsConfigDict(env_file=".env", populate_by_name=True)
 

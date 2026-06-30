@@ -26,8 +26,8 @@ export function BlockingNotice({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink/20 px-6 backdrop-blur-sm">
-      <div className="w-full max-w-sm rounded-[28px] border border-white/65 bg-white/90 p-6 shadow-[0_28px_80px_rgba(25,34,41,0.14)]">
-        <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-mist">
+      <div className="surface-panel w-full max-w-sm p-6 shadow-card">
+        <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-sand">
           <div className="async-orbit relative h-7 w-7">
             <span className="absolute inset-0 rounded-full border-2 border-pine/20" />
             <span className="absolute inset-[3px] rounded-full border-2 border-transparent border-t-pine border-r-pine" />
@@ -62,12 +62,12 @@ export function ToastNotice({
     <div className="pointer-events-none fixed right-6 top-6 z-50 w-full max-w-sm">
       <div
         className={clsx(
-          "toast-enter rounded-[24px] border px-5 py-4 shadow-[0_24px_64px_rgba(25,34,41,0.14)] backdrop-blur-md",
+          "toast-enter surface-panel border px-5 py-4 shadow-card backdrop-blur-md",
           isSuccess
-            ? "border-pine/15 bg-white/92"
+            ? "border-pine/15"
             : isWarning
-              ? "border-sand/30 bg-white/94"
-              : "border-clay/20 bg-white/94"
+              ? "border-line"
+              : "border-clay/20"
         )}
       >
         <div className="flex items-start gap-3">

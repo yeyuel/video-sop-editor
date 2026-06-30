@@ -32,6 +32,11 @@ MODEL_CATALOG: dict[str, list[ModelOption]] = {
         ModelOption("glm-4-air", "GLM-4 Air", "平衡质量与成本"),
         ModelOption("glm-4-plus", "GLM-4 Plus", "更高质量生成"),
     ],
+    "google": [
+        ModelOption("gemini-2.0-flash", "Gemini 2.0 Flash", "多模态，性价比高", recommended=True),
+        ModelOption("gemini-1.5-flash", "Gemini 1.5 Flash", "多模态轻量"),
+        ModelOption("gemini-1.5-pro", "Gemini 1.5 Pro", "多模态高质量"),
+    ],
 }
 
 # 常见误填别名（如 OpenClaw / 文档简写）→ 官方 model id

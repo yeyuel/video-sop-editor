@@ -13,6 +13,12 @@ import {
   uploadRhythmAudio
 } from "@/lib/browser-api";
 import { describeLlmStatus, llmNoticeTone } from "@/lib/llm-status";
+import {
+  aiInputClassName,
+  AiFieldLabel,
+  AiSuggestHint,
+  clearSuggestedField
+} from "@/lib/ai-field-ui";
 import { BGM_RECOMMEND_LLM_STAGES, RHYTHM_LLM_STAGES } from "@/lib/llm-progress-stages";
 import { getBgmPhaseLabel, isRhythmAnalyzed } from "@/lib/rhythm-workflow";
 import { useLlmProgress } from "@/lib/use-llm-progress";
@@ -65,6 +71,73 @@ function formatTrackLabel(item: BgmRecommendation) {
   return item.artist ? `${item.artist} - ${item.title}` : item.title;
 }
 
+type RhythmSuggestField =
+  | "bgmStyle"
+  | "selectedTrackName"
+  | "beatMode"
+  | "darkCuts"
+  | "beatPoints"
+  | "rhythmNotes"
+  | "photoMotion";
+
+type RhythmFormSnapshot = {
+  bgmStyle: string;
+  beatMode: string;
+  beatPointsText: string;
+  darkCutsText: string;
+  photoText: string;
+  rhythmNotesText: string;
+  selectedTrackName: string;
+};
+
+function snapshotRhythmForm(
+  plan: RhythmPlan,
+  texts: Pick<
+    RhythmFormSnapshot,
+    "beatPointsText" | "darkCutsText" | "photoText" | "rhythmNotesText"
+  >
+): RhythmFormSnapshot {
+  return {
+    bgmStyle: plan.bgmStyle,
+    selectedTrackName: plan.selectedTrackName,
+    beatMode: plan.beatMode,
+    beatPointsText: texts.beatPointsText,
+    darkCutsText: texts.darkCutsText,
+    rhythmNotesText: texts.rhythmNotesText,
+    photoText: texts.photoText
+  };
+}
+
+function detectRhythmSuggested(before: RhythmFormSnapshot, after: RhythmFormSnapshot) {
+  const fields: RhythmSuggestField[] = [];
+  if (after.bgmStyle.trim() && after.bgmStyle !== before.bgmStyle) {
+    fields.push("bgmStyle");
+  }
+  if (after.selectedTrackName.trim() && after.selectedTrackName !== before.selectedTrackName) {
+    fields.push("selectedTrackName");
+  }
+  if (after.beatMode.trim() && after.beatMode !== before.beatMode) {
+    fields.push("beatMode");
+  }
+  if (after.darkCutsText.trim() && after.darkCutsText !== before.darkCutsText) {
+    fields.push("darkCuts");
+  }
+  if (after.beatPointsText.trim() && after.beatPointsText !== before.beatPointsText) {
+    fields.push("beatPoints");
+  }
+  if (after.rhythmNotesText.trim() && after.rhythmNotesText !== before.rhythmNotesText) {
+    fields.push("rhythmNotes");
+  }
+  if (after.photoText.trim() && after.photoText !== before.photoText) {
+    fields.push("photoMotion");
+  }
+  return fields;
+}
+
+function mergeSuggestedFields(current: RhythmSuggestField[], detected: RhythmSuggestField[]) {
+  return [...new Set([...current, ...detected])];
+}
+
 export function RhythmPlanClient({
   projectId,
   targetDurationSec,
@@ -85,6 +158,7 @@ export function RhythmPlanClient({
   } | null>(null);
   const [isPending, startTransition] = useTransition();
   const { llmProgress, isLlmRunning, start, onProgress, finish } = useLlmProgress();
+  const [llmSuggestedFields, setLlmSuggestedFields] = useState<RhythmSuggestField[]>([]);
 
   const rhythmAnalyzed = isRhythmAnalyzed(plan);
   const canUploadAudio = Boolean(plan.selectedBgmId);
@@ -121,9 +195,24 @@ export function RhythmPlanClient({
     setError("");
     start("LLM 推荐 BGM", BGM_RECOMMEND_LLM_STAGES);
     startTransition(async () => {
+      const before = snapshotRhythmForm(plan, {
+        beatPointsText,
+        darkCutsText,
+        photoText,
+        rhythmNotesText
+      });
       try {
         const { data: nextPlan, meta } = await recommendBgm(projectId, onProgress);
         syncFromPlan(nextPlan);
+        const after = snapshotRhythmForm(nextPlan, {
+          beatPointsText: numberListToText(nextPlan.beatPoints),
+          darkCutsText: numberListToText(nextPlan.darkCutSuggestions),
+          photoText: listToText(nextPlan.photoMotionSuggestions),
+          rhythmNotesText: listToText(nextPlan.rhythmNotes)
+        });
+        setLlmSuggestedFields((current) =>
+          mergeSuggestedFields(current, detectRhythmSuggested(before, after))
+        );
         router.refresh();
         const llmNotice = describeLlmStatus(meta);
         if (llmNotice) {
@@ -151,9 +240,24 @@ export function RhythmPlanClient({
   function handleSelectBgm(recommendationId: string) {
     setError("");
     startTransition(async () => {
+      const before = snapshotRhythmForm(plan, {
+        beatPointsText,
+        darkCutsText,
+        photoText,
+        rhythmNotesText
+      });
       try {
         const nextPlan = await selectBgmRecommendation(projectId, recommendationId);
         syncFromPlan(nextPlan);
+        const after = snapshotRhythmForm(nextPlan, {
+          beatPointsText: numberListToText(nextPlan.beatPoints),
+          darkCutsText: numberListToText(nextPlan.darkCutSuggestions),
+          photoText: listToText(nextPlan.photoMotionSuggestions),
+          rhythmNotesText: listToText(nextPlan.rhythmNotes)
+        });
+        setLlmSuggestedFields((current) =>
+          mergeSuggestedFields(current, detectRhythmSuggested(before, after))
+        );
         router.refresh();
         setNotice({
           title: "已选定 BGM",
@@ -212,6 +316,7 @@ export function RhythmPlanClient({
           photoMotionSuggestions: parseTextList(photoText)
         });
         syncFromPlan(nextPlan);
+        setLlmSuggestedFields([]);
         router.refresh();
         setNotice({ title: "节奏规划已保存", message: "当前节拍设置已写入项目。" });
       } catch (submitError) {
@@ -235,9 +340,24 @@ export function RhythmPlanClient({
     setError("");
     start("音频节拍识别", RHYTHM_LLM_STAGES);
     startTransition(async () => {
+      const before = snapshotRhythmForm(plan, {
+        beatPointsText,
+        darkCutsText,
+        photoText,
+        rhythmNotesText
+      });
       try {
         const { data: nextPlan, meta } = await uploadRhythmAudio(projectId, audioFile, onProgress);
         syncFromPlan(nextPlan);
+        const after = snapshotRhythmForm(nextPlan, {
+          beatPointsText: numberListToText(nextPlan.beatPoints),
+          darkCutsText: numberListToText(nextPlan.darkCutSuggestions),
+          photoText: listToText(nextPlan.photoMotionSuggestions),
+          rhythmNotesText: listToText(nextPlan.rhythmNotes)
+        });
+        setLlmSuggestedFields((current) =>
+          mergeSuggestedFields(current, detectRhythmSuggested(before, after))
+        );
         setAudioFile(null);
         router.refresh();
         if (nextPlan.analysisSource === "rule_fallback") {
@@ -325,15 +445,19 @@ export function RhythmPlanClient({
         visible={Boolean(notice)}
       />
 
-      <div className="rounded-xl2 border border-pine/15 bg-sand/40 px-5 py-4">
-        <p className="text-sm font-medium text-ink">BGM 工作流</p>
-        <p className="mt-1 text-sm text-ink/65">
-          ① LLM 推荐曲目 → ② 选定并自行下载 → ③ 上传音频识别节拍 → ④ 进入分镜
-        </p>
-        <p className="mt-2 text-xs text-pine">当前状态：{getBgmPhaseLabel(plan.bgmPhase)}</p>
+      <div className="surface-ai px-5 py-4">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <p className="text-sm font-medium text-ink">BGM 工作流</p>
+            <p className="mt-1 text-sm text-ink/65">
+              ① LLM 推荐曲目 → ② 选定并自行下载 → ③ 上传音频识别节拍 → ④ 进入分镜
+            </p>
+          </div>
+          <span className="badge-ai">当前：{getBgmPhaseLabel(plan.bgmPhase)}</span>
+        </div>
       </div>
 
-      <div className="rounded-xl2 border border-black/5 bg-white/90 p-5 shadow-card">
+      <div className="surface-panel p-5">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <h3 className="text-lg font-semibold text-ink">BGM 推荐</h3>
@@ -345,7 +469,7 @@ export function RhythmPlanClient({
             type="button"
             onClick={handleRecommendBgm}
             disabled={isPending || isLlmRunning}
-            className="inline-flex rounded-full bg-pine px-5 py-3 text-sm font-medium text-white transition hover:bg-pine/90 disabled:cursor-not-allowed disabled:opacity-60"
+            className="btn-ai"
           >
             {isPending ? "推荐中..." : "LLM 推荐 BGM"}
           </button>
@@ -356,13 +480,18 @@ export function RhythmPlanClient({
             {plan.recommendedBgm.map((item) => (
               <div
                 key={item.id}
-                className={`rounded-2xl border px-4 py-4 ${
-                  item.isSelected ? "border-pine bg-mist/60" : "border-pine/10 bg-white"
+                className={`rounded-2xl border px-4 py-4 transition ${
+                  item.isSelected
+                    ? "border-pine/30 bg-sand/60 shadow-soft"
+                    : "border-line bg-white hover:border-pine/20"
                 }`}
               >
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div>
-                    <p className="text-base font-semibold text-ink">{formatTrackLabel(item)}</p>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <p className="text-base font-semibold text-ink">{formatTrackLabel(item)}</p>
+                      {item.isSelected ? <span className="badge-ai">已选定</span> : null}
+                    </div>
                     <p className="mt-1 text-sm text-ink/65">
                       {item.mood} · BPM {item.bpmRange || "—"}
                       {item.styleTags.length > 0 ? ` · ${item.styleTags.join(" / ")}` : ""}
@@ -373,7 +502,7 @@ export function RhythmPlanClient({
                       type="button"
                       onClick={() => handleSelectBgm(item.id)}
                       disabled={isPending || item.isSelected}
-                      className="inline-flex rounded-full border border-pine/20 bg-white px-4 py-2 text-xs font-medium text-pine transition hover:bg-mist disabled:cursor-not-allowed disabled:opacity-60"
+                      className="btn-secondary px-4 py-2 text-xs disabled:cursor-not-allowed disabled:opacity-60"
                     >
                       {item.isSelected ? "已选定" : "选这首"}
                     </button>
@@ -381,7 +510,7 @@ export function RhythmPlanClient({
                       <button
                         type="button"
                         onClick={() => handleCopySearchHint(item.searchHint)}
-                        className="inline-flex rounded-full border border-pine/20 bg-white px-4 py-2 text-xs font-medium text-ink/70 transition hover:bg-mist"
+                        className="btn-ghost border border-line px-4 py-2 text-xs"
                       >
                         复制搜索词
                       </button>
@@ -402,7 +531,7 @@ export function RhythmPlanClient({
         )}
       </div>
 
-      <div className="rounded-xl2 border border-black/5 bg-white/90 p-5 shadow-card">
+      <div className="surface-panel p-5">
         <h3 className="text-lg font-semibold text-ink">上传 BGM 并识别节拍</h3>
         <p className="mt-1 text-sm text-ink/65">
           {selectedRecommendation
@@ -414,7 +543,7 @@ export function RhythmPlanClient({
             type="button"
             onClick={handleAudioUpload}
             disabled={isPending || isLlmRunning || !audioFile || !canUploadAudio}
-            className="inline-flex rounded-full bg-pine px-5 py-3 text-sm font-medium text-white transition hover:bg-pine/90 disabled:cursor-not-allowed disabled:opacity-60"
+            className="btn-primary"
           >
             {isPending ? "识别中..." : "上传音频并识别节拍"}
           </button>
@@ -423,7 +552,7 @@ export function RhythmPlanClient({
               type="button"
               onClick={handleDeleteAudio}
               disabled={isPending || isLlmRunning}
-              className="inline-flex rounded-full border border-clay/25 bg-white px-5 py-3 text-sm font-medium text-clay transition hover:bg-[#fff1ea] disabled:cursor-not-allowed disabled:opacity-60"
+              className="btn-danger"
             >
               移除已绑定音频
             </button>
@@ -431,7 +560,7 @@ export function RhythmPlanClient({
           <button
             type="submit"
             disabled={isPending || isLlmRunning || !canEditBeats}
-            className="inline-flex rounded-full border border-pine/20 bg-white px-5 py-3 text-sm font-medium text-pine transition hover:bg-mist disabled:cursor-not-allowed disabled:opacity-60"
+            className="btn-secondary"
           >
             {isPending ? "保存中..." : "保存节奏规划"}
           </button>
@@ -446,7 +575,7 @@ export function RhythmPlanClient({
             accept=".wav,.mp3,.m4a,.aac,.ogg,.mgg,.flac,.wma,audio/*"
             disabled={!canUploadAudio}
             onChange={(event) => setAudioFile(event.target.files?.[0] ?? null)}
-            className="w-full rounded-2xl border border-pine/30 bg-white px-4 py-3 text-sm outline-none transition focus:border-pine disabled:cursor-not-allowed disabled:bg-sand/40"
+            className="input-field disabled:cursor-not-allowed disabled:bg-sand/40"
           />
           <p className="mt-2 text-xs text-ink/55">
             当前已绑定音频：{plan.audioFileName || "未上传"}，分析来源：
@@ -469,35 +598,58 @@ export function RhythmPlanClient({
 
       {error ? <p className="text-sm text-red-600">{error}</p> : null}
 
+      {llmSuggestedFields.length > 0 ? (
+        <AiSuggestHint count={llmSuggestedFields.length} />
+      ) : null}
+
       <div className={`grid gap-5 md:grid-cols-2 ${canEditBeats ? "" : "opacity-60"}`}>
         <label className="block">
-          <span className="mb-2 block text-sm text-ink/75">BGM 风格</span>
+          <AiFieldLabel suggested={llmSuggestedFields.includes("bgmStyle")}>BGM 风格</AiFieldLabel>
           <input
             readOnly={!canEditBeats}
             value={plan.bgmStyle}
-            onChange={(event) => setPlan({ ...plan, bgmStyle: event.target.value })}
+            onChange={(event) => {
+              setPlan({ ...plan, bgmStyle: event.target.value });
+              setLlmSuggestedFields((current) => clearSuggestedField(current, "bgmStyle"));
+            }}
             placeholder="推荐 BGM 后自动填入"
-            className="w-full rounded-2xl border border-pine/30 bg-white px-4 py-3 outline-none transition focus:border-pine"
+            className={aiInputClassName(
+              llmSuggestedFields.includes("bgmStyle"),
+              "input-field disabled:bg-sand/40"
+            )}
           />
         </label>
 
         <label className="block">
-          <span className="mb-2 block text-sm text-ink/75">参考曲目</span>
+          <AiFieldLabel suggested={llmSuggestedFields.includes("selectedTrackName")}>
+            参考曲目
+          </AiFieldLabel>
           <input
             readOnly
             value={plan.selectedTrackName}
             placeholder="选定 BGM 后自动填入"
-            className="w-full rounded-2xl border border-pine/30 bg-sand/30 px-4 py-3 outline-none"
+            className={aiInputClassName(
+              llmSuggestedFields.includes("selectedTrackName"),
+              "input-field bg-sand/30"
+            )}
           />
         </label>
 
         <label className="block">
-          <span className="mb-2 block text-sm text-ink/75">节拍模式（对标剪映）</span>
+          <AiFieldLabel suggested={llmSuggestedFields.includes("beatMode")}>
+            节拍模式（对标剪映）
+          </AiFieldLabel>
           <select
             value={plan.beatMode}
             disabled={!canEditBeats}
-            onChange={(event) => handleBeatModeChange(event.target.value)}
-            className="w-full rounded-2xl border border-pine/30 bg-white px-4 py-3 outline-none transition focus:border-pine disabled:cursor-not-allowed disabled:bg-sand/40"
+            onChange={(event) => {
+              handleBeatModeChange(event.target.value);
+              setLlmSuggestedFields((current) => clearSuggestedField(current, "beatMode"));
+            }}
+            className={aiInputClassName(
+              llmSuggestedFields.includes("beatMode"),
+              "input-field disabled:cursor-not-allowed disabled:bg-sand/40"
+            )}
           >
             {capcutBeatModeOptions.map((option) => (
               <option key={option.value} value={option.value}>
@@ -511,24 +663,40 @@ export function RhythmPlanClient({
         </label>
 
         <label className="block">
-          <span className="mb-2 block text-sm text-ink/75">暗场建议点（秒）</span>
+          <AiFieldLabel suggested={llmSuggestedFields.includes("darkCuts")}>
+            暗场建议点（秒）
+          </AiFieldLabel>
           <input
             readOnly={!canEditBeats}
             value={darkCutsText}
-            onChange={(event) => setDarkCutsText(event.target.value)}
-            className="w-full rounded-2xl border border-pine/30 bg-white px-4 py-3 outline-none transition focus:border-pine disabled:bg-sand/40"
+            onChange={(event) => {
+              setDarkCutsText(event.target.value);
+              setLlmSuggestedFields((current) => clearSuggestedField(current, "darkCuts"));
+            }}
+            className={aiInputClassName(
+              llmSuggestedFields.includes("darkCuts"),
+              "input-field disabled:bg-sand/40"
+            )}
           />
         </label>
 
         <label className="block md:col-span-2">
-          <span className="mb-2 block text-sm text-ink/75">节拍点（秒）</span>
+          <AiFieldLabel suggested={llmSuggestedFields.includes("beatPoints")}>
+            节拍点（秒）
+          </AiFieldLabel>
           <textarea
             readOnly={!canEditBeats}
             rows={4}
             value={beatPointsText}
-            onChange={(event) => setBeatPointsText(event.target.value)}
+            onChange={(event) => {
+              setBeatPointsText(event.target.value);
+              setLlmSuggestedFields((current) => clearSuggestedField(current, "beatPoints"));
+            }}
             placeholder="上传 BGM 音频识别后自动生成"
-            className="w-full rounded-2xl border border-pine/30 bg-white px-4 py-3 outline-none transition focus:border-pine disabled:bg-sand/40"
+            className={aiInputClassName(
+              llmSuggestedFields.includes("beatPoints"),
+              "input-field disabled:bg-sand/40"
+            )}
           />
           <p className="mt-2 text-xs text-ink/55">
             分镜生成依赖真实 BGM 节拍点；未完成音频识别前无法进入分镜。
@@ -536,24 +704,40 @@ export function RhythmPlanClient({
         </label>
 
         <label className="block md:col-span-2">
-          <span className="mb-2 block text-sm text-ink/75">节奏说明</span>
+          <AiFieldLabel suggested={llmSuggestedFields.includes("rhythmNotes")}>
+            节奏说明
+          </AiFieldLabel>
           <textarea
             readOnly={!canEditBeats}
             rows={5}
             value={rhythmNotesText}
-            onChange={(event) => setRhythmNotesText(event.target.value)}
-            className="w-full rounded-2xl border border-pine/30 bg-white px-4 py-3 outline-none transition focus:border-pine disabled:bg-sand/40"
+            onChange={(event) => {
+              setRhythmNotesText(event.target.value);
+              setLlmSuggestedFields((current) => clearSuggestedField(current, "rhythmNotes"));
+            }}
+            className={aiInputClassName(
+              llmSuggestedFields.includes("rhythmNotes"),
+              "input-field disabled:bg-sand/40"
+            )}
           />
         </label>
 
         <label className="block md:col-span-2">
-          <span className="mb-2 block text-sm text-ink/75">照片素材动效建议</span>
+          <AiFieldLabel suggested={llmSuggestedFields.includes("photoMotion")}>
+            照片素材动效建议
+          </AiFieldLabel>
           <textarea
             readOnly={!canEditBeats}
             rows={4}
             value={photoText}
-            onChange={(event) => setPhotoText(event.target.value)}
-            className="w-full rounded-2xl border border-pine/30 bg-white px-4 py-3 outline-none transition focus:border-pine disabled:bg-sand/40"
+            onChange={(event) => {
+              setPhotoText(event.target.value);
+              setLlmSuggestedFields((current) => clearSuggestedField(current, "photoMotion"));
+            }}
+            className={aiInputClassName(
+              llmSuggestedFields.includes("photoMotion"),
+              "input-field disabled:bg-sand/40"
+            )}
           />
         </label>
       </div>

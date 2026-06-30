@@ -26,6 +26,11 @@ async function proxyBackendRequest(request: NextRequest, pathSegments: string[])
     headers.Accept = accept;
   }
 
+  const range = request.headers.get("range");
+  if (range) {
+    headers.Range = range;
+  }
+
   let body: ArrayBuffer | string | undefined;
   if (request.method !== "GET" && request.method !== "HEAD") {
     body = contentType?.includes("multipart/form-data")
@@ -49,6 +54,18 @@ async function proxyBackendRequest(request: NextRequest, pathSegments: string[])
     const cacheControl = response.headers.get("cache-control");
     if (cacheControl) {
       responseHeaders.set("Cache-Control", cacheControl);
+    }
+    const acceptRanges = response.headers.get("accept-ranges");
+    if (acceptRanges) {
+      responseHeaders.set("Accept-Ranges", acceptRanges);
+    }
+    const contentRange = response.headers.get("content-range");
+    if (contentRange) {
+      responseHeaders.set("Content-Range", contentRange);
+    }
+    const contentLength = response.headers.get("content-length");
+    if (contentLength) {
+      responseHeaders.set("Content-Length", contentLength);
     }
 
     return new NextResponse(response.body, {
