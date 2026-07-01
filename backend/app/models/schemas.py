@@ -72,6 +72,7 @@ class ProjectRead(BaseModel):
     styleNotes: str
     routeText: str = ""
     mediaRoot: str
+    jianyingDraftRoot: str = ""
     status: str
     selectedThemeId: str = ""
     validateLocationOrder: bool = False
@@ -88,6 +89,7 @@ class ProjectWriteRequest(BaseModel):
     styleNotes: str = ""
     routeText: str = ""
     mediaRoot: str
+    jianyingDraftRoot: str = ""
     status: str = "draft"
     validateLocationOrder: bool = False
     allowAssetReuse: bool = False
@@ -291,6 +293,7 @@ class RhythmPlanRead(BaseModel):
     bgmStyle: str
     selectedTrackName: str
     audioFileName: str = ""
+    audioFilePath: str = ""
     analysisSource: str = "manual"
     analysisNotes: list[str] = Field(default_factory=list)
     detectedBpm: int = 0
@@ -311,6 +314,7 @@ class RhythmPlanWriteRequest(BaseModel):
     bgmStyle: str
     selectedTrackName: str
     audioFileName: str = ""
+    audioFilePath: str = ""
     analysisSource: str = "manual"
     analysisNotes: list[str] = Field(default_factory=list)
     detectedBpm: int = 0
@@ -348,6 +352,27 @@ class ExportDocumentRead(BaseModel):
     format: str
     fileName: str
     content: str
+
+
+class CapcutDraftDeployRequest(BaseModel):
+    jianyingDraftRoot: str = ""
+    persistConfig: bool = True
+
+
+class CapcutDraftDeployRead(BaseModel):
+    projectId: str
+    draftRoot: str
+    draftFolderName: str
+    draftFolderPath: str
+    files: list[str]
+    bgmIncluded: bool
+    message: str
+
+
+class CapcutExportDefaultsRead(BaseModel):
+    defaultDraftRoot: str
+    configuredDraftRoot: str
+    effectiveDraftRoot: str
 
 
 class ExportJsonImportRequest(BaseModel):

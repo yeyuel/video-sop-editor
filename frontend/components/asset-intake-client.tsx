@@ -3,18 +3,25 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { AssetFormPrototype } from "@/components/asset-form-prototype";
+import { AssetMediaPreview } from "@/components/asset-media-preview";
 import { MediaLibraryPanel } from "@/components/media-library-panel";
-import { MediaPreviewPanel } from "@/components/media-preview-panel";
 import { InlineErrorBanner } from "@/components/ui-primitives";
 import { getMediaLibraryHealth, type MediaLibraryNode } from "@/lib/browser-api";
+import { mediaKindFromAssetType } from "@/lib/media-preview-utils";
 
 type AssetIntakeClientProps = {
   projectId: string;
   mediaRoot: string;
 };
 
+type PreviewContext = {
+  relativePath: string;
+  mediaType: string;
+};
+
 export function AssetIntakeClient({ projectId, mediaRoot }: AssetIntakeClientProps) {
   const [selectedFile, setSelectedFile] = useState<MediaLibraryNode | null>(null);
+  const [previewContext, setPreviewContext] = useState<PreviewContext | null>(null);
   const [formEpoch, setFormEpoch] = useState(0);
   const [rescanToken, setRescanToken] = useState(0);
   const [advanceFromPath, setAdvanceFromPath] = useState<string | null>(null);
@@ -52,6 +59,15 @@ export function AssetIntakeClient({ projectId, mediaRoot }: AssetIntakeClientPro
     };
   }, [selectedFile]);
 
+  const previewRelativePath =
+    previewContext?.relativePath.trim() ||
+    (selectedFile?.nodeType === "file" ? selectedFile.relativePath : "");
+  const previewMediaKind = previewContext
+    ? mediaKindFromAssetType(previewContext.mediaType, previewContext.relativePath)
+    : selectedFile?.nodeType === "file"
+      ? selectedFile.mediaKind ?? null
+      : null;
+
   const handleIntakeSaved = useCallback((info: { relativePath: string; assetId: string }) => {
     setFormEpoch((current) => current + 1);
     setAdvanceFromPath(info.relativePath);
@@ -62,6 +78,11 @@ export function AssetIntakeClient({ projectId, mediaRoot }: AssetIntakeClientPro
     setAdvanceFromPath(null);
   }, []);
 
+  const handleSelectFile = useCallback((file: MediaLibraryNode) => {
+    setSelectedFile(file);
+    setPreviewContext(null);
+  }, []);
+
   return (
     <div className="grid gap-5 xl:grid-cols-[minmax(300px,360px)_minmax(0,1fr)] xl:items-start">
       <aside className="xl:sticky xl:top-28">
@@ -69,7 +90,7 @@ export function AssetIntakeClient({ projectId, mediaRoot }: AssetIntakeClientPro
           projectId={projectId}
           mediaRoot={mediaRoot}
           selectedPath={selectedFile?.relativePath}
-          onSelectFile={setSelectedFile}
+          onSelectFile={handleSelectFile}
           rescanToken={rescanToken}
           advanceFromPath={advanceFromPath}
           onAdvanceComplete={handleAdvanceComplete}
@@ -82,7 +103,16 @@ export function AssetIntakeClient({ projectId, mediaRoot }: AssetIntakeClientPro
             message={`素材根目录不可用：${mediaRootIssue} 请在项目概览/设置中将 mediaRoot 改为本机实际素材文件夹（例如包含「视频」子目录的路径），保存后点击左侧「扫描目录」。`}
           />
         ) : null}
-        <MediaPreviewPanel projectId={projectId} file={selectedFile} />
+        <AssetMediaPreview
+          projectId={projectId}
+          relativePath={previewRelativePath || null}
+          mediaKind={previewMediaKind}
+          displayName={
+            selectedFile?.nodeType === "file" ? selectedFile.name : previewRelativePath.split(/[/\\]/).pop()
+          }
+          showRecordedBadge={Boolean(selectedFile?.nodeType === "file" && selectedFile.hasAsset)}
+          emptyMessage="在左侧目录树中选择一个文件，可在此预览并自动带入录入表单。"
+        />
         <AssetFormPrototype
           key={`${selectedFile?.relativePath ?? "empty"}-${formEpoch}`}
           mode="create"
@@ -90,6 +120,7 @@ export function AssetIntakeClient({ projectId, mediaRoot }: AssetIntakeClientPro
           defaults={formDefaults}
           intakeMode
           onIntakeSaved={handleIntakeSaved}
+          onPreviewContextChange={setPreviewContext}
         />
       </div>
     </div>

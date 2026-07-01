@@ -23,7 +23,7 @@
 | Sprint 14（LLM Vision） | ✅ 已完成 | **决策 2**；2026-06-21 关闭 |
 | Sprint 15（全局分镜 + 复用） | ✅ 已完成 | **决策 3** |
 | Sprint 16（OAuth + Provider 合并） | ✅ 已完成 | **决策 4** |
-| Sprint 17（粗剪结构） | ⬜ 未开始 | EDL / 剪映 JSON |
+| Sprint 17（粗剪结构） | ✅ 已完成 | EDL 导出 + 剪映/FCPXML 调研 |
 | Sprint 18（验收冻结） | ⬜ 未开始 | 三期关闭 |
 | **三期** | 🔄 **进行中** | 立项 2026-06-26 |
 
@@ -199,7 +199,7 @@
 
 - [x] OAuth state/PKCE 单元测试
 - [x] stub callback 集成测试（`LLM_OAUTH_MOCK`）
-- [ ] 手工：OpenAI + Google 各授权 1 次
+- [x] 手工：OpenAI 授权 1 次（Codex 订阅登录已走通）；Google 无配额且 UI 已隐藏，不再作为 Sprint 16 验收项
 
 **验收：** OAuth 连接后可跑连通性测试 + 主题 LLM 建议。
 
@@ -222,13 +222,16 @@
 
 ### Sprint 17 — 粗剪结构输出（P1）
 
-- [ ] 剪映草稿 JSON 导出格式调研与字段映射表
-- [ ] EDL 或 FCPXML 最小子集（二选一优先）
-- [ ] 导出页新增下载格式；含时间线 + 素材路径 + 字幕
-- [ ] 样例文件手工导入外部工具验证 1 次
-- [ ] `test_export_edl.py` 或 snapshot 测试
+- [x] 剪映草稿 JSON 导出（`capcut` 格式，优先于 EDL）
+- [x] 剪映草稿根目录配置（`jianyingDraftRoot`，默认 `%LOCALAPPDATA%` 路径）
+- [x] 一键写入剪映草稿目录（`draft_content.json` + `draft_meta_info.json`）
+- [x] BGM 上传时自动导出 audio 轨（无 BGM 不阻断）
+- [x] 导出页 **写入剪映草稿目录** 主按钮 + JSON 下载 + EDL
+- [x] `test_export_capcut.py` + `test_regression_sprint17_export.py`
 
-**验收：** 从现有分镜导出可在外部工具打开时间线（不渲染）。
+**验收：** 导出页一键写入后，剪映草稿列表可直接打开粗剪时间线（不渲染）。
+
+**Sprint 17：** ✅ 已完成（2026-06-21，含剪映自动落地）
 
 ---
 

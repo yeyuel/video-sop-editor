@@ -231,6 +231,14 @@ def render_export_content(workspace: WorkspaceDataRead, fmt: str) -> str:
         return to_yaml(export_payload)
     if fmt == "csv":
         return to_csv(workspace)
+    if fmt == "capcut":
+        from app.services.capcut_draft_export import render_capcut_draft
+
+        return render_capcut_draft(workspace)
+    if fmt == "edl":
+        from app.services.rough_cut_export import render_edl
+
+        return render_edl(workspace)
     return to_markdown(workspace)
 
 

@@ -26,6 +26,9 @@ from app.models.schemas import (
     AuthUserUpdateRequest,
     BgmRecommendationRead,
     BgmSelectionRequest,
+    CapcutDraftDeployRead,
+    CapcutDraftDeployRequest,
+    CapcutExportDefaultsRead,
     ExportDocumentRead,
     ExportCsvImportRequest,
     ExportJsonImportRequest,
@@ -245,6 +248,7 @@ class SqlRepository:
             style_notes=payload.styleNotes,
             route_text=payload.routeText.strip(),
             media_root=payload.mediaRoot,
+            jianying_draft_root=payload.jianyingDraftRoot.strip(),
             status=payload.status,
             selected_theme_id="",
             validate_location_order=payload.validateLocationOrder,
@@ -280,6 +284,7 @@ class SqlRepository:
         project.style_notes = payload.styleNotes
         project.route_text = payload.routeText.strip()
         project.media_root = payload.mediaRoot
+        project.jianying_draft_root = payload.jianyingDraftRoot.strip()
         project.status = payload.status
         project.validate_location_order = payload.validateLocationOrder
         project.allow_asset_reuse = payload.allowAssetReuse
@@ -1234,12 +1239,74 @@ class SqlRepository:
             return None
 
         content = render_export_content(workspace, fmt)
-        extension = {"markdown": "md", "csv": "csv"}.get(fmt, fmt)
+        extension = {
+            "markdown": "md",
+            "csv": "csv",
+            "capcut": "capcut-draft.json",
+            "edl": "edl",
+        }.get(fmt, fmt)
         return ExportDocumentRead(
             projectId=project_id,
             format=fmt,
             fileName=f"{project_id}-timeline.{extension}",
             content=content,
+        )
+
+    def get_capcut_export_defaults(
+        self, session: Session, project_id: str
+    ) -> CapcutExportDefaultsRead | None:
+        from app.services.capcut_draft_export import (
+            default_jianying_draft_root,
+            resolve_jianying_draft_root,
+        )
+
+        project = self.get_project(session, project_id)
+        if not project:
+            return None
+        configured = project.jianyingDraftRoot.strip()
+        return CapcutExportDefaultsRead(
+            defaultDraftRoot=default_jianying_draft_root(),
+            configuredDraftRoot=configured,
+            effectiveDraftRoot=resolve_jianying_draft_root(configured),
+        )
+
+    def deploy_capcut_draft(
+        self,
+        session: Session,
+        project_id: str,
+        payload: CapcutDraftDeployRequest,
+    ) -> CapcutDraftDeployRead | None:
+        from app.services.capcut_draft_export import deploy_capcut_draft as write_capcut_draft
+
+        project_entity = self.get_project_entity(session, project_id)
+        workspace = self.get_workspace(session, project_id)
+        if not project_entity or not workspace:
+            return None
+
+        draft_root = payload.jianyingDraftRoot.strip() or project_entity.jianying_draft_root.strip()
+        if payload.persistConfig and payload.jianyingDraftRoot.strip():
+            project_entity.jianying_draft_root = payload.jianyingDraftRoot.strip()
+            session.add(project_entity)
+            session.commit()
+            session.refresh(project_entity)
+
+        try:
+            result = write_capcut_draft(workspace, draft_root=draft_root)
+        except ValueError as exc:
+            raise ValueError(str(exc)) from exc
+
+        bgm_hint = "，已包含 BGM 音频轨" if result.bgm_included else ""
+        return CapcutDraftDeployRead(
+            projectId=project_id,
+            draftRoot=result.draft_root,
+            draftFolderName=result.draft_folder_name,
+            draftFolderPath=result.draft_folder_path,
+            files=result.files,
+            bgmIncluded=result.bgm_included,
+            message=(
+                f"已写入剪映草稿目录：{result.draft_folder_path}（"
+                f"{', '.join(result.files)}）{bgm_hint}。请重启剪映或刷新草稿列表后打开。"
+            ),
         )
 
     def import_export_json(
@@ -1406,6 +1473,7 @@ class SqlRepository:
             styleNotes=item.style_notes,
             routeText=item.route_text,
             mediaRoot=item.media_root,
+            jianyingDraftRoot=getattr(item, "jianying_draft_root", "") or "",
             status=item.status,
             selectedThemeId=item.selected_theme_id,
             validateLocationOrder=bool(getattr(item, "validate_location_order", False)),
@@ -1490,6 +1558,7 @@ class SqlRepository:
             bgmStyle=item.bgm_style,
             selectedTrackName=item.selected_track_name,
             audioFileName=item.audio_file_name,
+            audioFilePath=item.audio_file_path or "",
             analysisSource=item.analysis_source,
             analysisNotes=loads_str_list(item.analysis_notes),
             detectedBpm=item.detected_bpm,

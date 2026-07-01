@@ -504,6 +504,45 @@ Base URL:
 
 返回分镜时间线 CSV（`segmentId,startTime,endTime,assetId,function,rhythm,beatMode,subtitle`）。
 
+## 7.5 剪映草稿一键写入（Sprint 17，优先）
+
+`GET /projects/{projectId}/exports/capcut-defaults`
+
+返回 `defaultDraftRoot`（系统默认）、`configuredDraftRoot`（项目已保存）、`effectiveDraftRoot`（实际使用路径）。
+
+`POST /projects/{projectId}/exports/capcut/deploy`
+
+请求体：
+
+```json
+{
+  "jianyingDraftRoot": "C:\\Users\\...\\com.lveditor.draft",
+  "persistConfig": true
+}
+```
+
+在剪映草稿根目录下自动新建项目文件夹，并写入 `draft_content.json` 与 `draft_meta_info.json`。若节奏页已上传 BGM，草稿含 audio 轨。
+
+## 7.6 下载剪映草稿 bundle
+
+`POST /projects/{projectId}/exports/capcut`
+
+返回 bundle JSON，`sections` 含两个独立 JSON 文件内容（便于手动备份）。
+
+## 7.7 生成 EDL 粗剪（Sprint 17）
+
+`POST /projects/{projectId}/exports/edl`
+
+返回 CMX3600 风格 EDL 文本，含：
+
+- 分镜时间线（Record In/Out）
+- 素材绝对路径（`* FROM CLIP NAME`，由 `project.mediaRoot` + `asset.relativePath` 拼接）
+- 字幕与镜头描述（`* COMMENT` / `* SHOT`）
+
+可导入 Premiere Pro、DaVinci Resolve 等 NLE 打开粗剪时间线（不渲染成片）。
+
+字段映射详见 `docs/rough-cut-export.md`。
+
 返回结构：
 
 ```json

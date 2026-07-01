@@ -99,6 +99,7 @@ export type ProjectPayload = {
   styleNotes: string;
   routeText: string;
   mediaRoot: string;
+  jianyingDraftRoot?: string;
   status?: string;
   validateLocationOrder?: boolean;
   allowAssetReuse?: boolean;
@@ -680,10 +681,43 @@ export function revokeLlmOAuth(providerId: string): Promise<{ revoked: boolean; 
 
 export function previewExport(
   projectId: string,
-  format: "markdown" | "json" | "yaml" | "csv"
+  format: "markdown" | "json" | "yaml" | "csv" | "capcut" | "edl"
 ): Promise<ExportDocument> {
   return request<ExportDocument>(`/projects/${projectId}/exports/${format}`, {
     method: "POST"
+  });
+}
+
+export type CapcutExportDefaults = {
+  defaultDraftRoot: string;
+  configuredDraftRoot: string;
+  effectiveDraftRoot: string;
+};
+
+export type CapcutDraftDeployResult = {
+  projectId: string;
+  draftRoot: string;
+  draftFolderName: string;
+  draftFolderPath: string;
+  files: string[];
+  bgmIncluded: boolean;
+  message: string;
+};
+
+export function fetchCapcutExportDefaults(projectId: string): Promise<CapcutExportDefaults> {
+  return request<CapcutExportDefaults>(`/projects/${projectId}/exports/capcut-defaults`);
+}
+
+export function deployCapcutDraft(
+  projectId: string,
+  payload: { jianyingDraftRoot?: string; persistConfig?: boolean }
+): Promise<CapcutDraftDeployResult> {
+  return request<CapcutDraftDeployResult>(`/projects/${projectId}/exports/capcut/deploy`, {
+    method: "POST",
+    body: JSON.stringify({
+      jianyingDraftRoot: payload.jianyingDraftRoot ?? "",
+      persistConfig: payload.persistConfig ?? true
+    })
   });
 }
 

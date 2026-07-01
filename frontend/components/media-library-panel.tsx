@@ -10,6 +10,7 @@ import {
 } from "@/components/media-tree-icons";
 import { InlineErrorBanner } from "@/components/ui-primitives";
 import { scanMediaLibrary, type MediaLibraryNode, type MediaLibraryScanResult } from "@/lib/browser-api";
+import { mediaKindLabel } from "@/lib/media-preview-utils";
 import {
   collectMediaFiles,
   findNextUnrecordedFile,
@@ -33,13 +34,6 @@ type MediaLibraryPanelProps = {
   advanceFromPath?: string | null;
   onAdvanceComplete?: () => void;
 };
-
-function kindLabel(kind?: string | null) {
-  if (kind === "video") return "视频";
-  if (kind === "image") return "图片";
-  if (kind === "audio") return "音频";
-  return "文件";
-}
 
 function formatSize(sizeBytes?: number) {
   if (!sizeBytes || sizeBytes <= 0) {
@@ -190,7 +184,7 @@ function TreeNode({
               isSelected ? "bg-white/70 text-ink/50" : "bg-sand/70 text-ink/40"
             )}
           >
-            {kindLabel(node.mediaKind)}
+            {mediaKindLabel(node.mediaKind, "short")}
           </span>
           {formatSize(node.sizeBytes) ? (
             <span className="hidden min-w-[3.5rem] text-right text-[10px] tabular-nums text-ink/35 sm:inline">

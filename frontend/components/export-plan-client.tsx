@@ -6,6 +6,8 @@ import { useRouter } from "next/navigation";
 import { BlockingNotice, ToastNotice } from "@/components/async-status";
 import { LlmProgressOverlay } from "@/components/llm-progress-overlay";
 import {
+  deployCapcutDraft,
+  fetchCapcutExportDefaults,
   importExportCsv,
   importExportJson,
   previewExport,
@@ -29,13 +31,14 @@ import type {
   StoryboardValidation
 } from "@/types/domain";
 
-type ExportFormat = "markdown" | "json" | "yaml" | "csv";
+type ExportFormat = "markdown" | "json" | "yaml" | "csv" | "capcut" | "edl";
 type ImportFormat = "json" | "csv";
 type ConflictStrategy = "overwrite" | "skip";
 
 type ExportPlanClientProps = {
   projectId: string;
   initialPlan: ExportPlan;
+  initialJianyingDraftRoot?: string;
   storyboardValidation: StoryboardValidation;
   exportValidation: ExportValidation;
 };
@@ -84,12 +87,15 @@ function detectSuggestedFields(
 export function ExportPlanClient({
   projectId,
   initialPlan,
+  initialJianyingDraftRoot = "",
   storyboardValidation,
   exportValidation
 }: ExportPlanClientProps) {
   const router = useRouter();
   const [plan, setPlan] = useState(initialPlan);
   const [tagsText, setTagsText] = useState(joinTags(initialPlan.tags));
+  const [jianyingDraftRoot, setJianyingDraftRoot] = useState(initialJianyingDraftRoot);
+  const [defaultJianyingDraftRoot, setDefaultJianyingDraftRoot] = useState("");
   const [preview, setPreview] = useState<ExportDocument | null>(null);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState<{
@@ -106,6 +112,28 @@ export function ExportPlanClient({
   const [importFields, setImportFields] = useState({ subtitle: true, function: false });
   const [importPreview, setImportPreview] = useState<ExportImportResult | null>(null);
   const [llmSuggestedFields, setLlmSuggestedFields] = useState<ExportSuggestField[]>([]);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetchCapcutExportDefaults(projectId)
+      .then((defaults) => {
+        if (cancelled) {
+          return;
+        }
+        setDefaultJianyingDraftRoot(defaults.defaultDraftRoot);
+        if (!initialJianyingDraftRoot.trim()) {
+          setJianyingDraftRoot(defaults.effectiveDraftRoot);
+        }
+      })
+      .catch(() => {
+        if (!cancelled && !initialJianyingDraftRoot.trim()) {
+          setJianyingDraftRoot("");
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [projectId, initialJianyingDraftRoot]);
 
   const validationItems = useMemo(
     () => [
@@ -205,6 +233,27 @@ export function ExportPlanClient({
     });
   }
 
+  function handleDeployCapcut() {
+    setError("");
+    startTransition(async () => {
+      try {
+        const result = await deployCapcutDraft(projectId, {
+          jianyingDraftRoot: jianyingDraftRoot.trim(),
+          persistConfig: true
+        });
+        setNotice({
+          title: "剪映草稿已写入",
+          message: result.message,
+          tone: "success"
+        });
+      } catch (submitError) {
+        showError(
+          submitError instanceof Error ? submitError.message : "写入剪映草稿目录失败，请稍后重试。"
+        );
+      }
+    });
+  }
+
   function handleSuggestWithLlm() {
     setError("");
     start("导出文案建议", EXPORT_LLM_STAGES);
@@ -252,7 +301,9 @@ export function ExportPlanClient({
       markdown: "text/markdown;charset=utf-8",
       json: "application/json;charset=utf-8",
       yaml: "application/x-yaml;charset=utf-8",
-      csv: "text/csv;charset=utf-8"
+      csv: "text/csv;charset=utf-8",
+      capcut: "application/json;charset=utf-8",
+      edl: "text/plain;charset=utf-8"
     };
 
     const blob = new Blob([preview.content], {
@@ -474,8 +525,33 @@ export function ExportPlanClient({
         {error ? (
           <p className="text-sm text-red-600 md:col-span-2">{error}</p>
         ) : null}
+        <label className="block md:col-span-2">
+          <span className="mb-1 block text-sm font-medium text-ink">剪映草稿根目录</span>
+          <input
+            type="text"
+            value={jianyingDraftRoot}
+            onChange={(event) => setJianyingDraftRoot(event.target.value)}
+            placeholder={
+              defaultJianyingDraftRoot ||
+              "C:\\Users\\你的用户名\\AppData\\Local\\JianyingPro\\User Data\\Projects\\com.lveditor.draft"
+            }
+            className="input-field font-mono text-sm"
+          />
+          <p className="mt-1 text-xs text-ink/55">
+            一键写入时会在此目录下自动新建草稿文件夹，并落地 draft_content.json 与 draft_meta_info.json。
+            {defaultJianyingDraftRoot ? ` 系统默认：${defaultJianyingDraftRoot}` : ""}
+          </p>
+        </label>
         <div className="flex flex-wrap gap-3 md:col-span-2">
-          <button type="submit" disabled={isPending || isLlmRunning} className="btn-primary">
+          <button
+            type="button"
+            onClick={handleDeployCapcut}
+            disabled={isPending || isLlmRunning || !jianyingDraftRoot.trim()}
+            className="btn-primary"
+          >
+            {isPending ? "写入中..." : "写入剪映草稿目录"}
+          </button>
+          <button type="submit" disabled={isPending || isLlmRunning} className="btn-secondary">
             {isPending ? "保存中..." : "保存导出信息"}
           </button>
           <button
@@ -518,6 +594,22 @@ export function ExportPlanClient({
           >
             预览 CSV
           </button>
+          <button
+            type="button"
+            onClick={() => handlePreview("capcut")}
+            disabled={isPending || isLlmRunning}
+            className="btn-secondary"
+          >
+            下载剪映草稿 JSON
+          </button>
+          <button
+            type="button"
+            onClick={() => handlePreview("edl")}
+            disabled={isPending || isLlmRunning}
+            className="btn-secondary"
+          >
+            下载 EDL 粗剪
+          </button>
         </div>
       </form>
 
@@ -526,7 +618,7 @@ export function ExportPlanClient({
           <div>
             <h3 className="text-lg font-semibold text-ink">导出预览</h3>
             <p className="mt-1 text-sm text-ink/65">
-              当前导出会把标题、标签、文案、校验摘要和分镜时间线一起写入输出内容。
+              推荐使用「写入剪映草稿目录」自动落地两个 JSON；也可下载 bundle 手动导入。若节奏页已上传 BGM，导出会自动包含音频轨。
             </p>
           </div>
           {preview ? (

@@ -9,6 +9,7 @@ export type Project = {
   styleNotes: string;
   routeText: string;
   mediaRoot: string;
+  jianyingDraftRoot?: string;
   status: string;
   selectedThemeId: string;
   validateLocationOrder: boolean;
@@ -127,6 +128,7 @@ export type RhythmPlan = {
   bgmStyle: string;
   selectedTrackName: string;
   audioFileName: string;
+  audioFilePath?: string;
   analysisSource: string;
   analysisNotes: string[];
   detectedBpm: number;

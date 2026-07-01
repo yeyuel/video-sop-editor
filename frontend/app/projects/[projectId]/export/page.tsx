@@ -31,6 +31,7 @@ export default async function ProjectExportPage({ params }: ProjectExportPagePro
         <ExportPlanClient
           projectId={projectId}
           initialPlan={workspace.exportPlan}
+          initialJianyingDraftRoot={workspace.project.jianyingDraftRoot ?? ""}
           storyboardValidation={workspace.storyboardValidation}
           exportValidation={workspace.exportValidation}
         />

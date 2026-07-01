@@ -463,6 +463,18 @@ def _migration_016_subscription_oauth(session: Session) -> None:
     )
 
 
+def _migration_017_project_jianying_draft_root(session: Session) -> None:
+    inspector = inspect(engine)
+    if "projectentity" not in inspector.get_table_names():
+        return
+
+    project_columns = {column["name"] for column in inspector.get_columns("projectentity")}
+    if "jianying_draft_root" not in project_columns:
+        session.exec(
+            text("ALTER TABLE projectentity ADD COLUMN jianying_draft_root TEXT DEFAULT ''")
+        )
+
+
 MIGRATIONS: list[tuple[int, str, object]] = [
     (1, "001_legacy_columns", _migration_001_legacy_columns),
     (2, "002_rhythm_analysis_metrics", _migration_002_rhythm_analysis_metrics),
@@ -480,6 +492,7 @@ MIGRATIONS: list[tuple[int, str, object]] = [
     (14, "014_allow_asset_reuse", _migration_014_allow_asset_reuse),
     (15, "015_llm_oauth_and_openai_merge", _migration_015_llm_oauth_and_openai_merge),
     (16, "016_subscription_oauth", _migration_016_subscription_oauth),
+    (17, "017_project_jianying_draft_root", _migration_017_project_jianying_draft_root),
 ]
 
 

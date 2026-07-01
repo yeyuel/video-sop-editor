@@ -36,6 +36,8 @@ type AssetFormPrototypeProps = {
   /** 目录树连续录入：保存后不跳转编辑页，保存后回调并跳下一条。 */
   intakeMode?: boolean;
   onIntakeSaved?: (info: { relativePath: string; assetId: string }) => void;
+  /** 相对路径 / 媒体类型变更时同步预览区。 */
+  onPreviewContextChange?: (context: { relativePath: string; mediaType: string }) => void;
 };
 
 type FunctionTagOption = {
@@ -129,7 +131,8 @@ export function AssetFormPrototype({
   asset,
   defaults,
   intakeMode = false,
-  onIntakeSaved
+  onIntakeSaved,
+  onPreviewContextChange
 }: AssetFormPrototypeProps) {
   const router = useRouter();
   const backHref = `/projects/${projectId}/assets`;
@@ -178,6 +181,14 @@ export function AssetFormPrototype({
       mediaType: defaults.mediaType ?? current.mediaType
     }));
   }, [defaults?.location, defaults?.mediaType, defaults?.relativePath, mode]);
+
+  useEffect(() => {
+    onPreviewContextChange?.({
+      relativePath: form.relativePath,
+      mediaType: form.mediaType
+    });
+  }, [form.mediaType, form.relativePath, onPreviewContextChange]);
+
   const [prefilledFields, setPrefilledFields] = useState<string[]>(asset?.visionPrefilledFields ?? []);
   const [visionCapability, setVisionCapability] = useState<LlmVisionCapability | null>(null);
 

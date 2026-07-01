@@ -44,6 +44,7 @@ class ProjectEntity(SQLModel, table=True):
     style_notes: str = ""
     route_text: str = ""
     media_root: str = ""
+    jianying_draft_root: str = ""
     status: str
     selected_theme_id: str = ""
     validate_location_order: bool = False

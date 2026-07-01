@@ -3,64 +3,60 @@
 import { useEffect, useState } from "react";
 
 import { InlineErrorBanner } from "@/components/ui-primitives";
-import { getMediaPosterUrl, getMediaPreviewUrl } from "@/lib/browser-api";
-import { readApiErrorDetail } from "@/lib/api-base";
-import type { MediaLibraryNode } from "@/lib/browser-api";
-import type { MediaPreviewQuality } from "@/lib/browser-api";
+import { getMediaPosterUrl, getMediaPreviewUrl, type MediaPreviewQuality } from "@/lib/browser-api";
+import {
+  mediaKindLabel,
+  probeMediaUrl,
+  type MediaKind
+} from "@/lib/media-preview-utils";
 
-type MediaPreviewPanelProps = {
+export type AssetMediaPreviewProps = {
   projectId: string;
-  file: MediaLibraryNode | null;
+  relativePath: string | null;
+  mediaKind: MediaKind | null;
+  displayName?: string;
+  showRecordedBadge?: boolean;
+  maxHeightClassName?: string;
+  emptyMessage?: string;
+  className?: string;
 };
 
-function kindLabel(kind?: string | null) {
-  if (kind === "video") return "视频预览";
-  if (kind === "image") return "图片预览";
-  if (kind === "audio") return "音频预览";
-  return "媒体预览";
-}
-
-async function probeMediaUrl(url: string): Promise<string | null> {
-  try {
-    const response = await fetch(url, {
-      credentials: "include",
-      method: "GET",
-      headers: { Range: "bytes=0-0" }
-    });
-    if (response.ok || response.status === 206) {
-      return null;
-    }
-    return readApiErrorDetail(response);
-  } catch {
-    return "暂时无法连接预览服务，请确认前后端均已启动。";
-  }
-}
-
-export function MediaPreviewPanel({ projectId, file }: MediaPreviewPanelProps) {
+export function AssetMediaPreview({
+  projectId,
+  relativePath,
+  mediaKind,
+  displayName,
+  showRecordedBadge = false,
+  maxHeightClassName = "max-h-[380px]",
+  emptyMessage = "填写或选择素材相对路径后，可在此预览视频、图片或音频。",
+  className = ""
+}: AssetMediaPreviewProps) {
   const [quality, setQuality] = useState<MediaPreviewQuality>("fast");
   const [videoReady, setVideoReady] = useState(false);
   const [videoError, setVideoError] = useState<string | null>(null);
   const [probeError, setProbeError] = useState<string | null>(null);
 
+  const normalizedPath = relativePath?.trim() ?? "";
+
   useEffect(() => {
     setVideoReady(false);
     setVideoError(null);
     setProbeError(null);
-  }, [file?.relativePath, quality]);
+  }, [normalizedPath, quality, mediaKind]);
 
   useEffect(() => {
-    if (!file || file.nodeType !== "file") {
+    if (!normalizedPath || !mediaKind) {
       return;
     }
 
     let cancelled = false;
     const previewUrl = getMediaPreviewUrl(
       projectId,
-      file.relativePath,
-      file.mediaKind === "video" ? { quality } : undefined
+      normalizedPath,
+      mediaKind === "video" ? { quality } : undefined
     );
     const posterUrl =
-      file.mediaKind === "video" ? getMediaPosterUrl(projectId, file.relativePath) : null;
+      mediaKind === "video" ? getMediaPosterUrl(projectId, normalizedPath) : null;
 
     void (async () => {
       const previewMessage = await probeMediaUrl(previewUrl);
@@ -82,39 +78,38 @@ export function MediaPreviewPanel({ projectId, file }: MediaPreviewPanelProps) {
     return () => {
       cancelled = true;
     };
-  }, [file, projectId, quality]);
+  }, [mediaKind, normalizedPath, projectId, quality]);
 
-  if (!file || file.nodeType !== "file") {
+  if (!normalizedPath || !mediaKind) {
     return (
-      <div className="surface-muted flex min-h-[220px] flex-col justify-center px-6 py-8">
+      <div
+        className={`surface-muted flex min-h-[220px] flex-col justify-center px-6 py-8 ${className}`}
+      >
         <p className="text-sm font-medium text-ink/80">预览区</p>
-        <p className="mt-2 max-w-lg text-sm leading-7 text-ink/55">
-          在左侧目录树中选择一个文件，可在此预览并自动带入录入表单。
-        </p>
+        <p className="mt-2 max-w-lg text-sm leading-7 text-ink/55">{emptyMessage}</p>
       </div>
     );
   }
 
-  const isVideo = file.mediaKind === "video";
+  const isVideo = mediaKind === "video";
   const previewUrl = getMediaPreviewUrl(
     projectId,
-    file.relativePath,
+    normalizedPath,
     isVideo ? { quality } : undefined
   );
-  const posterUrl = isVideo ? getMediaPosterUrl(projectId, file.relativePath) : null;
+  const posterUrl = isVideo ? getMediaPosterUrl(projectId, normalizedPath) : null;
   const displayError = probeError ?? videoError;
+  const title = displayName?.trim() || normalizedPath.split(/[/\\]/).pop() || normalizedPath;
 
   return (
-    <div className="surface-panel overflow-hidden p-4 md:p-5">
+    <div className={`surface-panel overflow-hidden p-4 md:p-5 ${className}`}>
       <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
           <p className="text-[11px] font-medium uppercase tracking-[0.24em] text-pine/70">
-            {kindLabel(file.mediaKind)}
+            {mediaKindLabel(mediaKind, "preview")}
           </p>
-          <h3 className="mt-1.5 truncate text-lg font-semibold tracking-tight text-ink">
-            {file.name}
-          </h3>
-          <p className="mt-1 break-all text-xs leading-5 text-ink/45">{file.relativePath}</p>
+          <h3 className="mt-1.5 truncate text-lg font-semibold tracking-tight text-ink">{title}</h3>
+          <p className="mt-1 break-all text-xs leading-5 text-ink/45">{normalizedPath}</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           {isVideo ? (
@@ -139,9 +134,7 @@ export function MediaPreviewPanel({ projectId, file }: MediaPreviewPanelProps) {
               </button>
             </div>
           ) : null}
-          {file.hasAsset ? (
-            <span className="badge">已录入素材库</span>
-          ) : null}
+          {showRecordedBadge ? <span className="badge">已录入素材库</span> : null}
         </div>
       </div>
 
@@ -154,8 +147,8 @@ export function MediaPreviewPanel({ projectId, file }: MediaPreviewPanelProps) {
           <>
             {!videoReady && posterUrl && !probeError ? (
               <img
-                alt={`${file.name} 封面`}
-                className="max-h-[380px] w-full object-contain"
+                alt={`${title} 封面`}
+                className={`${maxHeightClassName} w-full object-contain`}
                 src={posterUrl}
               />
             ) : null}
@@ -177,7 +170,7 @@ export function MediaPreviewPanel({ projectId, file }: MediaPreviewPanelProps) {
               playsInline
               preload="metadata"
               poster={posterUrl ?? undefined}
-              className={`max-h-[380px] w-full bg-black object-contain ${videoReady && !probeError ? "" : "absolute inset-0 opacity-0"}`}
+              className={`${maxHeightClassName} w-full bg-black object-contain ${videoReady && !probeError ? "" : "absolute inset-0 opacity-0"}`}
               src={previewUrl}
               onLoadedData={() => setVideoReady(true)}
               onError={() =>
@@ -190,15 +183,15 @@ export function MediaPreviewPanel({ projectId, file }: MediaPreviewPanelProps) {
             />
           </>
         ) : null}
-        {file.mediaKind === "image" && !probeError ? (
+        {mediaKind === "image" && !probeError ? (
           <img
             key={previewUrl}
-            alt={file.name}
-            className="max-h-[380px] w-full object-contain"
+            alt={title}
+            className={`${maxHeightClassName} w-full object-contain`}
             src={previewUrl}
           />
         ) : null}
-        {file.mediaKind === "audio" && !probeError ? (
+        {mediaKind === "audio" && !probeError ? (
           <div className="flex min-h-[180px] items-center justify-center bg-gradient-to-br from-pine/20 to-clay/10 p-6">
             <audio key={previewUrl} controls className="w-full max-w-xl" src={previewUrl} />
           </div>

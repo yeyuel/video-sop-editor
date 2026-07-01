@@ -1,4 +1,4 @@
-import { AssetFormPrototype } from "@/components/asset-form-prototype";
+import { AssetEditClient } from "@/components/asset-edit-client";
 import { ProjectPageLayout } from "@/components/project-page-layout";
 import { getAsset, getWorkspace } from "@/lib/api";
 import { projectBreadcrumbs } from "@/lib/project-nav";
@@ -28,12 +28,7 @@ export default async function EditAssetPage({ params }: EditAssetPageProps) {
       breadcrumbs={projectBreadcrumbs(projectId, workspace.project.name, "编辑素材")}
       aside={<span className="badge-ai">Vision 预填</span>}
     >
-      <AssetFormPrototype
-        key={`${asset.assetId}-${asset.visionAnalysisStatus}-${(asset.visionPrefilledFields ?? []).join(",")}`}
-        mode="edit"
-        projectId={projectId}
-        asset={asset}
-      />
+      <AssetEditClient projectId={projectId} asset={asset} />
     </ProjectPageLayout>
   );
 }

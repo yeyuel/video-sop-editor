@@ -86,6 +86,7 @@ export function ProjectBasicsPrototype({
     styleNotes: project?.styleNotes ?? "",
     routeText: project?.routeText ?? "",
     mediaRoot: project?.mediaRoot ?? "",
+    jianyingDraftRoot: project?.jianyingDraftRoot ?? "",
     status: project?.status ?? "draft",
     validateLocationOrder: project?.validateLocationOrder ?? false,
     allowAssetReuse: project?.allowAssetReuse ?? false
@@ -144,6 +145,7 @@ export function ProjectBasicsPrototype({
             styleNotes: updated.styleNotes,
             routeText: updated.routeText,
             mediaRoot: updated.mediaRoot,
+            jianyingDraftRoot: updated.jianyingDraftRoot ?? "",
             status: updated.status,
             validateLocationOrder: updated.validateLocationOrder,
             allowAssetReuse: updated.allowAssetReuse
