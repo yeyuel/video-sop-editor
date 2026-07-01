@@ -4,6 +4,7 @@ from sqlmodel import Session
 from app.api.deps import require_project_editor
 from app.db import get_session
 from app.models.schemas import ApiResponse, CapcutDraftDeployRequest
+from app.services.capcut_draft_export import CapcutDraftFolderExistsError
 from app.services.repository import repository
 
 router = APIRouter(
@@ -31,6 +32,8 @@ def deploy_capcut_draft(
 ) -> ApiResponse:
     try:
         result = repository.deploy_capcut_draft(session, project_id, payload)
+    except CapcutDraftFolderExistsError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     if result is None:

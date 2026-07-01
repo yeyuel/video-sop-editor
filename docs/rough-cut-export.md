@@ -32,7 +32,7 @@
 
 | 条件 | 行为 |
 |------|------|
-| `rhythmPlan.audioFilePath` 指向有效文件 | 添加 BGM 轨，覆盖整段时间线 |
+| `rhythmPlan.audioFilePath` 指向有效文件 | 添加 BGM 轨，覆盖整段时间线，默认 1s 淡出 |
 | 未上传 / 文件不存在 | 跳过音频轨，仅导出视频 + 字幕 |
 
 ## 3. 字段映射
@@ -43,10 +43,20 @@
 |---------|---------|------|
 | `startTime` / `endTime` | `segments[].target_timerange` | 秒 → 微秒 |
 | `asset.relativePath` + `project.mediaRoot` | `materials.videos[].path` | 素材绝对路径 |
-| `subtitle` | `materials.texts[]` + 文本轨 | UTF-16 字节 range |
-| BGM 上传文件 | `materials.audios[]` + audio 轨 | 可选 |
+| `subtitle` | `materials.texts[]` + 文本轨 | UTF-16 字节 range；默认 **悠然体**、字号 15 的 50%（7.5） |
+| BGM 上传文件 | `materials.audios[]` + audio 轨 | 可选；默认 **1s 淡出**（`materials.audio_fades`，剪映内可再调） |
 
-### 3.2 版本说明
+### 3.2 字幕与 BGM 默认样式
+
+| 项 | 默认 | 剪映内可调 |
+|----|------|-----------|
+| 字幕字体 | 悠然体（内置 resource_id `349311`） | 是 |
+| 字幕字号 | 7.5（原导出默认 15 的 50%） | 是 |
+| BGM 结束 | 1s 淡出（`audio_fades.fade_out_duration`） | 是 |
+
+字体 ID 参考 pyJianYingDraft `FontType.悠然体`；若剪映版本未内置该字体，会回退为默认字体，可在剪映中批量替换。
+
+### 3.3 版本说明
 
 | 版本 | 状态 |
 |------|------|

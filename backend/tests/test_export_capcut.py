@@ -16,8 +16,13 @@ from app.models.schemas import (
     WorkspaceDataRead,
 )
 from app.services.capcut_draft_export import (
+    CAPTION_FONT_SIZE,
+    DEFAULT_BGM_FADE_OUT_SEC,
+    CapcutDraftFolderExistsError,
+    JIANYING_FONT_YOURAN,
     build_capcut_draft,
     build_text_content,
+    clear_draft_folder_contents,
     deploy_capcut_draft,
     render_capcut_draft,
     seconds_to_microseconds,
@@ -139,15 +144,19 @@ def test_seconds_to_microseconds() -> None:
     assert seconds_to_microseconds(1.5) == 1_500_000
 
 
-def test_build_text_content_uses_utf16_byte_range() -> None:
+def test_build_text_content_uses_jianying_char_range_and_youran_font() -> None:
     content = build_text_content("Hello")
     parsed = json.loads(content)
     assert parsed["text"] == "Hello"
-    assert parsed["styles"][0]["range"] == [0, 10]
+    assert parsed["styles"][0]["range"] == [0, 5]
+    assert parsed["styles"][0]["size"] == CAPTION_FONT_SIZE
+    assert parsed["styles"][0]["font"]["id"] == JIANYING_FONT_YOURAN["resource_id"]
+    assert parsed["styles"][0]["font"]["path"] == JIANYING_FONT_YOURAN["path"]
+    assert parsed["styles"][0]["font"]["id"] == "6740436145831678467"
 
     chinese = build_text_content("你好")
     chinese_parsed = json.loads(chinese)
-    assert chinese_parsed["styles"][0]["range"] == [0, 4]
+    assert chinese_parsed["styles"][0]["range"] == [0, 2]
 
 
 def test_build_capcut_draft_contains_tracks_and_materials() -> None:
@@ -165,6 +174,12 @@ def test_build_capcut_draft_contains_tracks_and_materials() -> None:
         "D:/media/altay/禾木/wide/HEMU_002.mp4"
     )
     assert len(draft["materials"]["texts"]) == 2
+    text_material = draft["materials"]["texts"][0]
+    assert text_material["type"] == "text"
+    assert text_material["global_alpha"] == 1.0
+    content = json.loads(text_material["content"])
+    assert content["styles"][0]["font"]["id"] == JIANYING_FONT_YOURAN["resource_id"]
+    assert content["styles"][0]["size"] == CAPTION_FONT_SIZE
 
 
 def test_build_capcut_draft_includes_bgm_when_audio_exists(tmp_path: Path) -> None:
@@ -179,6 +194,11 @@ def test_build_capcut_draft_includes_bgm_when_audio_exists(tmp_path: Path) -> No
     assert draft["tracks"][1]["type"] == "audio"
     assert len(draft["materials"]["audios"]) == 1
     assert draft["materials"]["audios"][0]["path"] == str(bgm_path).replace("\\", "/")
+    assert len(draft["materials"]["audio_fades"]) == 1
+    fade = draft["materials"]["audio_fades"][0]
+    assert fade["fade_out_duration"] == seconds_to_microseconds(DEFAULT_BGM_FADE_OUT_SEC)
+    audio_segment = draft["tracks"][1]["segments"][0]
+    assert fade["id"] in audio_segment["extra_material_refs"]
 
 
 def test_build_capcut_draft_skips_bgm_when_missing_file() -> None:
@@ -222,3 +242,56 @@ def test_deploy_capcut_draft_requires_absolute_root(tmp_path: Path) -> None:
     workspace = _workspace()
     with pytest.raises(ValueError, match="绝对路径"):
         deploy_capcut_draft(workspace, draft_root="relative/path")
+
+
+def test_deploy_capcut_draft_raises_when_folder_exists(tmp_path: Path) -> None:
+    workspace = _workspace()
+    folder_name = f"{workspace.project.id}-阿勒泰冬日氛围"
+    existing = tmp_path / folder_name
+    existing.mkdir(parents=True)
+    (existing / "draft_content.json").write_text("{}", encoding="utf-8")
+
+    with pytest.raises(CapcutDraftFolderExistsError):
+        deploy_capcut_draft(workspace, draft_root=str(tmp_path))
+
+
+def test_deploy_capcut_draft_clears_existing_folder_when_requested(tmp_path: Path) -> None:
+    workspace = _workspace()
+    folder_name = f"{workspace.project.id}-阿勒泰冬日氛围"
+    existing = tmp_path / folder_name
+    existing.mkdir(parents=True)
+    stale = existing / "stale.txt"
+    stale.write_text("old", encoding="utf-8")
+    (existing / "draft_content.json").write_text("{}", encoding="utf-8")
+
+    result = deploy_capcut_draft(workspace, draft_root=str(tmp_path), clear_existing=True)
+
+    folder = Path(result.draft_folder_path)
+    assert not stale.exists()
+    assert (folder / "draft_content.json").exists()
+    payload = json.loads((folder / "draft_content.json").read_text(encoding="utf-8"))
+    assert payload["name"] == "阿勒泰冬日氛围"
+
+
+def test_clear_draft_folder_contents_removes_files_and_subfolders(tmp_path: Path) -> None:
+    folder = tmp_path / "draft"
+    folder.mkdir()
+    (folder / "draft_content.json").write_text("{}", encoding="utf-8")
+    nested = folder / "assets"
+    nested.mkdir()
+    (nested / "clip.mp4").write_bytes(b"demo")
+
+    clear_draft_folder_contents(folder)
+
+    assert folder.is_dir()
+    assert not any(folder.iterdir())
+
+
+def test_build_text_content_matches_pyjianyingdraft_font_id() -> None:
+    pytest.importorskip("pyJianYingDraft")
+    from pyJianYingDraft import FontType
+
+    meta = FontType.悠然体.value
+    content = build_text_content("测试悠然体")
+    parsed = json.loads(content)
+    assert parsed["styles"][0]["font"]["id"] == meta.resource_id

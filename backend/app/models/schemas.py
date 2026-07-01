@@ -357,6 +357,7 @@ class ExportDocumentRead(BaseModel):
 class CapcutDraftDeployRequest(BaseModel):
     jianyingDraftRoot: str = ""
     persistConfig: bool = True
+    clearExisting: bool = False
 
 
 class CapcutDraftDeployRead(BaseModel):

@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import shutil
 import uuid
 from dataclasses import dataclass
 from pathlib import Path
@@ -18,6 +19,22 @@ JIANYING_PLATFORM = {
     "os": "windows",
 }
 DRAFT_FILE_NAMES = ("draft_content.json", "draft_meta_info.json")
+
+# CapCut default caption export used 15; user feedback prefers half size.
+DEFAULT_CAPTION_FONT_SIZE = 15.0
+CAPTION_FONT_SIZE = DEFAULT_CAPTION_FONT_SIZE * 0.5
+
+# JianYing built-in font metadata (pyJianYingDraft FontType.悠然体 / EffectMeta).
+# EffectMeta(resource_id, effect_id): content.styles[].font.id uses resource_id.
+JIANYING_FONT_YOURAN = {
+    "name": "悠然体",
+    "resource_id": "6740436145831678467",
+    "effect_id": "349311",
+    "md5": "7f7454ea269cfebfef1b104673f05894",
+    "path": "D:",
+}
+
+DEFAULT_BGM_FADE_OUT_SEC = 1.0
 
 
 def default_jianying_draft_root() -> str:
@@ -54,23 +71,31 @@ def _new_id(prefix: str) -> str:
     return f"{prefix}-{uuid.uuid4()}"
 
 
-def build_text_content(text: str) -> str:
-    encoded = text.encode("utf-16-le")
-    byte_len = len(encoded)
+def text_style_range(text: str) -> list[int]:
+    """JianYing 5.9 (`app_source: lv`) uses character indices in content.styles.range."""
+    return [0, len(text)]
+
+
+def build_text_content(text: str, *, font_size: float = CAPTION_FONT_SIZE) -> str:
     payload = {
         "styles": [
             {
-                "range": [0, byte_len],
-                "size": 15,
+                "fill": {
+                    "alpha": 1.0,
+                    "content": {
+                        "render_type": "solid",
+                        "solid": {"alpha": 1.0, "color": [1, 1, 1]},
+                    },
+                },
+                "range": text_style_range(text),
+                "size": font_size,
                 "bold": False,
                 "italic": False,
                 "underline": False,
-                "fill": {
-                    "alpha": 1,
-                    "content": {
-                        "render_type": "solid",
-                        "solid": {"alpha": 1, "color": [1, 1, 1]},
-                    },
+                "strokes": [],
+                "font": {
+                    "id": JIANYING_FONT_YOURAN["resource_id"],
+                    "path": JIANYING_FONT_YOURAN["path"],
                 },
             }
         ],
@@ -293,31 +318,51 @@ def _audio_material(
 
 
 def _text_material(*, material_id: str, text: str) -> dict[str, Any]:
+    # Match pyJianYingDraft TextSegment.export_material(): font lives in content JSON.
     return {
         "id": material_id,
         "type": "text",
         "content": build_text_content(text),
         "alignment": 1,
-        "font_size": 15,
-        "text_color": "#FFFFFF",
         "typesetting": 0,
-        "letter_spacing": 0,
+        "letter_spacing": 0.0,
         "line_spacing": 0.02,
         "line_feed": 1,
         "line_max_width": 0.82,
         "force_apply_line_max_width": False,
         "check_flag": 7,
-        "fixed_width": -1,
-        "fixed_height": -1,
-        "has_shadow": True,
-        "shadow_alpha": 0.8,
-        "shadow_color": "#000000",
-        "shadow_distance": 6,
-        "border_width": 0.08,
-        "border_color": "#000000",
-        "border_alpha": 1,
-        "has_border": True,
+        "global_alpha": 1.0,
     }
+
+
+def _audio_fade_material(*, fade_id: str, fade_out_us: int, fade_in_us: int = 0) -> dict[str, Any]:
+    return {
+        "id": fade_id,
+        "type": "audio_fade",
+        "fade_in_duration": fade_in_us,
+        "fade_out_duration": fade_out_us,
+        "fade_type": 0,
+    }
+
+
+def _attach_bgm_fade_out(
+    materials: dict[str, list[Any]],
+    companion_refs: list[str],
+    *,
+    timeline_duration_us: int,
+    fade_out_sec: float = DEFAULT_BGM_FADE_OUT_SEC,
+) -> list[str]:
+    if timeline_duration_us <= 0:
+        return companion_refs
+    fade_out_us = min(
+        seconds_to_microseconds(fade_out_sec),
+        max(seconds_to_microseconds(0.2), timeline_duration_us // 2),
+    )
+    fade_id = _new_id("fade")
+    materials["audio_fades"].append(
+        _audio_fade_material(fade_id=fade_id, fade_out_us=fade_out_us)
+    )
+    return [*companion_refs, fade_id]
 
 
 def _empty_materials() -> dict[str, list[Any]]:
@@ -445,6 +490,11 @@ def build_capcut_draft(workspace: WorkspaceDataRead, *, bgm_path: str = "") -> d
         )
         companion_refs, companion_materials = _create_companion_materials("audio")
         _merge_materials(materials, companion_materials)
+        companion_refs = _attach_bgm_fade_out(
+            materials,
+            companion_refs,
+            timeline_duration_us=timeline_duration_us,
+        )
         audio_segments.append(
             _base_segment(
                 segment_id=_new_id("seg-audio"),
@@ -552,10 +602,35 @@ class CapcutDraftDeployResult:
     bgm_included: bool
 
 
+class CapcutDraftFolderExistsError(ValueError):
+    def __init__(self, *, draft_folder_name: str, draft_folder_path: str) -> None:
+        self.draft_folder_name = draft_folder_name
+        self.draft_folder_path = draft_folder_path
+        super().__init__(
+            f"剪映草稿文件夹已存在：{draft_folder_path}。"
+            "如需覆盖，请确认清除该文件夹内的现有文件后重新写入。"
+        )
+
+
+def draft_folder_has_contents(folder_path: Path) -> bool:
+    return folder_path.is_dir() and any(folder_path.iterdir())
+
+
+def clear_draft_folder_contents(folder_path: Path) -> None:
+    if not folder_path.is_dir():
+        return
+    for child in folder_path.iterdir():
+        if child.is_dir():
+            shutil.rmtree(child)
+        else:
+            child.unlink()
+
+
 def deploy_capcut_draft(
     workspace: WorkspaceDataRead,
     *,
     draft_root: str,
+    clear_existing: bool = False,
 ) -> CapcutDraftDeployResult:
     resolved_root = resolve_jianying_draft_root(draft_root)
     if not resolved_root:
@@ -568,6 +643,15 @@ def deploy_capcut_draft(
     draft = build_capcut_draft(workspace)
     draft_folder_name = build_draft_folder_name(workspace)
     folder_path = root_path / draft_folder_name
+
+    if draft_folder_has_contents(folder_path) and not clear_existing:
+        raise CapcutDraftFolderExistsError(
+            draft_folder_name=draft_folder_name,
+            draft_folder_path=str(folder_path).replace("\\", "/"),
+        )
+
+    if clear_existing and folder_path.is_dir():
+        clear_draft_folder_contents(folder_path)
     folder_path.mkdir(parents=True, exist_ok=True)
 
     payload = json.dumps(draft, ensure_ascii=False, indent=2)

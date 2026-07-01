@@ -5,7 +5,9 @@ import { useEffect, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { BlockingNotice, ToastNotice } from "@/components/async-status";
 import { LlmProgressOverlay } from "@/components/llm-progress-overlay";
+import { ConfirmDialog } from "@/components/ui-primitives";
 import {
+  CapcutDraftConflictError,
   deployCapcutDraft,
   fetchCapcutExportDefaults,
   importExportCsv,
@@ -112,6 +114,9 @@ export function ExportPlanClient({
   const [importFields, setImportFields] = useState({ subtitle: true, function: false });
   const [importPreview, setImportPreview] = useState<ExportImportResult | null>(null);
   const [llmSuggestedFields, setLlmSuggestedFields] = useState<ExportSuggestField[]>([]);
+  const [deployConfirm, setDeployConfirm] = useState<{ draftFolderPath: string; message: string } | null>(
+    null
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -233,19 +238,45 @@ export function ExportPlanClient({
     });
   }
 
+  async function runDeployCapcut(clearExisting: boolean) {
+    const result = await deployCapcutDraft(projectId, {
+      jianyingDraftRoot: jianyingDraftRoot.trim(),
+      persistConfig: true,
+      clearExisting
+    });
+    setDeployConfirm(null);
+    setNotice({
+      title: "剪映草稿已写入",
+      message: result.message,
+      tone: "success"
+    });
+  }
+
   function handleDeployCapcut() {
     setError("");
     startTransition(async () => {
       try {
-        const result = await deployCapcutDraft(projectId, {
-          jianyingDraftRoot: jianyingDraftRoot.trim(),
-          persistConfig: true
-        });
-        setNotice({
-          title: "剪映草稿已写入",
-          message: result.message,
-          tone: "success"
-        });
+        await runDeployCapcut(false);
+      } catch (submitError) {
+        if (submitError instanceof CapcutDraftConflictError) {
+          setDeployConfirm({
+            draftFolderPath: submitError.draftFolderPath,
+            message: submitError.message
+          });
+          return;
+        }
+        showError(
+          submitError instanceof Error ? submitError.message : "写入剪映草稿目录失败，请稍后重试。"
+        );
+      }
+    });
+  }
+
+  function handleConfirmDeployOverwrite() {
+    setError("");
+    startTransition(async () => {
+      try {
+        await runDeployCapcut(true);
       } catch (submitError) {
         showError(
           submitError instanceof Error ? submitError.message : "写入剪映草稿目录失败，请稍后重试。"
@@ -417,6 +448,25 @@ export function ExportPlanClient({
         title={notice?.title ?? ""}
         tone={notice?.tone}
         visible={Boolean(notice)}
+      />
+      <ConfirmDialog
+        open={Boolean(deployConfirm)}
+        title="草稿文件夹已存在"
+        description={
+          deployConfirm
+            ? `${deployConfirm.message} 点击「清除并写入」将删除该文件夹内的全部现有文件，然后重新生成草稿。`
+            : ""
+        }
+        subtitle={deployConfirm?.draftFolderPath}
+        confirmLabel="清除并写入"
+        confirmTone="danger"
+        isPending={isPending}
+        error={deployConfirm ? error : ""}
+        onCancel={() => {
+          setDeployConfirm(null);
+          setError("");
+        }}
+        onConfirm={handleConfirmDeployOverwrite}
       />
 
       <div className="surface-panel p-5">

@@ -1276,7 +1276,10 @@ class SqlRepository:
         project_id: str,
         payload: CapcutDraftDeployRequest,
     ) -> CapcutDraftDeployRead | None:
-        from app.services.capcut_draft_export import deploy_capcut_draft as write_capcut_draft
+        from app.services.capcut_draft_export import (
+            CapcutDraftFolderExistsError,
+            deploy_capcut_draft as write_capcut_draft,
+        )
 
         project_entity = self.get_project_entity(session, project_id)
         workspace = self.get_workspace(session, project_id)
@@ -1291,7 +1294,13 @@ class SqlRepository:
             session.refresh(project_entity)
 
         try:
-            result = write_capcut_draft(workspace, draft_root=draft_root)
+            result = write_capcut_draft(
+                workspace,
+                draft_root=draft_root,
+                clear_existing=payload.clearExisting,
+            )
+        except CapcutDraftFolderExistsError:
+            raise
         except ValueError as exc:
             raise ValueError(str(exc)) from exc
 

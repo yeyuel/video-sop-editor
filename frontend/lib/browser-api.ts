@@ -704,21 +704,47 @@ export type CapcutDraftDeployResult = {
   message: string;
 };
 
+export class CapcutDraftConflictError extends Error {
+  draftFolderPath: string;
+
+  constructor(message: string, draftFolderPath: string) {
+    super(message);
+    this.name = "CapcutDraftConflictError";
+    this.draftFolderPath = draftFolderPath;
+  }
+}
+
 export function fetchCapcutExportDefaults(projectId: string): Promise<CapcutExportDefaults> {
   return request<CapcutExportDefaults>(`/projects/${projectId}/exports/capcut-defaults`);
 }
 
-export function deployCapcutDraft(
+export async function deployCapcutDraft(
   projectId: string,
-  payload: { jianyingDraftRoot?: string; persistConfig?: boolean }
+  payload: { jianyingDraftRoot?: string; persistConfig?: boolean; clearExisting?: boolean }
 ): Promise<CapcutDraftDeployResult> {
-  return request<CapcutDraftDeployResult>(`/projects/${projectId}/exports/capcut/deploy`, {
+  const response = await fetch(`${getBrowserApiBaseUrl()}/projects/${projectId}/exports/capcut/deploy`, {
     method: "POST",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       jianyingDraftRoot: payload.jianyingDraftRoot ?? "",
-      persistConfig: payload.persistConfig ?? true
+      persistConfig: payload.persistConfig ?? true,
+      clearExisting: payload.clearExisting ?? false
     })
   });
+
+  if (response.status === 409) {
+    const detail = await readApiErrorDetail(response);
+    const pathMatch = detail.match(/已存在：(.+?)。/);
+    throw new CapcutDraftConflictError(detail, pathMatch?.[1] ?? "");
+  }
+
+  if (!response.ok) {
+    throw new Error(await readApiErrorDetail(response));
+  }
+
+  const envelope = (await response.json()) as ApiEnvelope<CapcutDraftDeployResult>;
+  return envelope.data;
 }
 
 export type ExportImportChange = {
