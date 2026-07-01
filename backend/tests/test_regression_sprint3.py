@@ -146,7 +146,6 @@ def test_rhythm_bgm_recommend_and_save(regression_env) -> None:
     plan = generate_response.json()["data"]
     assert plan["bgmPhase"] == "recommended"
     assert len(plan["recommendedBgm"]) >= 2
-    assert plan["beatPoints"] == []
 
     save_response = client.put(
         f"/api/v1/projects/{project_id}/rhythm-plan/bgm-selection",

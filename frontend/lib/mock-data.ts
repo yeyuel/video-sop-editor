@@ -8,17 +8,17 @@ import type {
 export const fallbackProjects: Project[] = [
   {
     id: "proj_001",
-    name: "阿勒泰雪国片",
-    destination: "阿勒泰",
-    platform: "xiaohongshu",
-    targetDurationSec: 60,
-    videoType: "emotion_film",
-    stylePreference: "情绪氛围片",
-    styleNotes: "冷蓝色调，空镜为主，结尾保留回味感。",
-    routeText: "将军山 - 喀纳斯 - 禾木",
-    mediaRoot: "D:\\素材库\\阿勒泰项目",
+    name: "五月的台州",
+    destination: "台州",
+    platform: "douyin",
+    targetDurationSec: 40,
+    videoType: "travel_montage",
+    stylePreference: "旅行攻略片",
+    styleNotes: "绿色调，无旁边，空境为主",
+    routeText: "国清寺-天台山-神仙居",
+    mediaRoot: "E:\\自媒体\\2025-台州-p3",
     status: "draft",
-    selectedThemeId: "theme_001",
+    selectedThemeId: "theme_5ddee337",
     validateLocationOrder: false,
     allowAssetReuse: false
   }
@@ -51,106 +51,105 @@ const fallbackExportValidation = {
 };
 
 const fallbackExportPlan: ExportPlan = {
-  title: "原来冬天的阿勒泰，真的像童话",
-  shortTitle: "阿勒泰雪国童话",
-  description: "把雪、木屋和路上的人，剪成一段安静但有记忆点的冬日旅程。",
-  tags: ["阿勒泰", "旅行剪辑", "冬日雪景"],
-  coverSuggestion: "优先使用禾木木屋群远景，标题放在右下角保留雪景留白。"
+  title: "五月台州绿到失语",
+  shortTitle: "台州绿意路线",
+  description:
+    "五月去台州，这条线真的很治愈。\n国清寺先静下来，天台山看飞瀑，神仙居走进云雾里。\n路线：国清寺-天台山-神仙居。\n喜欢这种清幽空镜旅行吗？",
+  tags: ["台州旅行", "五月出游", "治愈系风景", "旅行攻略"],
+  coverSuggestion:
+    "选国清寺石牌坊或神仙居云雾红桥作封面，主体居中；封面字用“五月台州绿到失语”，白字加深绿描边，突出清幽绿色调，避免遮挡牌坊和桥体。"
 };
 
 export const fallbackWorkspace: WorkspaceData = {
   project: fallbackProjects[0],
   assets: [
     {
-      assetId: "KANAS_001",
-      location: "喀纳斯",
-      scene: "蓝冰河流特写，前景带雪面纹理",
-      relativePath: "喀纳斯/drone/KANAS_001.mp4",
-      mediaType: "drone_video",
-      shotType: "subject_medium",
-      emotionTags: ["冷", "静"],
-      visualTags: ["冷蓝", "白雪"],
-      informationDensity: "medium",
-      suggestedDurationSec: 1.5,
-      functionTags: ["slow_climax"]
-    },
-    {
-      assetId: "HEMU_002",
-      location: "禾木",
-      scene: "木屋群远景，晨雾从屋顶掠过",
-      relativePath: "禾木/wide/HEMU_002.mp4",
+      assetId: "OUTPUT_001",
+      location: "国清寺",
+      scene: "仰拍寺庙橙色墙体与灰瓦屋檐，树冠遮蔽天空，前景有树干和石狮剪影，远处可见青山与少量游客。",
+      relativePath: "output/国清寺寺门.mp4",
       mediaType: "video",
       shotType: "wide",
-      emotionTags: ["童话"],
-      visualTags: ["蓝调", "木屋"],
-      informationDensity: "high",
-      suggestedDurationSec: 1,
+      emotionTags: ["静谧", "古朴", "庄严", "清幽"],
+      visualTags: ["寺庙建筑", "灰瓦屋檐", "树冠", "石狮剪影", "橙色墙面", "山林背景"],
+      informationDensity: "medium",
+      suggestedDurationSec: 2,
+      functionTags: ["transition_buffer"]
+    },
+    {
+      assetId: "国清寺_006",
+      location: "国清寺",
+      scene: "仰拍古典石牌坊与龙纹雕刻，镜头掠过浓密绿荫，末尾可见游客在林下步道穿行。",
+      relativePath: "output/国清寺进门.mp4",
+      mediaType: "video",
+      shotType: "wide",
+      emotionTags: ["清幽", "古朴", "宁静", "游览感"],
+      visualTags: ["石牌坊", "龙纹雕刻", "绿树成荫", "仰拍视角", "游客", "园林"],
+      informationDensity: "medium",
+      suggestedDurationSec: 2,
       functionTags: ["opening_hook"]
     }
   ],
   themes: [
     {
-      id: "theme_001",
-      title: "阿勒泰情绪氛围片",
-      summary: "用雪国空镜和人物经过的瞬间，做一支带沉浸感的冬日旅行短片。",
-      coreEmotion: "沉浸",
-      rhythmProfile: "前段抓人，中段放缓，结尾回味",
-      platformReason: "适合小红书做氛围种草，也方便后续扩展成口播版。",
-      usedLocations: ["禾木"],
-      usedAssetIds: ["HEMU_002"],
+      id: "theme_5ddee337",
+      title: "绿意禅行：从国清寺走进五月台州",
+      summary:
+        "以国清寺的石牌坊、橙墙灰瓦、香炉烟雾和林下参道作为开篇，突出“先安静下来，再出发”的旅行攻略感。",
+      coreEmotion: "清幽",
+      rhythmProfile: "前3秒用国清寺_006仰拍牌坊做钩子；中段以寺墙屋檐作慢节奏铺陈。",
+      platformReason: "抖音旅行攻略片需要快速建立目的地识别，国清寺牌坊和橙墙辨识度强。",
+      usedLocations: ["国清寺", "output"],
+      usedAssetIds: ["国清寺_006", "OUTPUT_001"],
       isSelected: true
     }
   ],
   storyboard: [
     {
-      id: "seg_001",
+      id: "seg_ffcb30a1",
       startTime: 0,
-      endTime: 1,
-      assetId: "HEMU_002",
-      shotDescription: "禾木木屋群远景作为开头钩子",
+      endTime: 0.9,
+      assetId: "国清寺_006",
+      shotDescription: "强拍切入，仰拍石牌坊与龙纹雕刻，开场先定下清幽古意。",
       function: "opening_hook",
-      rhythm: "tight_cut",
-      beatMode: "beat_1",
-      beatPoints: [0, 0.5, 1],
-      subtitle: "像一脚走进了雪国童话"
+      rhythm: "balanced",
+      beatMode: "strong_weak",
+      beatPoints: [0, 0.9],
+      subtitle: "五月台州，先在国清寺安静下来"
     },
     {
-      id: "seg_002",
-      startTime: 1,
-      endTime: 2.5,
-      assetId: "KANAS_001",
-      shotDescription: "喀纳斯蓝冰河流特写承接中段情绪",
-      function: "slow_climax",
+      id: "seg_0f0e0b0d",
+      startTime: 0.9,
+      endTime: 3.85,
+      assetId: "OUTPUT_001",
+      shotDescription: "寺墙屋檐慢铺，绿色树冠与橙墙形成对比。",
+      function: "transition_buffer",
       rhythm: "balanced",
-      beatMode: "beat_1",
-      beatPoints: [1, 1.5, 2, 2.5],
-      subtitle: "冷蓝色的河面，把情绪慢慢拉开"
+      beatMode: "strong_weak",
+      beatPoints: [0.9, 3.85],
+      subtitle: "橙墙灰瓦，五月绿到失语"
     }
   ],
   storyboardValidation: fallbackValidation,
   exportValidation: fallbackExportValidation,
   rhythmPlan: {
-    bgmStyle: "冷感氛围电子 + 轻鼓点",
-    selectedTrackName: "snow-dream-demo",
-    audioFileName: "",
-    analysisSource: "rule",
-    analysisNotes: ["当前为规则生成节拍点，尚未上传真实音频。"],
-    detectedBpm: 0,
-    audioDurationSec: 0,
+    bgmStyle: "57BPM舒展禅意氛围慢脉冲，木质打击轻点配柔和环境铺底",
+    selectedTrackName: "風の住む街",
+    audioFileName: "風の住む街.mp3",
+    analysisSource: "audio_upload",
+    analysisNotes: ["识别 BPM：57"],
+    detectedBpm: 57,
+    audioDurationSec: 44.86,
     rawBeatPoints: [],
     coarseBeatPoints: [],
-    beatMode: "beat_1",
-    beatPoints: [0, 0.5, 1, 1.5, 2, 2.5],
-    rhythmNotes: [
-      "前 3 秒保证强开头，优先用高识别度空镜。",
-      "中段适当放慢切换频率，把雪国的安静感留出来。",
-      "高潮段回到最有动势的素材，形成记忆点。"
-    ],
-    darkCutSuggestions: [15, 30, 45],
-    photoMotionSuggestions: ["照片素材可用轻推或停留 1-2 拍，避免和视频一起快切。"],
+    beatMode: "strong_weak",
+    beatPoints: [0, 0.9, 3.85, 7.5, 11.35, 14.1, 27.45, 33.7, 36.55, 40],
+    rhythmNotes: ["前3秒用国清寺_006卡第1个强拍切入，牌坊仰拍做安静钩子"],
+    darkCutSuggestions: [10.1, 20.1, 29.9],
+    photoMotionSuggestions: ["当前以视频素材为主，可在情绪段落加入轻微速度变化。"],
     recommendedBgm: [],
-    selectedBgmId: "",
-    bgmPhase: "empty"
+    selectedBgmId: "bgm_e8dccff1",
+    bgmPhase: "analyzed"
   },
   exportPlan: fallbackExportPlan
 };

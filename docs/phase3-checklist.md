@@ -24,8 +24,8 @@
 | Sprint 15（全局分镜 + 复用） | ✅ 已完成 | **决策 3** |
 | Sprint 16（OAuth + Provider 合并） | ✅ 已完成 | **决策 4** |
 | Sprint 17（粗剪结构） | ✅ 已完成 | EDL 导出 + 剪映/FCPXML 调研 |
-| Sprint 18（验收冻结） | ⬜ 未开始 | 三期关闭 |
-| **三期** | 🔄 **进行中** | 立项 2026-06-26 |
+| Sprint 18（验收冻结） | ✅ 已完成 | 三期关闭（2026-06-21） |
+| **三期** | ✅ **已关闭** | 立项 2026-06-26；关闭 2026-06-21 |
 
 ## 3. Sprint 迭代计划
 
@@ -237,14 +237,16 @@
 
 ### Sprint 18 — 验收冻结 + 三期关闭
 
-- [ ] `regression-sprint18.md`：pytest + E2E + 四决策验收表
-- [ ] E2E：导演 + 剪辑双角色 smoke
-- [ ] `phase3-master.md` 状态 → 三期已关闭
-- [ ] `phase3-backlog.md` 未做项标四期
-- [ ] README 部署清单（OAuth、Vision、角色）
-- [ ] §2 本清单全部 P0 Sprint 勾选
+- [x] `regression-sprint18.md`：pytest + E2E + 四决策验收表
+- [x] E2E：导演 + 剪辑双角色 smoke
+- [x] `phase3-master.md` 状态 → 三期已关闭
+- [x] `phase3-backlog.md` 未做项标四期
+- [x] README 部署清单（OAuth、Vision、角色）
+- [x] §2 本清单全部 P0 Sprint 勾选
 
 **验收：** 满足 `phase3-master.md` §10 关闭标准。
+
+**Sprint 18：** ✅ 已完成（2026-06-21）
 
 ## 4. P0 必做项汇总
 

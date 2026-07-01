@@ -17,7 +17,7 @@ from app.api.routes.themes import router as themes_router
 from app.core.config import settings
 from app.db import create_db_and_tables, engine
 from app.migrations import run_sqlite_migrations
-from app.runtime.shutdown import mark_shutting_down
+from app.runtime.shutdown import mark_shutting_down, reset_shutdown_state
 from app.services.seed import seed_demo_data
 from app.services.subprocess_runner import terminate_active_subprocesses
 from sqlmodel import Session
@@ -25,6 +25,7 @@ from sqlmodel import Session
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
+    reset_shutdown_state()
     create_db_and_tables()
     run_sqlite_migrations()
     with Session(engine) as session:

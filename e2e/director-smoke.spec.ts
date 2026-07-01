@@ -13,7 +13,7 @@ test.describe("director workflow smoke", () => {
 
     await expect(page).toHaveURL("/");
     await expect(page.getByRole("heading", { name: "历史项目列表" })).toBeVisible();
-    await expect(page.getByRole("heading", { name: "阿勒泰雪国片" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "五月的台州" })).toBeVisible();
 
     await page.getByRole("link", { name: "进入项目" }).first().click();
     await expect(page).toHaveURL(new RegExp(`/projects/${DEMO_PROJECT_ID}$`));

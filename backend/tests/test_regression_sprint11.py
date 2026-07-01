@@ -1,6 +1,7 @@
 from fastapi.testclient import TestClient
 
 from app.main import app
+from app.runtime.shutdown import reset_shutdown_state
 
 
 def test_app_lifespan_boots_and_seeds_demo_data() -> None:
@@ -22,5 +23,13 @@ def test_app_lifespan_boots_and_seeds_demo_data() -> None:
         )
         assert workspace.status_code == 200
         payload = workspace.json()["data"]
-        assert payload["project"]["name"] == "阿勒泰雪国片"
+        assert payload["project"]["name"] == "五月的台州"
         assert len(payload["storyboard"]) >= 1
+
+        projects = client.get(
+            "/api/v1/projects",
+            headers={"X-Session-Token": token},
+        )
+        assert projects.status_code == 200
+        assert len(projects.json()["data"]) == 1
+    reset_shutdown_state()

@@ -1,9 +1,14 @@
+from __future__ import annotations
+
 import json
-
+import shutil
 from datetime import datetime, timezone
+from pathlib import Path
 
+from sqlalchemy import delete
 from sqlmodel import Session, select
 
+from app.core.config import settings
 from app.models.entities import (
     AssetEntity,
     ProjectEntity,
@@ -15,11 +20,19 @@ from app.models.entities import (
 )
 from app.services.auth import hash_password
 
+SEED_PROJECT_ID = "proj_001"
+SOURCE_PROJECT_ID = "proj_6241f409"
+SEED_DATA_PATH = Path(__file__).resolve().parent / "seed_data" / "taizhou_may.json"
+SEED_AUDIO_PATH = Path(__file__).resolve().parent / "seed_data" / "audio" / "1c204ceb019a.mp3"
+STALE_PROJECT_IDS = ("proj_eb35c16a", SOURCE_PROJECT_ID)
+LEGACY_ASSET_IDS = ("KANAS_001", "HEMU_002", "GENERAL_003")
+
 
 def seed_demo_data(session: Session) -> None:
     _ensure_default_director(session)
     _ensure_demo_editor(session)
-    _ensure_demo_project(session)
+    _purge_stale_projects(session)
+    _ensure_taizhou_project(session)
 
 
 def _ensure_demo_editor(session: Session) -> None:
@@ -70,213 +83,177 @@ def _ensure_default_director(session: Session) -> None:
     session.commit()
 
 
-def _ensure_demo_project(session: Session) -> None:
-    project = session.exec(select(ProjectEntity).where(ProjectEntity.id == "proj_001")).first()
+def _load_seed_snapshot() -> dict:
+    with SEED_DATA_PATH.open(encoding="utf-8") as handle:
+        return json.load(handle)
+
+def _ensure_seed_audio() -> str:
+    target_dir = Path(settings.storage_dir) / "audio" / SEED_PROJECT_ID
+    target_dir.mkdir(parents=True, exist_ok=True)
+    target_file = target_dir / "1c204ceb019a.mp3"
+    if SEED_AUDIO_PATH.is_file() and not target_file.exists():
+        shutil.copy2(SEED_AUDIO_PATH, target_file)
+    return f"./storage/audio/{SEED_PROJECT_ID}/1c204ceb019a.mp3"
+
+
+def _purge_stale_projects(session: Session) -> None:
+    for project_id in (*STALE_PROJECT_IDS, SEED_PROJECT_ID):
+        _delete_project_graph(session, project_id)
+
+    for asset_id in LEGACY_ASSET_IDS:
+        asset = session.get(AssetEntity, asset_id)
+        if asset:
+            session.delete(asset)
+
+    session.commit()
+
+
+def _delete_project_graph(session: Session, project_id: str) -> None:
+    project = session.get(ProjectEntity, project_id)
     if not project:
-        project = ProjectEntity(
-            id="proj_001",
-            name="阿勒泰雪国片",
-            destination="阿勒泰",
-            platform="xiaohongshu",
-            target_duration_sec=60,
-            video_type="emotion_film",
-            style_preference="情绪氛围片",
-            style_notes="冷蓝色调，以空镜和环境声氛围为主，结尾保留回味感。",
-            route_text="将军山 - 喀纳斯 - 禾木",
-            media_root=r"D:\素材库\阿勒泰项目",
-            status="draft",
-            selected_theme_id="theme_001",
+        return
+
+    session.exec(delete(AssetEntity).where(AssetEntity.project_id == project_id))
+    session.exec(delete(ThemeEntity).where(ThemeEntity.project_id == project_id))
+    session.exec(
+        delete(StoryboardSegmentEntity).where(StoryboardSegmentEntity.project_id == project_id)
+    )
+    session.exec(delete(RhythmPlanEntity).where(RhythmPlanEntity.project_id == project_id))
+    session.exec(delete(PublishPlanEntity).where(PublishPlanEntity.project_id == project_id))
+    session.delete(project)
+
+
+def _ensure_taizhou_project(session: Session) -> None:
+    snapshot = _load_seed_snapshot()
+    audio_file_path = _ensure_seed_audio()
+
+    project_data = snapshot["project"]
+    project = ProjectEntity(
+        id=SEED_PROJECT_ID,
+        name=project_data["name"],
+        destination=project_data["destination"],
+        platform=project_data["platform"],
+        target_duration_sec=project_data["target_duration_sec"],
+        video_type=project_data["video_type"],
+        style_preference=project_data["style_preference"],
+        style_notes=project_data.get("style_notes", ""),
+        route_text=project_data.get("route_text", ""),
+        media_root=project_data.get("media_root", ""),
+        jianying_draft_root=project_data.get("jianying_draft_root", ""),
+        status=project_data["status"],
+        selected_theme_id=project_data.get("selected_theme_id", ""),
+        validate_location_order=bool(project_data.get("validate_location_order", 0)),
+        allow_asset_reuse=bool(project_data.get("allow_asset_reuse", 0)),
+    )
+    session.add(project)
+
+    seed_asset_ids: set[str] = set()
+    for item in snapshot["assets"]:
+        seed_asset_ids.add(item["asset_id"])
+        _upsert_asset(
+            session,
+            AssetEntity(
+                asset_id=item["asset_id"],
+                project_id=SEED_PROJECT_ID,
+                location=item["location"],
+                scene=item["scene"],
+                relative_path=item.get("relative_path", ""),
+                media_type=item["media_type"],
+                shot_type=item["shot_type"],
+                emotion_tags=item["emotion_tags"],
+                visual_tags=item["visual_tags"],
+                information_density=item["information_density"],
+                suggested_duration_sec=item["suggested_duration_sec"],
+                function_tags=item["function_tags"],
+                vision_analysis_json=item.get("vision_analysis_json", ""),
+                vision_analysis_status=item.get("vision_analysis_status", "empty"),
+            ),
         )
-        session.add(project)
-    else:
-        project.name = "阿勒泰雪国片"
-        project.destination = "阿勒泰"
-        project.platform = "xiaohongshu"
-        project.target_duration_sec = 60
-        project.video_type = "emotion_film"
-        project.style_preference = "情绪氛围片"
-        project.style_notes = "冷蓝色调，以空镜和环境声氛围为主，结尾保留回味感。"
-        project.route_text = "将军山 - 喀纳斯 - 禾木"
-        project.media_root = r"D:\素材库\阿勒泰项目"
-        project.status = "draft"
-        project.selected_theme_id = "theme_001"
-        session.add(project)
 
-    _upsert_asset(
-        session,
-        AssetEntity(
-            asset_id="KANAS_001",
-            project_id="proj_001",
-            location="喀纳斯",
-            scene="蓝冰水流特写，前景带雪面纹理",
-            relative_path=r"喀纳斯\drone\KANAS_001.mp4",
-            media_type="drone_video",
-            shot_type="subject_medium",
-            emotion_tags=json.dumps(["冷", "静"], ensure_ascii=False),
-            visual_tags=json.dumps(["冷蓝", "白雪"], ensure_ascii=False),
-            information_density="medium",
-            suggested_duration_sec=1.5,
-            function_tags=json.dumps(["slow_climax"], ensure_ascii=False),
-        ),
-    )
-    _upsert_asset(
-        session,
-        AssetEntity(
-            asset_id="HEMU_002",
-            project_id="proj_001",
-            location="禾木",
-            scene="木屋群远景，晨雾从屋顶掠过",
-            relative_path=r"禾木\wide\HEMU_002.mp4",
-            media_type="video",
-            shot_type="wide",
-            emotion_tags=json.dumps(["童话"], ensure_ascii=False),
-            visual_tags=json.dumps(["蓝调", "木屋"], ensure_ascii=False),
-            information_density="high",
-            suggested_duration_sec=1.0,
-            function_tags=json.dumps(["opening_hook"], ensure_ascii=False),
-        ),
-    )
-    _upsert_asset(
-        session,
-        AssetEntity(
-            asset_id="GENERAL_003",
-            project_id="proj_001",
-            location="将军山",
-            scene="人物从雪道边经过，镜头轻跟拍",
-            relative_path=r"将军山\people\GENERAL_003.mp4",
-            media_type="mobile_video",
-            shot_type="subject_medium",
-            emotion_tags=json.dumps(["陪伴", "轻快"], ensure_ascii=False),
-            visual_tags=json.dumps(["雪白", "运动"], ensure_ascii=False),
-            information_density="medium",
-            suggested_duration_sec=1.2,
-            function_tags=json.dumps(["transition_buffer"], ensure_ascii=False),
-        ),
-    )
+    for item in snapshot["themes"]:
+        _upsert_theme(
+            session,
+            ThemeEntity(
+                id=item["id"],
+                project_id=SEED_PROJECT_ID,
+                title=item["title"],
+                summary=item["summary"],
+                core_emotion=item["core_emotion"],
+                rhythm_profile=item["rhythm_profile"],
+                platform_reason=item["platform_reason"],
+                used_locations=item.get("used_locations", "[]"),
+                used_asset_ids=item.get("used_asset_ids", "[]"),
+            ),
+        )
 
-    _upsert_theme(
-        session,
-        ThemeEntity(
-            id="theme_001",
-            project_id="proj_001",
-            title="阿勒泰情绪氛围片",
-            summary="用雪国空镜和人物经过的瞬间，做一支带沉浸感的冬日旅行短片。",
-            core_emotion="沉浸",
-            rhythm_profile="前段抓人，中段放缓，结尾回味",
-            platform_reason="适合小红书做氛围种草，也方便后续扩展成口播版本。",
-        ),
-    )
-    _upsert_theme(
-        session,
-        ThemeEntity(
-            id="theme_002",
-            project_id="proj_001",
-            title="阿勒泰路线纪实片",
-            summary="按将军山、喀纳斯、禾木的路线推进，突出行程推进感。",
-            core_emotion="纪实",
-            rhythm_profile="按路线推进，节点处提速",
-            platform_reason="适合保留路线清晰度，方便后续扩展攻略版本。",
-        ),
-    )
+    for item in snapshot["storyboard"]:
+        _upsert_storyboard(
+            session,
+            StoryboardSegmentEntity(
+                id=item["id"],
+                project_id=SEED_PROJECT_ID,
+                theme_id=item["theme_id"],
+                start_time=item["start_time"],
+                end_time=item["end_time"],
+                asset_id=item["asset_id"],
+                shot_description=item["shot_description"],
+                function_name=item["function_name"],
+                rhythm=item["rhythm"],
+                beat_mode=item["beat_mode"],
+                beat_points=item["beat_points"],
+                subtitle=item["subtitle"],
+            ),
+        )
 
-    _upsert_storyboard(
-        session,
-        StoryboardSegmentEntity(
-            id="seg_001",
-            project_id="proj_001",
-            theme_id="theme_001",
-            start_time=0.0,
-            end_time=1.0,
-            asset_id="HEMU_002",
-            shot_description="禾木木屋群远景作为开头钩子",
-            function_name="opening_hook",
-            rhythm="tight_cut",
-            beat_mode="beat_1",
-            beat_points=json.dumps([0.0, 0.5, 1.0]),
-            subtitle="像一脚走进了雪国童话",
-        ),
-    )
-    _upsert_storyboard(
-        session,
-        StoryboardSegmentEntity(
-            id="seg_002",
-            project_id="proj_001",
-            theme_id="theme_001",
-            start_time=1.0,
-            end_time=2.5,
-            asset_id="GENERAL_003",
-            shot_description="将军山人物经过镜头承上启下",
-            function_name="transition_buffer",
-            rhythm="balanced",
-            beat_mode="beat_1",
-            beat_points=json.dumps([1.0, 1.5, 2.0, 2.5]),
-            subtitle="雪道上的人，把旅程真正带动起来",
-        ),
-    )
-
+    rhythm = snapshot["rhythm"]
     _upsert_rhythm(
         session,
         RhythmPlanEntity(
-            id="rhythm_001",
-            project_id="proj_001",
-            bgm_style="冷感氛围电子 + 轻鼓点",
-            selected_track_name="Ludovico Einaudi - Nuvole Bianche",
-            audio_file_name="seed-demo.wav",
-            audio_file_path="",
-            analysis_source="audio_upload",
-            analysis_notes=json.dumps(
-                ["Demo 项目已预置 BGM 推荐与音频分析结果。"],
-                ensure_ascii=False,
-            ),
-            beat_mode="beat_1",
-            beat_points=json.dumps([0.0, 0.5, 1.0, 1.5, 2.0, 2.5]),
-            rhythm_notes=json.dumps(
-                [
-                    "前 3 秒保证强开头，优先用高识别度空镜。",
-                    "中段适当放慢切换频率，把雪国的安静感留出来。",
-                    "高潮段回到最有动势的素材，形成记忆点。",
-                ],
-                ensure_ascii=False,
-            ),
-            dark_cut_suggestions=json.dumps([15.0, 30.0, 45.0]),
-            photo_motion_suggestions=json.dumps(
-                ["照片素材可用轻推或停留 1 到 2 拍，避免和视频一起快切。"],
-                ensure_ascii=False,
-            ),
-            recommended_bgm=json.dumps(
-                [
-                    {
-                        "id": "bgm_seed_001",
-                        "title": "Nuvole Bianche",
-                        "artist": "Ludovico Einaudi",
-                        "styleTags": ["钢琴", "氛围"],
-                        "mood": "沉浸",
-                        "bpmRange": "85-95",
-                        "fitReason": "适合阿勒泰情绪氛围片的铺陈与空镜节奏。",
-                        "searchHint": "Nuvole Bianche 钢琴 纯音乐",
-                        "platformTips": "可在网易云音乐搜索并下载可商用版本。",
-                        "isSelected": True,
-                    }
-                ],
-                ensure_ascii=False,
-            ),
-            selected_bgm_id="bgm_seed_001",
-            bgm_phase="analyzed",
+            id=rhythm["id"],
+            project_id=SEED_PROJECT_ID,
+            bgm_style=rhythm["bgm_style"],
+            selected_track_name=rhythm["selected_track_name"],
+            audio_file_name=rhythm.get("audio_file_name", ""),
+            audio_file_path=audio_file_path,
+            analysis_source=rhythm.get("analysis_source", "manual"),
+            analysis_notes=rhythm.get("analysis_notes", "[]"),
+            detected_bpm=rhythm.get("detected_bpm", 0),
+            audio_duration_sec=rhythm.get("audio_duration_sec", 0.0),
+            raw_beat_points=rhythm.get("raw_beat_points", "[]"),
+            coarse_beat_points=rhythm.get("coarse_beat_points", "[]"),
+            beat_mode=rhythm["beat_mode"],
+            beat_points=rhythm["beat_points"],
+            rhythm_notes=rhythm["rhythm_notes"],
+            dark_cut_suggestions=rhythm["dark_cut_suggestions"],
+            photo_motion_suggestions=rhythm["photo_motion_suggestions"],
+            recommended_bgm=rhythm.get("recommended_bgm", "[]"),
+            selected_bgm_id=rhythm.get("selected_bgm_id", ""),
+            bgm_phase=rhythm.get("bgm_phase", "empty"),
         ),
     )
 
+    publish = snapshot["publish"]
     _upsert_publish_plan(
         session,
         PublishPlanEntity(
-            id="publish_001",
-            project_id="proj_001",
-            title="原来冬天的阿勒泰，真的像童话",
-            short_title="阿勒泰雪国童话",
-            description="把雪、木屋和路上的人，剪成一段安静但有记忆点的冬日旅程。",
-            tags=json.dumps(["阿勒泰", "旅行剪辑", "冬日雪景"], ensure_ascii=False),
-            cover_suggestion="优先使用禾木木屋群远景，标题放在右下角保留雪景留白。",
+            id=publish["id"],
+            project_id=SEED_PROJECT_ID,
+            title=publish["title"],
+            short_title=publish["short_title"],
+            description=publish["description"],
+            tags=publish["tags"],
+            cover_suggestion=publish["cover_suggestion"],
         ),
     )
+
+    stale_assets = session.exec(
+        select(AssetEntity).where(
+            AssetEntity.project_id == SEED_PROJECT_ID,
+            AssetEntity.asset_id.not_in(seed_asset_ids),
+        )
+    ).all()
+    for asset in stale_assets:
+        session.delete(asset)
 
     session.commit()
 
@@ -295,6 +272,8 @@ def _upsert_asset(session: Session, payload: AssetEntity) -> None:
         current.information_density = payload.information_density
         current.suggested_duration_sec = payload.suggested_duration_sec
         current.function_tags = payload.function_tags
+        current.vision_analysis_json = payload.vision_analysis_json
+        current.vision_analysis_status = payload.vision_analysis_status
         session.add(current)
         return
     session.add(payload)
@@ -309,6 +288,8 @@ def _upsert_theme(session: Session, payload: ThemeEntity) -> None:
         current.core_emotion = payload.core_emotion
         current.rhythm_profile = payload.rhythm_profile
         current.platform_reason = payload.platform_reason
+        current.used_locations = payload.used_locations
+        current.used_asset_ids = payload.used_asset_ids
         session.add(current)
         return
     session.add(payload)
@@ -343,6 +324,10 @@ def _upsert_rhythm(session: Session, payload: RhythmPlanEntity) -> None:
         current.audio_file_path = payload.audio_file_path
         current.analysis_source = payload.analysis_source
         current.analysis_notes = payload.analysis_notes
+        current.detected_bpm = payload.detected_bpm
+        current.audio_duration_sec = payload.audio_duration_sec
+        current.raw_beat_points = payload.raw_beat_points
+        current.coarse_beat_points = payload.coarse_beat_points
         current.beat_mode = payload.beat_mode
         current.beat_points = payload.beat_points
         current.rhythm_notes = payload.rhythm_notes

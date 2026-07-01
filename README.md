@@ -6,7 +6,7 @@
 - `backend/` — FastAPI 后端（领域模型、LLM、音频分析、导出）
 - `docs/` — 产品与技术文档
 
-**二期（Sprint 1～10）**：已关闭。**三期 Sprint 11 起**见 [`docs/phase3-master.md`](docs/phase3-master.md) / [`docs/phase3-checklist.md`](docs/phase3-checklist.md)。
+**二期（Sprint 1～10）**：已关闭。**三期（Sprint 11～18）**：已于 2026-06-21 验收关闭。见 [`docs/phase3-master.md`](docs/phase3-master.md) / [`docs/phase3-checklist.md`](docs/phase3-checklist.md)。
 
 ## 技术栈
 
@@ -84,6 +84,9 @@ OPENAI_OAUTH_CLIENT_ID=
 OPENAI_OAUTH_CLIENT_SECRET=
 GOOGLE_OAUTH_CLIENT_ID=
 GOOGLE_OAUTH_CLIENT_SECRET=
+
+# Vision Mock（Sprint 14；CI / 本地无 API Key 时可 true）
+VISION_USE_MOCK=false
 ```
 
 ### OAuth 回调与厂商控制台
@@ -107,11 +110,22 @@ GOOGLE_OAUTH_CLIENT_SECRET=
 
 ## 部署与升级注意
 
-1. **数据库迁移**：启动时自动执行 `app/migrations/runner.py`（当前至 **015**）。旧库直接启动即可升级；新库运行 `python init_db.py`。
+1. **数据库迁移**：启动时自动执行 `app/migrations/runner.py`（当前至 **017**）。旧库直接启动即可升级；新库运行 `python init_db.py`。
 2. **`APP_SECRET_KEY`**：生产必须设置稳定随机串。未设置时 LLM Key 加密功能受限；**更换密钥后需导演在 LLM 设置页重新保存 API Key**。
 3. **Session 升级（migration 008）**：若从无二期的旧库升级，已有用户需 **重新登录** 获取新 Session Token。
 4. **音频上传**：非 WAV 格式需系统 PATH 可调用 `ffmpeg`。
 5. **BGM 工作流**：分镜解锁需完成 BGM 推荐 → 选定 → 上传识别（`bgmPhase: analyzed`）。
+
+### 三期部署清单（角色 / OAuth / Vision）
+
+| 能力 | 生产注意 |
+|------|---------|
+| **导演 / 剪辑** | 导演 `director` 可管理用户与 LLM；剪辑 `editor`（`uiEnabled=true`）仅项目内读写。演示密码见 seed。 |
+| **OAuth** | 配置 `OPENAI_OAUTH_*` / `GOOGLE_OAUTH_*` 与回调 URL；无 Client ID 时测试可用 `LLM_OAUTH_MOCK=true`。 |
+| **ChatGPT / Gemini 订阅登录** | 实验性；生产建议 API Key 回退。Google 订阅入口当前 UI 隐藏。 |
+| **LLM Vision** | 需 Vision 模型 Provider + `ffmpeg`；无 Key 时设 `VISION_USE_MOCK=true` 仅用于演示。 |
+| **剪映导出** | 项目可配置 `jianyingDraftRoot`；写入前关闭剪映；剪映 6+ 草稿为加密格式，本工具写入 **5.9 兼容明文 JSON**。 |
+| **存储** | 单机 SQLite + 本地 `STORAGE_DIR`；**不依赖 Redis**。 |
 
 ## 回归测试
 
@@ -125,6 +139,7 @@ pip install -r requirements.txt
 python -m pytest tests/ -q
 python -m pytest tests/test_llm_routes.py tests/test_llm_gateway.py tests/test_llm_model_catalog.py tests/test_llm_stream.py -q
 python -m pytest tests/test_regression_sprint11.py -q
+python -m pytest tests/test_regression_sprint18.py -q
 ```
 
 ### 前端 workflow 脚本
@@ -160,10 +175,11 @@ npm run test:e2e
 | [`docs/regression-sprint9.md`](docs/regression-sprint9.md) | 交互统一 |
 | [`docs/regression-sprint10.md`](docs/regression-sprint10.md) | 二期验收 |
 | [`docs/regression-sprint11.md`](docs/regression-sprint11.md) | lifespan、节拍网格、E2E |
+| [`docs/regression-sprint18.md`](docs/regression-sprint18.md) | 三期验收冻结、四决策表 |
 
 ## 文档索引
 
-- 三期总控：[`docs/phase3-master.md`](docs/phase3-master.md)
+- 三期总控：[`docs/phase3-master.md`](docs/phase3-master.md)（**已关闭**）
 - 三期清单：[`docs/phase3-checklist.md`](docs/phase3-checklist.md)
 - 二期总控：[`docs/phase2-master.md`](docs/phase2-master.md)
 - 二期清单：[`docs/phase2-checklist.md`](docs/phase2-checklist.md)

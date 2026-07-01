@@ -31,7 +31,7 @@ def test_storyboard_generate_without_reuse_uses_each_asset_once(regression_env: 
     client = regression_env["client"]
     project_id = "proj_001"
     request_body = {
-        "themeId": "theme_001",
+        "themeId": "theme_5ddee337",
         "alignToBeat": False,
     }
 
@@ -58,8 +58,9 @@ def test_storyboard_generate_with_reuse_cycles_assets(regression_env: dict) -> N
     response = client.post(
         f"/api/v1/projects/{project_id}/storyboard:generate",
         json={
-            "themeId": "theme_001",
+            "themeId": "theme_5ddee337",
             "alignToBeat": False,
+            "targetDurationSec": 55,
         },
     )
     assert response.status_code == 200

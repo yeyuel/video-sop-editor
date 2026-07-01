@@ -6,6 +6,10 @@ from pathlib import Path
 def test_media_library_health_endpoint(regression_env: dict, tmp_path: Path) -> None:
     client = regression_env["client"]
     project_id = client.get("/api/v1/projects").json()["data"][0]["id"]
+    missing_root = tmp_path / "missing-media-root"
+    project = client.get(f"/api/v1/projects/{project_id}").json()["data"]
+    project["mediaRoot"] = str(missing_root)
+    client.put(f"/api/v1/projects/{project_id}", json=project)
 
     missing = client.get(f"/api/v1/projects/{project_id}/assets/media-library/health")
     assert missing.status_code == 200

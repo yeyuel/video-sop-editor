@@ -13,11 +13,12 @@
 - `phase1-context.md`：一期当前实现状态压缩版，方便二期开发快速接入上下文。
 - `phase2-master.md`：二期主控文档，定义目标、边界、优先级和实施顺序（**已关闭**）。
 - `phase2-checklist.md`：二期执行检查清单，按 P0 / P1 / P2 与 Sprint 迭代跟踪落地。
-- `phase3-master.md`：三期主控文档，含已锁定决策与 Sprint 11～18 路线。
+- `phase3-master.md`：三期主控文档，含已锁定决策与 Sprint 11～18 路线（**已关闭**）。
 - `phase3-checklist.md`：三期执行清单。
-- `phase3-backlog.md`：三期需求池（二期移出项）。
+- `phase3-backlog.md`：四期需求池（三期移出项）。
 - `regression-sprint3.md`：Sprint 3 关键路径回归测试说明与运行命令。
 - `regression-sprint11.md`：Sprint 11 E2E / lifespan / 节拍网格回归。
+- `regression-sprint18.md`：Sprint 18 三期验收冻结与四决策表。
 - `schema-migration.md`：数据库 migration 规范与字段变更检查清单。
 
 ## 能力专项

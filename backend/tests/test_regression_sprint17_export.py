@@ -19,7 +19,7 @@ def test_export_capcut_endpoint(regression_env: dict) -> None:
     draft = bundle["sections"]["draft_content.json"]
     assert draft["tracks"][0]["type"] == "video"
     assert len(draft["tracks"][0]["segments"]) >= 1
-    assert "像一脚走进了雪国童话" in document["content"]
+    assert "五月台州，先在国清寺安静下来" in document["content"]
 
 
 def test_capcut_defaults_endpoint(regression_env: dict) -> None:
@@ -61,6 +61,6 @@ def test_export_edl_endpoint(regression_env: dict) -> None:
     assert document["fileName"].endswith(".edl")
     content = document["content"]
     assert content.startswith("TITLE:")
-    assert "001  HEMU_002 V     C" in content
+    assert "001  国清寺_006" in content
     assert "* FROM CLIP NAME:" in content
-    assert "像一脚走进了雪国童话" in content
+    assert "五月台州，先在国清寺安静下来" in content

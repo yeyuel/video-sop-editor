@@ -16,6 +16,15 @@ from app.services.seed import seed_demo_data
 from tests.auth_client import AuthTestClient
 
 
+@pytest.fixture(autouse=True)
+def _reset_shutdown_state() -> Generator[None, None, None]:
+    from app.runtime.shutdown import reset_shutdown_state
+
+    reset_shutdown_state()
+    yield
+    reset_shutdown_state()
+
+
 @pytest.fixture
 def regression_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Generator[dict, None, None]:
     db_file = tmp_path / "regression.db"
