@@ -13,23 +13,27 @@ from app.services.llm.registry import get_provider, list_providers
 from app.services.llm.types import LlmCallResult, LlmErrorCode, LlmProviderStatus, ResolvedLlmConfig, build_llm_meta
 
 
-def test_list_providers_includes_openai_compatible() -> None:
+def test_list_providers_includes_openai() -> None:
     providers = list_providers()
     ids = {item.provider_id for item in providers}
-    assert "openai-compatible" in ids
+    assert "openai" in ids
+    assert "openai-compatible" not in ids
     assert "deepseek" in ids
 
 
-def test_get_provider_normalizes_id() -> None:
+def test_get_provider_normalizes_id_and_alias() -> None:
     provider = get_provider("DeepSeek")
     assert provider is not None
     assert provider.provider_id == "deepseek"
+    alias = get_provider("openai-compatible")
+    assert alias is not None
+    assert alias.provider_id == "openai"
 
 
 def test_resolve_authorization_header_not_configured() -> None:
     config = ResolvedLlmConfig(
-        provider_id="openai-compatible",
-        provider_name="OpenAI Compatible",
+        provider_id="openai",
+        provider_name="OpenAI",
         auth_type="api_key",
         base_url="https://api.openai.com/v1",
         model="gpt-4.1-mini",
@@ -43,8 +47,8 @@ def test_resolve_authorization_header_not_configured() -> None:
 
 def test_resolve_authorization_header_api_key() -> None:
     config = ResolvedLlmConfig(
-        provider_id="openai-compatible",
-        provider_name="OpenAI Compatible",
+        provider_id="openai",
+        provider_name="OpenAI",
         auth_type="api_key",
         base_url="https://api.openai.com/v1",
         model="gpt-4.1-mini",
@@ -130,8 +134,8 @@ def test_gateway_includes_max_tokens_in_payload() -> None:
         return FakeResponse()
 
     config = ResolvedLlmConfig(
-        provider_id="openai-compatible",
-        provider_name="OpenAI Compatible",
+        provider_id="openai",
+        provider_name="OpenAI",
         auth_type="api_key",
         base_url="https://api.openai.com/v1",
         model="gpt-4.1-mini",

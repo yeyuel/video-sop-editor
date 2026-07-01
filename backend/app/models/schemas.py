@@ -407,6 +407,7 @@ class LlmProviderRead(BaseModel):
     openaiCompatible: bool = True
     status: str
     isActive: bool = False
+    subtitle: str = ""
     models: list["LlmModelOptionRead"] = Field(default_factory=list)
 
 
@@ -450,6 +451,24 @@ class LlmStatusRead(BaseModel):
 class LlmOAuthStartRead(BaseModel):
     authorizationUrl: str = ""
     state: str = ""
+    message: str = ""
+    requiresPoll: bool = False
+
+
+class LlmSubscriptionOAuthPollRead(BaseModel):
+    status: str = "pending"
+    message: str = ""
+    configured: bool = False
+    authType: str = ""
+
+
+class LlmOAuthCallbackRequest(BaseModel):
+    code: str
+    state: str
+
+
+class LlmOAuthRevokeRead(BaseModel):
+    revoked: bool
     message: str = ""
 
 

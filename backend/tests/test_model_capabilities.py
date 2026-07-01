@@ -25,3 +25,9 @@ def test_gpt41_mini_does_not_support_vision() -> None:
 
 def test_gemini_supports_vision() -> None:
     assert infer_vision_support("gemini-2.0-flash") is True
+
+
+def test_gpt54_codex_supports_vision() -> None:
+    assert infer_vision_support("gpt-5.4") is True
+    assert infer_vision_support("gpt-5.4-mini") is True
+    assert infer_vision_support("gpt-5.5") is True

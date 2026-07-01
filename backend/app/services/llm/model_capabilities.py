@@ -12,6 +12,7 @@ from sqlmodel import Session, select
 from app.models.entities import AppSettingEntity
 from app.services.llm.auth import resolve_authorization_header
 from app.services.llm.model_catalog import MODEL_CATALOG, list_models_for_provider, normalize_model_id
+from app.services.llm.oauth.modes import is_subscription_auth_type
 from app.services.llm.registry import get_provider
 from app.services.llm.types import LlmErrorCode, ModelOption, ResolvedLlmConfig
 
@@ -21,6 +22,7 @@ _VISION_POSITIVE_PATTERNS = (
     re.compile(r"gpt-4o", re.I),
     re.compile(r"gpt-4-turbo", re.I),
     re.compile(r"gpt-4-vision", re.I),
+    re.compile(r"gpt-5\.", re.I),
     re.compile(r"gemini", re.I),
     re.compile(r"kimi-k2\.5", re.I),
     re.compile(r"kimi-k2\.6", re.I),
@@ -199,12 +201,16 @@ def resolve_provider_models_with_capabilities(
     if not provider:
         return [], "catalog", "Unknown provider"
 
-    catalog_models = list_models_for_provider(config.provider_id)
+    catalog_models = list_models_for_provider(config.provider_id, config.auth_type)
     live_map: dict[str, LiveModelCapability] = {}
     message = ""
     source = "catalog"
 
-    if live and config.api_key.strip():
+    if live and is_subscription_auth_type(config.auth_type):
+        live = False
+        message = "订阅登录模式使用 Codex/Gemini 订阅模型目录，不从 Platform API 拉取。"
+
+    if live and config.auth_type == "api_key" and config.api_key.strip():
         cached = _load_cached_capabilities(session, config.provider_id)
         if cached:
             live_map = {item.model_id: item for item in cached}

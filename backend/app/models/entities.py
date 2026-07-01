@@ -137,6 +137,36 @@ class LlmProviderConfigEntity(SQLModel, table=True):
     status: str = "not_configured"
 
 
+class LlmOAuthPendingEntity(SQLModel, table=True):
+    state: str = Field(primary_key=True)
+    provider_id: str = Field(index=True)
+    user_id: str = Field(index=True)
+    code_verifier: str = ""
+    redirect_uri: str = ""
+    oauth_mode: str = "platform"
+    loopback_port: int = 0
+    flow_status: str = "pending"
+    error_message: str = ""
+    created_at: str = ""
+    expires_at: str = ""
+
+
+class LlmOAuthTokenEntity(SQLModel, table=True):
+    id: str = Field(primary_key=True)
+    provider_id: str = Field(index=True)
+    oauth_mode: str = Field(default="platform", index=True)
+    user_id: str = Field(index=True)
+    access_token: str = ""
+    refresh_token: str = ""
+    id_token: str = ""
+    account_id: str = ""
+    project_id: str = ""
+    expires_at: str = ""
+    scopes: str = ""
+    status: str = "authorized"
+    updated_at: str = ""
+
+
 class AppSettingEntity(SQLModel, table=True):
     key: str = Field(primary_key=True)
     value: str = ""

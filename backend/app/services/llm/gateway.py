@@ -9,7 +9,7 @@ from urllib import error, request
 from sqlmodel import Session
 
 from app.db import engine
-from app.services.llm.auth import resolve_authorization_header
+from app.services.llm.auth import enrich_config_with_auth, is_provider_configured, resolve_authorization_header
 from app.services.llm.config_store import resolve_active_config
 from app.services.llm.model_catalog import (
     resolve_temperature,
@@ -17,11 +17,29 @@ from app.services.llm.model_catalog import (
     supports_json_response_format,
 )
 from app.services.llm.progress import ProgressReporter, emit_progress
+from app.services.llm.subscription_oauth.codex_gateway import (
+    codex_responses_endpoint,
+    generate_codex_json,
+    generate_codex_vision_json,
+)
+from app.services.llm.subscription_oauth.constants import GEMINI_CODE_ASSIST_ENDPOINT, GEMINI_GENAI_ENDPOINT
+from app.services.llm.subscription_oauth.gemini_gateway import generate_gemini_subscription_json
 from app.services.llm.types import LlmCallResult, LlmErrorCode, ResolvedLlmConfig
 
 
 def _chat_completions_url(base_url: str) -> str:
     return f"{base_url.rstrip('/')}/chat/completions"
+
+
+def _resolve_test_endpoint(config: ResolvedLlmConfig) -> str:
+    if config.auth_type == "codex_oauth":
+        return codex_responses_endpoint()
+    if config.auth_type == "gemini_subscription":
+        if config.project_id.strip():
+            return f"{GEMINI_CODE_ASSIST_ENDPOINT}:generateContent"
+        model = config.model.removeprefix("models/")
+        return f"{GEMINI_GENAI_ENDPOINT}/models/{model}:generateContent"
+    return _chat_completions_url(config.base_url)
 
 
 class LlmGateway:
@@ -37,7 +55,10 @@ class LlmGateway:
     ) -> LlmCallResult:
         with Session(engine) as owned_session:
             active_session = session or owned_session
-            config = resolve_active_config(active_session)
+            config = enrich_config_with_auth(
+                active_session,
+                resolve_active_config(active_session),
+            )
             emit_progress(
                 on_progress,
                 "configuring",
@@ -64,6 +85,25 @@ class LlmGateway:
         max_attempts: int | None = None,
         on_progress: ProgressReporter | None = None,
     ) -> LlmCallResult:
+        if config.auth_type == "codex_oauth":
+            return generate_codex_json(
+                config=config,
+                system_prompt=system_prompt,
+                user_prompt=user_prompt,
+                temperature=temperature,
+                max_tokens=max_tokens,
+                on_progress=on_progress,
+            )
+        if config.auth_type == "gemini_subscription":
+            return generate_gemini_subscription_json(
+                config=config,
+                system_prompt=system_prompt,
+                user_prompt=user_prompt,
+                temperature=temperature,
+                max_tokens=max_tokens,
+                on_progress=on_progress,
+            )
+
         auth_header, auth_error, auth_message = resolve_authorization_header(config)
         if auth_error:
             return LlmCallResult.failure(
@@ -236,6 +276,17 @@ class LlmGateway:
         max_tokens: int | None = 2048,
         on_progress: ProgressReporter | None = None,
     ) -> LlmCallResult:
+        if config.auth_type == "codex_oauth":
+            return generate_codex_vision_json(
+                config=config,
+                system_prompt=system_prompt,
+                user_prompt=user_prompt,
+                image_urls=image_urls,
+                temperature=temperature,
+                max_tokens=max_tokens,
+                on_progress=on_progress,
+            )
+
         auth_header, auth_error, auth_message = resolve_authorization_header(config)
         if auth_error:
             return LlmCallResult.failure(
@@ -342,12 +393,12 @@ class LlmGateway:
         result = self.generate_json_with_config(
             config=config,
             system_prompt='Return JSON only: {"ok": true, "message": "pong"}',
-            user_prompt='{"task": "connectivity_test"}',
+            user_prompt='Return a JSON object for connectivity test: {"task": "connectivity_test"}',
             temperature=resolve_temperature(config.model, 0),
             max_attempts=1,
         )
         latency_ms = int((time.perf_counter() - started) * 1000)
-        endpoint = _chat_completions_url(config.base_url)
+        endpoint = _resolve_test_endpoint(config)
         return result, latency_ms, endpoint
 
     @staticmethod
@@ -438,8 +489,8 @@ class LlmSuggestionService:
     @property
     def enabled(self) -> bool:
         with Session(engine) as session:
-            config = resolve_active_config(session)
-            return bool(config.api_key.strip())
+            config = enrich_config_with_auth(session, resolve_active_config(session))
+            return is_provider_configured(config)
 
     def generate_json(
         self,

@@ -43,6 +43,7 @@
 | 12 | `012_llm_call_logs` | LLM 调用审计日志表 |
 | 13 | `013_asset_vision_analysis` | 素材 Vision 分析 JSON + status |
 | 14 | `014_allow_asset_reuse` | 项目表 `allow_asset_reuse`（镜头复用开关，默认关闭） |
+| 15 | `015_llm_oauth_and_openai_merge` | OAuth token 表 + pending state；`openai-compatible` → `openai` |
 
 ## 5. 注意事项
 

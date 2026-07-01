@@ -28,7 +28,7 @@ def test_list_llm_providers(regression_env: dict) -> None:
     assert payload["success"] is True
     providers = payload["data"]
     assert isinstance(providers, list)
-    assert any(item["providerId"] == "openai-compatible" for item in providers)
+    assert any(item["providerId"] == "openai" for item in providers)
 
 
 def test_get_llm_status(regression_env: dict) -> None:
@@ -98,7 +98,7 @@ def test_llm_provider_without_api_key(regression_env: dict) -> None:
     assert payload["data"]["llmStatus"] == "not_configured"
 
 
-def test_oauth_start_not_implemented(regression_env: dict) -> None:
+def test_oauth_start_returns_redirect(regression_env: dict) -> None:
     client = regression_env["client"]
     response = client.post(
         "/api/v1/llm/providers/openai/oauth/start",
@@ -106,7 +106,8 @@ def test_oauth_start_not_implemented(regression_env: dict) -> None:
     )
     assert response.status_code == 200
     payload = response.json()
-    assert payload["meta"]["llmStatus"] == "not_implemented"
+    assert payload["data"]["authorizationUrl"]
+    assert payload["meta"]["llmStatus"] == "success"
 
 
 def test_editor_cannot_manage_llm_config(regression_env: dict) -> None:

@@ -92,6 +92,7 @@ class ProviderDefinition:
     openai_compatible: bool = True
     docs_url: str = ""
     supported_models: list[ModelOption] = field(default_factory=list)
+    subtitle: str = ""
 
 
 @dataclass
@@ -102,6 +103,9 @@ class ResolvedLlmConfig:
     base_url: str
     model: str
     api_key: str = ""
+    access_token: str = ""
+    account_id: str = ""
+    project_id: str = ""
     timeout_sec: int = 45
     max_retries: int = 0
     status: LlmProviderStatus = LlmProviderStatus.NOT_CONFIGURED

@@ -31,6 +31,7 @@ export type LlmProvider = {
   openaiCompatible: boolean;
   status: string;
   isActive: boolean;
+  subtitle?: string;
   models: LlmModelOption[];
 };
 

@@ -1,14 +1,10 @@
 from __future__ import annotations
 
+from app.services.llm.provider_ids import normalize_provider_id
+from app.services.llm.oauth.modes import is_subscription_auth_type
 from app.services.llm.types import ModelOption
 
 MODEL_CATALOG: dict[str, list[ModelOption]] = {
-    "openai-compatible": [
-        ModelOption("gpt-4.1-mini", "GPT-4.1 Mini", "通用轻量，适合大多数 JSON 任务", recommended=True),
-        ModelOption("gpt-4.1", "GPT-4.1", "更强推理与生成质量"),
-        ModelOption("gpt-4o-mini", "GPT-4o Mini", "多模态轻量模型"),
-        ModelOption("gpt-4o", "GPT-4o", "多模态旗舰模型"),
-    ],
     "openai": [
         ModelOption("gpt-4.1-mini", "GPT-4.1 Mini", "通用轻量，适合大多数 JSON 任务", recommended=True),
         ModelOption("gpt-4.1", "GPT-4.1", "更强推理与生成质量"),
@@ -39,6 +35,23 @@ MODEL_CATALOG: dict[str, list[ModelOption]] = {
     ],
 }
 
+AUTH_TYPE_MODEL_CATALOG: dict[str, dict[str, list[ModelOption]]] = {
+    "openai": {
+        "codex_oauth": [
+            ModelOption("gpt-5.5", "GPT-5.5", "Codex 默认推荐，复杂推理、编程与 Vision", recommended=True),
+            ModelOption("gpt-5.4", "GPT-5.4", "Codex 通用编程与 Vision，与 ChatGPT 5.4 一致"),
+            ModelOption("gpt-5.4-mini", "GPT-5.4 Mini", "轻量快速，支持 Vision 的高频 JSON 任务"),
+        ],
+    },
+    "google": {
+        "gemini_subscription": [
+            ModelOption("gemini-2.5-pro", "Gemini 2.5 Pro", "订阅默认，高质量多模态", recommended=True),
+            ModelOption("gemini-2.5-flash", "Gemini 2.5 Flash", "快速响应，性价比高"),
+            ModelOption("gemini-2.0-flash", "Gemini 2.0 Flash", "轻量多模态"),
+        ],
+    },
+}
+
 # 常见误填别名（如 OpenClaw / 文档简写）→ 官方 model id
 MODEL_ALIASES: dict[str, dict[str, str]] = {
     "kimi": {
@@ -51,15 +64,29 @@ MODEL_ALIASES: dict[str, dict[str, str]] = {
 }
 
 
-def list_models_for_provider(provider_id: str) -> list[ModelOption]:
-    return list(MODEL_CATALOG.get(provider_id, []))
+def list_models_for_provider(provider_id: str, auth_type: str = "api_key") -> list[ModelOption]:
+    canonical = normalize_provider_id(provider_id)
+    if is_subscription_auth_type(auth_type):
+        auth_models = AUTH_TYPE_MODEL_CATALOG.get(canonical, {}).get(auth_type)
+        if auth_models:
+            return list(auth_models)
+    return list(MODEL_CATALOG.get(canonical, []))
+
+
+def default_model_for_auth_type(provider_id: str, auth_type: str, fallback: str) -> str:
+    models = list_models_for_provider(provider_id, auth_type)
+    for item in models:
+        if item.recommended:
+            return item.model_id
+    return fallback
 
 
 def normalize_model_id(provider_id: str, model: str) -> str:
+    canonical = normalize_provider_id(provider_id)
     normalized = model.strip()
     if not normalized:
         return normalized
-    aliases = MODEL_ALIASES.get(provider_id, {})
+    aliases = MODEL_ALIASES.get(canonical, {})
     return aliases.get(normalized.lower(), normalized)
 
 

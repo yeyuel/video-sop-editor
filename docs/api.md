@@ -535,11 +535,11 @@ Base URL:
 - 后续如接入 LLM，只需复用 `export-plan` 结构即可
 ## 9. 二期 LLM Provider API
 
-已实现 provider 配置与授权接口，统一支持三种认证模式（OAuth / Device Code 为预留 stub）：
+已实现 provider 配置与 OAuth 授权。Registry 中 **OpenAI** 已合并原 `openai-compatible`（`openai-compatible` 仍可作为 providerId 别名解析）。
 
 - `api_key`（已接入）
-- `oauth`（501 / not_implemented stub）
-- `device_code`（501 / not_implemented stub）
+- `oauth`（OpenAI、Google；Authorization Code + PKCE）
+- `device_code`（OpenAI 预留，尚未接入）
 
 **权限**：`/llm/*` 配置与管理接口仅 **导演（director）** 可访问，需携带 Session Token（`Authorization: Bearer` 或 `X-Session-Token`）。剪辑账号可正常使用主题/分镜/导出等 LLM 业务接口，共用系统级 Provider 配置。
 
@@ -600,23 +600,32 @@ LLM 业务接口（主题 / 分镜 / 导出 / 节奏文案）在 `ApiResponse.me
 
 `POST /llm/providers/{providerId}/oauth/start`
 
-返回字段建议：
+返回：
 
 - `authorizationUrl`
 - `state`
-- `codeChallenge`
+- `message`
 
 ### 9.4 OAuth 回调
 
-`GET /llm/providers/{providerId}/oauth/callback`
+`POST /llm/providers/{providerId}/oauth/callback`
 
-用途：
+请求体：
 
-- 接收授权码
-- 服务端换取 access token / refresh token
-- 持久化授权状态
+```json
+{
+  "code": "authorization_code",
+  "state": "csrf_state_from_start"
+}
+```
 
-### 9.5 发起 Device Code 授权
+前端回调页 `/settings/llm/oauth/callback` 读取 query 后调用此接口完成 token 交换。
+
+### 9.5 断开 OAuth
+
+`POST /llm/providers/{providerId}/oauth/revoke`
+
+### 9.6 Device Code（预留）
 
 `POST /llm/providers/{providerId}/device-code/start`
 
@@ -628,7 +637,7 @@ LLM 业务接口（主题 / 分镜 / 导出 / 节奏文案）在 `ApiResponse.me
 - `expiresIn`
 - `interval`
 
-### 9.6 查询授权状态
+### 9.7 查询授权状态
 
 `GET /llm/providers/{providerId}/status`
 

@@ -16,6 +16,7 @@ from app.models.schemas import (
     MediaLibraryScanRead,
 )
 from app.services.llm.audit_log import record_llm_call_from_meta
+from app.services.llm.auth import enrich_config_with_auth, is_provider_configured
 from app.services.llm.config_store import resolve_active_config
 from app.services.llm.model_capabilities import model_supports_vision
 from app.services.media_preview import MediaPreviewError, ensure_poster_image, resolve_preview_file
@@ -57,7 +58,7 @@ def get_asset_vision_capability(
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
 
-    config = resolve_active_config(session)
+    config = enrich_config_with_auth(session, resolve_active_config(session))
     target_model = model or config.model
     supports, source, message = model_supports_vision(
         session,
@@ -69,7 +70,7 @@ def get_asset_vision_capability(
     if not supports:
         hint = (
             f"当前生效模型 {target_model} 不支持图像分析。"
-            "请联系导演在 LLM 设置中切换到 gpt-4o、gemini-2.0-flash 或 kimi-k2.5/k2.6。"
+            "请联系导演在 LLM 设置中切换到 gpt-5.4、gpt-4o、gemini-2.0-flash 或 kimi-k2.5/k2.6。"
         )
     return ApiResponse(
         data=LlmVisionCapabilityRead(
@@ -79,7 +80,7 @@ def get_asset_vision_capability(
             supportsVision=supports,
             visionSource=source,
             message=hint or message,
-            configured=bool(config.api_key.strip()),
+            configured=is_provider_configured(config),
         )
     )
 

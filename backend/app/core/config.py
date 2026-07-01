@@ -51,12 +51,52 @@ class Settings(BaseSettings):
     media_preview_crf: int = Field(default=28, alias="MEDIA_PREVIEW_CRF")
     media_preview_preset: str = Field(default="ultrafast", alias="MEDIA_PREVIEW_PRESET")
     app_graceful_shutdown_sec: int = Field(default=5, alias="APP_GRACEFUL_SHUTDOWN_SEC")
+    llm_oauth_redirect_uri: str = Field(
+        default="http://127.0.0.1:3000/settings/llm/oauth/callback",
+        alias="LLM_OAUTH_REDIRECT_URI",
+    )
+    llm_oauth_mock: bool = Field(default=False, alias="LLM_OAUTH_MOCK")
+    openai_oauth_client_id: str = Field(default="", alias="OPENAI_OAUTH_CLIENT_ID")
+    openai_oauth_client_secret: str = Field(default="", alias="OPENAI_OAUTH_CLIENT_SECRET")
+    openai_oauth_authorize_url: str = Field(
+        default="https://auth.openai.com/authorize",
+        alias="OPENAI_OAUTH_AUTHORIZE_URL",
+    )
+    openai_oauth_token_url: str = Field(
+        default="https://auth.openai.com/oauth/token",
+        alias="OPENAI_OAUTH_TOKEN_URL",
+    )
+    openai_oauth_scopes: str = Field(
+        default="openid profile email offline_access",
+        alias="OPENAI_OAUTH_SCOPES",
+    )
+    google_oauth_client_id: str = Field(default="", alias="GOOGLE_OAUTH_CLIENT_ID")
+    google_oauth_client_secret: str = Field(default="", alias="GOOGLE_OAUTH_CLIENT_SECRET")
+    google_oauth_authorize_url: str = Field(
+        default="https://accounts.google.com/o/oauth2/v2/auth",
+        alias="GOOGLE_OAUTH_AUTHORIZE_URL",
+    )
+    google_oauth_token_url: str = Field(
+        default="https://oauth2.googleapis.com/token",
+        alias="GOOGLE_OAUTH_TOKEN_URL",
+    )
+    google_oauth_scopes: str = Field(
+        default="openid email https://www.googleapis.com/auth/generative-language",
+        alias="GOOGLE_OAUTH_SCOPES",
+    )
 
     model_config = SettingsConfigDict(env_file=".env", populate_by_name=True)
 
     @property
     def resolved_llm_provider(self) -> str:
-        return (self.llm_provider or "openai-compatible").strip() or "openai-compatible"
+        from app.services.llm.provider_ids import normalize_provider_id
+
+        raw = (self.llm_provider or "openai").strip() or "openai"
+        return normalize_provider_id(raw)
+
+    @property
+    def resolved_llm_oauth_redirect_uri(self) -> str:
+        return self.llm_oauth_redirect_uri.strip() or "http://127.0.0.1:3000/settings/llm/oauth/callback"
 
     @property
     def resolved_llm_api_key(self) -> str:

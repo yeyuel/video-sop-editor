@@ -11,15 +11,18 @@ from app.models.schemas import (
     LlmCallLogRead,
     LlmDeviceCodeStartRead,
     LlmModelOptionRead,
+    LlmOAuthCallbackRequest,
+    LlmOAuthRevokeRead,
     LlmOAuthStartRead,
     LlmProviderConfigWriteRequest,
     LlmProviderRead,
     LlmProviderTestRead,
     LlmStatusRead,
+    LlmSubscriptionOAuthPollRead,
     LlmVisionCapabilityRead,
 )
 from app.services.llm.audit_log import list_recent_llm_calls
-from app.services.llm.auth import evaluate_config_status
+from app.services.llm.auth import enrich_config_with_auth, evaluate_config_status, is_provider_configured
 from app.services.llm.config_store import (
     get_provider_status,
     list_provider_statuses,
@@ -34,6 +37,18 @@ from app.services.llm.model_capabilities import (
     model_supports_vision,
     resolve_provider_models_with_capabilities,
 )
+from app.services.llm.oauth.service import (
+    complete_oauth_callback,
+    revoke_oauth_token,
+    start_oauth_flow,
+)
+from app.services.llm.subscription_oauth.service import (
+    complete_subscription_oauth_callback,
+    poll_subscription_oauth,
+    revoke_subscription_oauth,
+    start_subscription_oauth,
+)
+from app.services.llm.provider_ids import normalize_provider_id
 from app.services.llm.registry import get_provider, list_models
 from app.services.llm.types import LlmProviderStatus
 
@@ -116,6 +131,7 @@ def list_llm_providers(
             openaiCompatible=_parse_bool(str(item.get("openaiCompatible", "true"))),
             status=str(item["status"]),
             isActive=_parse_bool(str(item.get("isActive", "false"))),
+            subtitle=str(item.get("subtitle", "")),
             models=[
                 LlmModelOptionRead(
                     modelId=str(model["modelId"]),
@@ -138,15 +154,24 @@ def list_llm_provider_models(
     provider_id: str,
     session: Session = Depends(get_session),
     live: bool = False,
+    auth_type: str = "",
     _: AuthUserRead = Depends(require_director_user),
 ) -> ApiResponse:
     provider = get_provider(provider_id)
     if not provider:
         raise HTTPException(status_code=404, detail="LLM provider not found")
 
+    resolved_auth_type = auth_type.strip()
+    if not resolved_auth_type:
+        stored = get_provider_status(session, provider_id)
+        resolved_auth_type = str(stored.get("authType", "api_key"))
+
     if live:
         try:
-            config = resolve_provider_config(session, provider_id)
+            config = enrich_config_with_auth(
+                session,
+                resolve_provider_config(session, provider_id, auth_type=resolved_auth_type),
+            )
         except ValueError as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
         models, source, message = resolve_provider_models_with_capabilities(
@@ -172,7 +197,7 @@ def list_llm_provider_models(
                 supportsVision=infer_vision_support(item.model_id),
                 visionSource="catalog",
             )
-            for item in list_models(provider_id)
+            for item in list_models(provider_id, resolved_auth_type)
         ]
     )
 
@@ -183,7 +208,7 @@ def get_active_vision_capability(
     model: str | None = None,
     _: AuthUserRead = Depends(require_director_user),
 ) -> ApiResponse:
-    config = resolve_active_config(session)
+    config = enrich_config_with_auth(session, resolve_active_config(session))
     target_model = model or config.model
     supports, source, message = model_supports_vision(
         session,
@@ -205,7 +230,7 @@ def get_active_vision_capability(
             supportsVision=supports,
             visionSource=source,
             message=hint or message,
-            configured=bool(config.api_key.strip()),
+            configured=is_provider_configured(config),
         )
     )
 
@@ -240,11 +265,14 @@ def get_active_llm_status(
     session: Session = Depends(get_session),
     _: AuthUserRead = Depends(require_director_user),
 ) -> ApiResponse:
-    config = resolve_active_config(session)
+    config = enrich_config_with_auth(session, resolve_active_config(session))
     status_value = evaluate_config_status(config).value
     message = ""
-    if status_value == LlmProviderStatus.NOT_CONFIGURED.value:
-        message = "未配置 LLM API Key，请在 LLM 配置页保存并设为生效。"
+    if not is_provider_configured(config):
+        if config.auth_type == "oauth":
+            message = "尚未完成 OAuth 授权，请在 LLM 配置页连接账号。"
+        else:
+            message = "未配置 LLM API Key，请在 LLM 配置页保存并设为生效。"
     return ApiResponse(
         data=LlmStatusRead(
             providerId=config.provider_id,
@@ -253,7 +281,7 @@ def get_active_llm_status(
             status=status_value,
             baseUrl=config.base_url,
             model=config.model,
-            configured=bool(config.api_key.strip()),
+            configured=is_provider_configured(config),
             message=message,
         )
     )
@@ -333,7 +361,7 @@ def test_active_llm_provider(
     session: Session = Depends(get_session),
     _: AuthUserRead = Depends(require_director_user),
 ) -> ApiResponse:
-    config = resolve_active_config(session)
+    config = enrich_config_with_auth(session, resolve_active_config(session))
     provider = get_provider(config.provider_id)
     if not provider:
         raise HTTPException(status_code=404, detail="LLM provider not found")
@@ -368,17 +396,26 @@ def test_llm_provider(
 ) -> ApiResponse:
     try:
         overrides = payload or LlmProviderConfigWriteRequest()
-        config = resolve_provider_config(
+        config = enrich_config_with_auth(
             session,
-            provider_id,
-            base_url=overrides.baseUrl,
-            model=overrides.model,
-            api_key=overrides.apiKey,
+            resolve_provider_config(
+                session,
+                provider_id,
+                base_url=overrides.baseUrl,
+                model=overrides.model,
+                api_key=overrides.apiKey,
+                auth_type=overrides.authType,
+            ),
         )
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
-    if not config.api_key.strip():
+    if not is_provider_configured(config):
+        missing_message = (
+            "请先完成 OAuth 或订阅登录授权后再测试。"
+            if config.auth_type in {"oauth", "codex_oauth", "gemini_subscription"}
+            else "请先填写或保存 API Key 后再测试。"
+        )
         return ApiResponse(
             data=LlmProviderTestRead(
                 ok=False,
@@ -389,12 +426,12 @@ def test_llm_provider(
                 endpointUrl=f"{config.base_url.rstrip('/')}/chat/completions",
                 latencyMs=0,
                 llmStatus="not_configured",
-                message="请先填写或保存 API Key 后再测试。",
+                message=missing_message,
             ),
             meta=merge_response_meta(
                 {
                     "llmStatus": "not_configured",
-                    "llmMessage": "请先填写或保存 API Key 后再测试。",
+                    "llmMessage": missing_message,
                     "llmProviderId": config.provider_id,
                     "llmUsedFallback": "false",
                 }
@@ -427,30 +464,248 @@ def test_llm_provider(
 @router.post("/providers/{provider_id}/oauth/start", response_model=ApiResponse)
 def start_oauth(
     provider_id: str,
-    _: AuthUserRead = Depends(require_director_user),
+    session: Session = Depends(get_session),
+    user: AuthUserRead = Depends(require_director_user),
 ) -> ApiResponse:
-    provider = get_provider(provider_id)
+    canonical = normalize_provider_id(provider_id)
+    provider = get_provider(canonical)
     if not provider:
         raise HTTPException(status_code=404, detail="LLM provider not found")
     if "oauth" not in provider.auth_types:
         raise HTTPException(status_code=400, detail="该 Provider 不支持 OAuth 授权")
 
+    try:
+        authorization_url, state, message = start_oauth_flow(
+            session,
+            provider_id=canonical,
+            user_id=user.id,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
     return ApiResponse(
         data=LlmOAuthStartRead(
-            message="OAuth 授权流程尚未接入，当前请使用 API Key 模式。",
+            authorizationUrl=authorization_url,
+            state=state,
+            message=message,
         ),
-        meta={"llmStatus": "not_implemented", "llmMessage": "OAuth 授权流程尚未接入。"},
+        meta={"llmStatus": "success", "llmMessage": message},
     )
 
 
-@router.get("/providers/{provider_id}/oauth/callback", response_model=ApiResponse)
+@router.post("/providers/{provider_id}/oauth/callback", response_model=ApiResponse)
 def oauth_callback(
     provider_id: str,
+    payload: LlmOAuthCallbackRequest,
+    session: Session = Depends(get_session),
+    user: AuthUserRead = Depends(require_director_user),
+) -> ApiResponse:
+    canonical = normalize_provider_id(provider_id)
+    provider = get_provider(canonical)
+    if not provider:
+        raise HTTPException(status_code=404, detail="LLM provider not found")
+
+    try:
+        complete_oauth_callback(
+            session,
+            provider_id=canonical,
+            user_id=user.id,
+            code=payload.code.strip(),
+            state=payload.state.strip(),
+        )
+        existing_status = get_provider_status(session, canonical)
+        save_provider_config(
+            session,
+            canonical,
+            auth_type="oauth",
+            base_url=str(existing_status["baseUrl"]),
+            model=str(existing_status["model"]),
+        )
+        status_payload = get_provider_status(session, canonical)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    return ApiResponse(
+        data=LlmStatusRead(
+            providerId=str(status_payload["providerId"]),
+            providerName=str(status_payload["providerName"]),
+            authType="oauth",
+            status=str(status_payload["status"]),
+            baseUrl=str(status_payload["baseUrl"]),
+            model=str(status_payload["model"]),
+            configured=bool(status_payload["configured"]),
+            message="OAuth 授权成功，已保存连接状态。",
+        ),
+        meta={"llmStatus": "success", "llmMessage": "OAuth 授权成功。"},
+    )
+
+
+@router.post("/providers/{provider_id}/oauth/revoke", response_model=ApiResponse)
+def revoke_oauth(
+    provider_id: str,
+    session: Session = Depends(get_session),
     _: AuthUserRead = Depends(require_director_user),
 ) -> ApiResponse:
-    raise HTTPException(
-        status_code=status.HTTP_501_NOT_IMPLEMENTED,
-        detail="OAuth callback 尚未接入。",
+    canonical = normalize_provider_id(provider_id)
+    provider = get_provider(canonical)
+    if not provider:
+        raise HTTPException(status_code=404, detail="LLM provider not found")
+
+    revoked = revoke_oauth_token(session, provider_id=canonical)
+    return ApiResponse(
+        data=LlmOAuthRevokeRead(
+            revoked=revoked,
+            message="OAuth 连接已断开。" if revoked else "当前没有可断开的 OAuth 连接。",
+        )
+    )
+
+
+@router.post("/providers/{provider_id}/subscription-oauth/start", response_model=ApiResponse)
+def start_subscription_oauth_route(
+    provider_id: str,
+    auth_type: str,
+    session: Session = Depends(get_session),
+    user: AuthUserRead = Depends(require_director_user),
+) -> ApiResponse:
+    canonical = normalize_provider_id(provider_id)
+    provider = get_provider(canonical)
+    if not provider:
+        raise HTTPException(status_code=404, detail="LLM provider not found")
+    if auth_type not in provider.auth_types:
+        raise HTTPException(status_code=400, detail="该 Provider 不支持此订阅登录方式")
+
+    try:
+        authorization_url, state, message, requires_poll = start_subscription_oauth(
+            session,
+            provider_id=canonical,
+            user_id=user.id,
+            auth_type=auth_type,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    return ApiResponse(
+        data=LlmOAuthStartRead(
+            authorizationUrl=authorization_url,
+            state=state,
+            message=message,
+            requiresPoll=requires_poll,
+        ),
+        meta={"llmStatus": "success", "llmMessage": message},
+    )
+
+
+@router.get("/providers/{provider_id}/subscription-oauth/poll", response_model=ApiResponse)
+def poll_subscription_oauth_route(
+    provider_id: str,
+    state: str,
+    session: Session = Depends(get_session),
+    user: AuthUserRead = Depends(require_director_user),
+) -> ApiResponse:
+    canonical = normalize_provider_id(provider_id)
+    provider = get_provider(canonical)
+    if not provider:
+        raise HTTPException(status_code=404, detail="LLM provider not found")
+
+    try:
+        flow_status, message, entity = poll_subscription_oauth(
+            session,
+            state=state.strip(),
+            user_id=user.id,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    configured = entity is not None
+    auth_type = "codex_oauth" if canonical == "openai" else "gemini_subscription"
+    if configured:
+        existing_status = get_provider_status(session, canonical)
+        save_provider_config(
+            session,
+            canonical,
+            auth_type=auth_type,
+            base_url=str(existing_status["baseUrl"]),
+            model=str(existing_status["model"]),
+        )
+
+    return ApiResponse(
+        data=LlmSubscriptionOAuthPollRead(
+            status=flow_status,
+            message=message,
+            configured=configured,
+            authType=auth_type if configured else "",
+        )
+    )
+
+
+@router.post("/providers/{provider_id}/subscription-oauth/callback", response_model=ApiResponse)
+def subscription_oauth_callback(
+    provider_id: str,
+    payload: LlmOAuthCallbackRequest,
+    auth_type: str,
+    session: Session = Depends(get_session),
+    user: AuthUserRead = Depends(require_director_user),
+) -> ApiResponse:
+    canonical = normalize_provider_id(provider_id)
+    provider = get_provider(canonical)
+    if not provider:
+        raise HTTPException(status_code=404, detail="LLM provider not found")
+
+    try:
+        complete_subscription_oauth_callback(
+            session,
+            provider_id=canonical,
+            user_id=user.id,
+            auth_type=auth_type,
+            code=payload.code.strip(),
+            state=payload.state.strip(),
+        )
+        existing_status = get_provider_status(session, canonical)
+        save_provider_config(
+            session,
+            canonical,
+            auth_type=auth_type,
+            base_url=str(existing_status["baseUrl"]),
+            model=str(existing_status["model"]),
+        )
+        status_payload = get_provider_status(session, canonical)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    return ApiResponse(
+        data=LlmStatusRead(
+            providerId=str(status_payload["providerId"]),
+            providerName=str(status_payload["providerName"]),
+            authType=auth_type,
+            status=str(status_payload["status"]),
+            baseUrl=str(status_payload["baseUrl"]),
+            model=str(status_payload["model"]),
+            configured=bool(status_payload["configured"]),
+            message="订阅登录授权成功，已保存连接状态。",
+        ),
+        meta={"llmStatus": "success", "llmMessage": "订阅登录授权成功。"},
+    )
+
+
+@router.post("/providers/{provider_id}/subscription-oauth/revoke", response_model=ApiResponse)
+def revoke_subscription_oauth_route(
+    provider_id: str,
+    auth_type: str,
+    session: Session = Depends(get_session),
+    _: AuthUserRead = Depends(require_director_user),
+) -> ApiResponse:
+    canonical = normalize_provider_id(provider_id)
+    provider = get_provider(canonical)
+    if not provider:
+        raise HTTPException(status_code=404, detail="LLM provider not found")
+
+    revoked = revoke_subscription_oauth(session, provider_id=canonical, auth_type=auth_type)
+    label = "ChatGPT (Codex)" if auth_type == "codex_oauth" else "Google 订阅"
+    return ApiResponse(
+        data=LlmOAuthRevokeRead(
+            revoked=revoked,
+            message=f"{label} 连接已断开。" if revoked else f"当前没有可断开的 {label} 连接。",
+        )
     )
 
 

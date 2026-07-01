@@ -15,7 +15,7 @@
 | 前端 | Next.js App Router、React、TypeScript、Tailwind CSS |
 | 后端 | FastAPI、Pydantic、SQLModel、SQLite、Uvicorn |
 | 音频 | ffmpeg（转码）、librosa（节拍识别，可选） |
-| LLM | Provider Registry + API Key（OAuth 预留三期） |
+| LLM | Provider Registry + API Key / OAuth / ChatGPT (Codex) / Gemini 订阅登录 |
 
 ## 本地开发
 
@@ -76,11 +76,38 @@ APP_SECRET_KEY=change-me-to-a-long-random-string
 LLM_API_KEY=
 LLM_BASE_URL=https://api.openai.com/v1
 LLM_MODEL=gpt-4.1-mini
+
+# OAuth（Sprint 16；本地测试可设 LLM_OAUTH_MOCK=true）
+LLM_OAUTH_REDIRECT_URI=http://127.0.0.1:3000/settings/llm/oauth/callback
+LLM_OAUTH_MOCK=false
+OPENAI_OAUTH_CLIENT_ID=
+OPENAI_OAUTH_CLIENT_SECRET=
+GOOGLE_OAUTH_CLIENT_ID=
+GOOGLE_OAUTH_CLIENT_SECRET=
 ```
+
+### OAuth 回调与厂商控制台
+
+1. **回调 URL**（与 `LLM_OAUTH_REDIRECT_URI` 一致）：`http://127.0.0.1:3000/settings/llm/oauth/callback`
+2. **OpenAI**：在 OpenAI 开发者控制台创建 OAuth App，填入 Client ID / Secret；Scopes 默认 `openid profile email offline_access`。
+3. **Google Cloud**：启用 Generative Language API，创建 OAuth 2.0 Web Client，授权重定向 URI 指向上方回调地址。
+4. **本地 Mock**：测试环境可设 `LLM_OAUTH_MOCK=true`（pytest 回归默认开启），无需真实 Client ID。
+
+### 订阅登录（实验性，Sprint 16b）
+
+| 方式 | Provider | 说明 |
+|------|----------|------|
+| **ChatGPT 登录 (Codex)** | OpenAI | 使用 ChatGPT Plus 配额；OAuth 回调固定 `http://localhost:1455/auth/callback`，后端在授权期间监听该端口 |
+| **Google 登录 (Gemini 订阅)** | Google | 使用 Gemini CLI 同款 OAuth；个人 Google 账号 + AI Pro/Ultra/免费档 |
+
+- 与 **Platform OAuth**（需自建 Client ID）并存，在 LLM 设置页选择不同认证 Tab。
+- 非官方接口，可能随厂商 CLI 变更而失效；生产环境建议保留 **API Key** 作为回退。
+- Mock 模式（`LLM_OAUTH_MOCK=true`）仅用于本地开发/测试，不能调用真实模型。
+5. **OpenAI Compatible 合并**：原 `openai-compatible` Provider 已并入 **OpenAI**；`LLM_PROVIDER=openai-compatible` 仍兼容，自定义 Base URL 可指向 Azure / 代理。
 
 ## 部署与升级注意
 
-1. **数据库迁移**：启动时自动执行 `app/migrations/runner.py`（当前至 **011**）。旧库直接启动即可升级；新库运行 `python init_db.py`。
+1. **数据库迁移**：启动时自动执行 `app/migrations/runner.py`（当前至 **015**）。旧库直接启动即可升级；新库运行 `python init_db.py`。
 2. **`APP_SECRET_KEY`**：生产必须设置稳定随机串。未设置时 LLM Key 加密功能受限；**更换密钥后需导演在 LLM 设置页重新保存 API Key**。
 3. **Session 升级（migration 008）**：若从无二期的旧库升级，已有用户需 **重新登录** 获取新 Session Token。
 4. **音频上传**：非 WAV 格式需系统 PATH 可调用 `ffmpeg`。

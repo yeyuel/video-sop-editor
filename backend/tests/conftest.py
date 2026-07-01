@@ -31,6 +31,7 @@ def regression_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Generator
     monkeypatch.setattr("app.migrations.runner.engine", test_engine)
     monkeypatch.setattr("app.api.sse_stream.db.engine", test_engine)
     monkeypatch.setattr(settings, "storage_dir", str(storage_dir))
+    monkeypatch.setattr(settings, "llm_oauth_mock", True)
 
     SQLModel.metadata.create_all(test_engine)
     run_migrations()

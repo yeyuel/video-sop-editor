@@ -8,9 +8,11 @@ from sqlmodel import Session
 
 from app.core.config import settings
 from app.models.schemas import AssetVisionPrefillRead
+from app.services.llm.auth import enrich_config_with_auth, is_provider_configured
 from app.services.llm.config_store import resolve_active_config
 from app.services.llm.gateway import llm_gateway
 from app.services.llm.model_capabilities import model_supports_vision
+from app.services.llm.oauth.modes import is_subscription_auth_type
 from app.services.llm.progress import ProgressReporter, emit_progress
 from app.services.llm.types import LlmCallResult, LlmErrorCode
 from app.services.repository import repository
@@ -37,6 +39,14 @@ MOCK_VISION_RESULT: dict[str, Any] = {
     "informationDensity": "medium",
     "suggestedDurationSec": 2.5,
 }
+
+
+def _vision_not_configured_message(config) -> str:
+    if is_subscription_auth_type(config.auth_type):
+        return "尚未完成订阅登录，请先在 LLM 设置页连接 ChatGPT (Codex) 或 Google 订阅账号。"
+    if config.auth_type == "oauth":
+        return "尚未完成 OAuth 授权，请先在 LLM 设置页连接账号。"
+    return "未配置 LLM API Key，请先在 LLM 设置页保存并设为生效。"
 
 
 def resolve_asset_video_path(media_root: str, relative_path: str) -> Path | None:
@@ -259,11 +269,11 @@ class VisionAnalysisService:
             emit_progress(on_progress, "complete", prefill.message, progress=95)
             return prefill, _llm_meta_from_result(result)
 
-        config = resolve_active_config(session)
-        if not config.api_key.strip():
+        config = enrich_config_with_auth(session, resolve_active_config(session))
+        if not is_provider_configured(config):
             result = LlmCallResult.failure(
                 LlmErrorCode.NOT_CONFIGURED,
-                "未配置 LLM API Key，请先在 LLM 设置页保存并设为生效。",
+                _vision_not_configured_message(config),
                 provider_id=config.provider_id,
                 model=config.model,
             )

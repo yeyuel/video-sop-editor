@@ -22,7 +22,7 @@
 | Sprint 13（导出反向导入） | ✅ 已完成 | JSON / CSV round-trip |
 | Sprint 14（LLM Vision） | ✅ 已完成 | **决策 2**；2026-06-21 关闭 |
 | Sprint 15（全局分镜 + 复用） | ✅ 已完成 | **决策 3** |
-| Sprint 16（OAuth） | ⬜ 未开始 | **决策 4** |
+| Sprint 16（OAuth + Provider 合并） | ✅ 已完成 | **决策 4** |
 | Sprint 17（粗剪结构） | ⬜ 未开始 | EDL / 剪映 JSON |
 | Sprint 18（验收冻结） | ⬜ 未开始 | 三期关闭 |
 | **三期** | 🔄 **进行中** | 立项 2026-06-26 |
@@ -172,35 +172,51 @@
 
 ### Sprint 16 — OpenAI + Google OAuth（决策 4）
 
-**Registry**
+**Registry / 合并**
 
-- [ ] 新增 `google` Provider（OAuth + api_key；Gemini base URL）
-- [ ] OpenAI OAuth 配置项：client_id、redirect_uri、scopes
+- [x] `openai-compatible` 并入 `openai`（别名兼容 + migration 015 数据迁移）
+- [x] Google Provider 增加 `oauth` authType
+- [x] OpenAI OAuth 配置项：client_id、redirect_uri、scopes（环境变量）
 
 **后端 OAuth 流**
 
-- [ ] migration 014：oauth_token 存储（encrypted refresh token）
-- [ ] Authorization Code + PKCE：start / callback / refresh / revoke
-- [ ] Google OAuth 2.0 与 OpenAI OAuth 各一套 adapter
-- [ ] Gateway 按 auth_type 注入 Bearer（api_key | oauth）
+- [x] migration 015：oauth token + pending state 表
+- [x] Authorization Code + PKCE：start / callback / refresh / revoke
+- [x] Google OAuth 2.0 与 OpenAI OAuth 各一套 adapter
+- [x] Gateway 按 auth_type 注入 Bearer（api_key | oauth）
 
 **前端**
 
-- [ ] LLM 设置页：API Key | OAuth 连接
-- [ ] OAuth 跳转 + callback 结果 toast
-- [ ] 授权失效重新连接引导
+- [x] LLM 设置页：API Key | OAuth 连接
+- [x] OAuth 跳转 + callback 结果 toast
+- [x] 授权失效重新连接引导
 
 **部署**
 
-- [ ] README：OAuth callback URL、Google Cloud Console / OpenAI App 配置说明
+- [x] README：OAuth callback URL、Google Cloud Console / OpenAI App 配置说明
 
 **测试**
 
-- [ ] OAuth state/PKCE 单元测试
-- [ ] stub callback 集成测试
+- [x] OAuth state/PKCE 单元测试
+- [x] stub callback 集成测试（`LLM_OAUTH_MOCK`）
 - [ ] 手工：OpenAI + Google 各授权 1 次
 
 **验收：** OAuth 连接后可跑连通性测试 + 主题 LLM 建议。
+
+**Sprint 16：** ✅ 已完成（2026-06-21）
+
+**Sprint 16b — ChatGPT (Codex) + Gemini 订阅登录（实验性）**
+
+- [x] 新增 auth 类型：`codex_oauth`（OpenAI）、`gemini_subscription`（Google）
+- [x] Codex：CLI 同源 OAuth（`localhost:1455` loopback）+ Codex Responses Gateway
+- [x] Gemini：Gemini CLI 同源 OAuth + Code Assist / GenAI Gateway
+- [x] LLM 设置页：API Key | Platform OAuth | ChatGPT 登录 | Google 订阅登录
+- [x] Mock 模式（`LLM_OAUTH_MOCK=true`）可本地回归
+- [x] 迁移 016：`oauth_mode` / `account_id` / `project_id` 字段
+
+**验收：** Mock 下 Codex/Gemini 订阅登录 + 连通性测试通过；真实环境需 ChatGPT Plus / Google AI 订阅。
+
+**Sprint 16b：** ✅ 已完成（2026-06-21）
 
 ---
 

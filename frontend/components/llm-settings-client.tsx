@@ -2,6 +2,7 @@
 
 import type { FormEvent } from "react";
 import { useCallback, useEffect, useState, useTransition } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 
 import { BlockingNotice, ToastNotice } from "@/components/async-status";
 import {
@@ -11,12 +12,76 @@ import {
   getLlmProviderStatus,
   getLlmProviders,
   getLlmStatus,
+  pollLlmSubscriptionOAuth,
+  revokeLlmOAuth,
+  revokeLlmSubscriptionOAuth,
   saveLlmProviderConfig,
+  startLlmOAuth,
+  startLlmSubscriptionOAuth,
   testActiveLlmProvider,
   testLlmProvider
 } from "@/lib/browser-api";
 import type { LlmAuditLog } from "@/lib/browser-api";
 import type { LlmModelOption, LlmProvider, LlmStatus, LlmTestResult } from "@/lib/llm-status";
+
+type LlmAuthType = "api_key" | "oauth" | "codex_oauth" | "gemini_subscription";
+
+/** Hidden in UI; backend routes remain available for future re-enable. */
+const HIDDEN_UI_AUTH_TYPES = new Set<LlmAuthType>(["oauth", "gemini_subscription"]);
+
+function isHiddenUiAuthType(authType: LlmAuthType) {
+  return HIDDEN_UI_AUTH_TYPES.has(authType);
+}
+
+function resolveVisibleAuthType(authType: LlmAuthType): LlmAuthType {
+  if (!isHiddenUiAuthType(authType)) {
+    return authType;
+  }
+  return "api_key";
+}
+
+const PROVIDER_SUBTITLE_OVERRIDES: Record<string, string> = {
+  openai: "官方 API · ChatGPT 登录 (Codex)",
+  google: "Gemini API Key"
+};
+
+/** Hidden in provider sidebar; backend registry and APIs remain available. */
+const HIDDEN_UI_PROVIDER_IDS = new Set(["google", "deepseek", "glm"]);
+
+function isHiddenUiProvider(providerId: string) {
+  return HIDDEN_UI_PROVIDER_IDS.has(providerId);
+}
+
+function filterVisibleProviders(providers: LlmProvider[]) {
+  return providers.filter((provider) => !isHiddenUiProvider(provider.providerId));
+}
+
+function resolveVisibleProviderId(providerId: string, providers: LlmProvider[]) {
+  if (providerId && !isHiddenUiProvider(providerId)) {
+    return providerId;
+  }
+  const visible = filterVisibleProviders(providers);
+  return (
+    visible.find((item) => item.isActive)?.providerId ??
+    visible[0]?.providerId ??
+    ""
+  );
+}
+
+function normalizeAuthType(value: string): LlmAuthType {
+  if (
+    value === "oauth" ||
+    value === "codex_oauth" ||
+    value === "gemini_subscription"
+  ) {
+    return value;
+  }
+  return "api_key";
+}
+
+function isOAuthLikeAuthType(authType: LlmAuthType) {
+  return authType === "oauth" || authType === "codex_oauth" || authType === "gemini_subscription";
+}
 
 const STATUS_LABELS: Record<string, string> = {
   configured: "已配置",
@@ -33,11 +98,18 @@ function statusBadgeClass(status: string) {
   return "border-clay/15 bg-[#fff5ef] text-clay";
 }
 
-function recommendedModel(provider?: LlmProvider | null) {
+function recommendedModel(provider?: LlmProvider | null, authType: LlmAuthType = "api_key") {
   if (!provider) {
     return "";
   }
-  return provider.models.find((item) => item.recommended)?.modelId ?? provider.defaultModel;
+  const fromOptions = provider.models.find((item) => item.recommended)?.modelId;
+  if (authType === "codex_oauth") {
+    return "gpt-5.5";
+  }
+  if (authType === "gemini_subscription") {
+    return "gemini-2.5-pro";
+  }
+  return fromOptions ?? provider.defaultModel;
 }
 
 function isKnownModel(modelId: string, provider?: LlmProvider | null) {
@@ -158,6 +230,8 @@ function LlmAuditSection({ logs }: { logs: LlmAuditLog[] }) {
 }
 
 export function LlmSettingsClient() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
   const [providers, setProviders] = useState<LlmProvider[]>([]);
   const [activeStatus, setActiveStatus] = useState<LlmStatus | null>(null);
   const [selectedProviderId, setSelectedProviderId] = useState("");
@@ -165,6 +239,7 @@ export function LlmSettingsClient() {
   const [baseUrl, setBaseUrl] = useState("");
   const [model, setModel] = useState("");
   const [apiKey, setApiKey] = useState("");
+  const [authType, setAuthType] = useState<LlmAuthType>("api_key");
   const [error, setError] = useState("");
   const [notice, setNotice] = useState<{
     message: string;
@@ -179,11 +254,15 @@ export function LlmSettingsClient() {
   const [modelOptions, setModelOptions] = useState<LlmModelOption[]>([]);
   const [liveModelsMessage, setLiveModelsMessage] = useState("");
 
-  const loadProviderForm = useCallback(async (providerId: string, providerList: LlmProvider[]) => {
+  const loadProviderForm = useCallback(async (providerId: string, providerList: LlmProvider[], nextAuthType?: LlmAuthType) => {
     const status = await getLlmProviderStatus(providerId);
     const provider = providerList.find((item) => item.providerId === providerId);
+    const resolvedAuthType = resolveVisibleAuthType(
+      nextAuthType ?? normalizeAuthType(status.authType)
+    );
     const nextModel = status.model || recommendedModel(provider);
     setProviderStatus(status);
+    setAuthType(resolvedAuthType);
     setBaseUrl(status.baseUrl);
     setUseCustomModel(!isKnownModel(nextModel, provider));
     setModel(nextModel);
@@ -191,16 +270,33 @@ export function LlmSettingsClient() {
 
     let options = provider?.models ?? [];
     setLiveModelsMessage("");
-    if (status.configured) {
-      try {
-        options = await getLlmProviderModels(providerId, { live: true });
-      } catch (loadError) {
-        setLiveModelsMessage(
-          loadError instanceof Error ? loadError.message : "无法获取实时模型能力，已使用静态列表。"
-        );
+    const useLiveModels =
+      status.configured &&
+      resolvedAuthType !== "codex_oauth" &&
+      resolvedAuthType !== "gemini_subscription";
+    try {
+      options = await getLlmProviderModels(providerId, {
+        live: useLiveModels,
+        authType: resolvedAuthType
+      });
+      if (!useLiveModels && resolvedAuthType !== "api_key") {
+        setLiveModelsMessage("订阅/Platform OAuth 模式使用专用模型目录。");
       }
+    } catch (loadError) {
+      setLiveModelsMessage(
+        loadError instanceof Error ? loadError.message : "无法获取模型列表，已使用静态列表。"
+      );
     }
     setModelOptions(options);
+    const recommended = options.find((item) => item.recommended)?.modelId;
+    if (
+      recommended &&
+      (resolvedAuthType === "codex_oauth" || resolvedAuthType === "gemini_subscription") &&
+      !options.some((item) => item.modelId === nextModel)
+    ) {
+      setModel(recommended);
+      setUseCustomModel(false);
+    }
   }, []);
 
   const refreshAll = useCallback(
@@ -213,11 +309,13 @@ export function LlmSettingsClient() {
       setProviders(providerList);
       setActiveStatus(active);
       setAuditLogs(logs);
-      const targetId =
+      const targetId = resolveVisibleProviderId(
         providerId ??
-        providerList.find((item) => item.isActive)?.providerId ??
-        active.providerId ??
-        "";
+          providerList.find((item) => item.isActive)?.providerId ??
+          active.providerId ??
+          "",
+        providerList
+      );
       if (targetId) {
         setSelectedProviderId(targetId);
         await loadProviderForm(targetId, providerList);
@@ -244,11 +342,13 @@ export function LlmSettingsClient() {
         setProviders(providerList);
         setActiveStatus(active);
         setAuditLogs(logs);
-        const initialId =
+        const initialId = resolveVisibleProviderId(
           providerList.find((item) => item.isActive)?.providerId ??
-          active.providerId ??
-          providerList[0]?.providerId ??
-          "";
+            active.providerId ??
+            providerList[0]?.providerId ??
+            "",
+          providerList
+        );
         setSelectedProviderId(initialId);
         if (initialId) {
           await loadProviderForm(initialId, providerList);
@@ -271,12 +371,46 @@ export function LlmSettingsClient() {
   }, [loadProviderForm]);
 
   useEffect(() => {
+    if (searchParams.get("oauth") !== "success") {
+      return;
+    }
+    setNotice({
+      title: "OAuth 授权成功",
+      message: "Provider 连接状态已更新，可测试连接并设为生效。",
+      tone: "success"
+    });
+    router.replace("/settings/llm");
+  }, [router, searchParams]);
+
+  useEffect(() => {
     if (!notice) {
       return;
     }
     const timer = window.setTimeout(() => setNotice(null), 2800);
     return () => window.clearTimeout(timer);
   }, [notice]);
+
+  function handleAuthTypeChange(nextAuthType: LlmAuthType) {
+    const visibleAuthType = resolveVisibleAuthType(nextAuthType);
+    setAuthType(visibleAuthType);
+    setTestResult(null);
+    if (!selectedProviderId) {
+      return;
+    }
+    startTransition(async () => {
+      try {
+        await loadProviderForm(selectedProviderId, providers, visibleAuthType);
+        const provider = providers.find((item) => item.providerId === selectedProviderId);
+        const nextRecommended = recommendedModel(provider, nextAuthType);
+        if (nextAuthType === "codex_oauth" || nextAuthType === "gemini_subscription") {
+          setModel(nextRecommended);
+          setUseCustomModel(false);
+        }
+      } catch (selectError) {
+        setError(selectError instanceof Error ? selectError.message : "切换认证方式失败。");
+      }
+    });
+  }
 
   function handleSelectProvider(providerId: string) {
     setSelectedProviderId(providerId);
@@ -301,6 +435,7 @@ export function LlmSettingsClient() {
     startTransition(async () => {
       try {
         const saved = await saveLlmProviderConfig(selectedProviderId, {
+          authType,
           baseUrl,
           model,
           apiKey: apiKey.trim() ? apiKey.trim() : undefined
@@ -350,6 +485,7 @@ export function LlmSettingsClient() {
     startTransition(async () => {
       try {
         const { data } = await testLlmProvider(selectedProviderId, {
+          authType,
           baseUrl,
           model,
           apiKey: apiKey.trim() ? apiKey.trim() : undefined
@@ -384,14 +520,101 @@ export function LlmSettingsClient() {
     });
   }
 
+  async function pollSubscriptionOAuth(providerId: string, state: string) {
+    const deadline = Date.now() + 120_000;
+    while (Date.now() < deadline) {
+      const result = await pollLlmSubscriptionOAuth(providerId, state);
+      if (result.status === "complete" && result.configured) {
+        return result;
+      }
+      if (result.status === "error") {
+        throw new Error(result.message || "订阅登录失败。");
+      }
+      await new Promise((resolve) => window.setTimeout(resolve, 2000));
+    }
+    throw new Error("订阅登录超时，请重试。");
+  }
+
+  function handleStartOAuth() {
+    if (!selectedProviderId) {
+      return;
+    }
+
+    setError("");
+    startTransition(async () => {
+      try {
+        await saveLlmProviderConfig(selectedProviderId, {
+          authType,
+          baseUrl,
+          model
+        });
+        if (authType === "codex_oauth" || authType === "gemini_subscription") {
+          const start = await startLlmSubscriptionOAuth(selectedProviderId, authType);
+          if (!start.authorizationUrl) {
+            throw new Error("未获取到订阅登录授权地址。");
+          }
+          window.open(start.authorizationUrl, "_blank", "noopener,noreferrer");
+          if (start.requiresPoll) {
+            await pollSubscriptionOAuth(selectedProviderId, start.state);
+            await refreshAll(selectedProviderId);
+            setNotice({
+              title: "订阅登录成功",
+              message: "账号已连接，可测试连接并设为生效。",
+              tone: "success"
+            });
+          } else {
+            window.location.assign(start.authorizationUrl);
+          }
+          return;
+        }
+        const start = await startLlmOAuth(selectedProviderId);
+        if (!start.authorizationUrl) {
+          throw new Error("未获取到 OAuth 授权地址。");
+        }
+        window.location.assign(start.authorizationUrl);
+      } catch (oauthError) {
+        setError(oauthError instanceof Error ? oauthError.message : "OAuth 连接失败。");
+      }
+    });
+  }
+
+  function handleRevokeOAuth() {
+    if (!selectedProviderId) {
+      return;
+    }
+
+    setError("");
+    startTransition(async () => {
+      try {
+        const result =
+          authType === "codex_oauth" || authType === "gemini_subscription"
+            ? await revokeLlmSubscriptionOAuth(selectedProviderId, authType)
+            : await revokeLlmOAuth(selectedProviderId);
+        await refreshAll(selectedProviderId);
+        setNotice({
+          title: "连接已断开",
+          message: result.message,
+          tone: "warning"
+        });
+      } catch (revokeError) {
+        setError(revokeError instanceof Error ? revokeError.message : "断开连接失败。");
+      }
+    });
+  }
+
   const selectedProvider = providers.find((item) => item.providerId === selectedProviderId);
+  const supportsCodexOAuth = Boolean(selectedProvider?.authTypes.includes("codex_oauth"));
+  const showAuthTabs = supportsCodexOAuth;
   const resolvedModelOptions = modelOptions.length > 0 ? modelOptions : (selectedProvider?.models ?? []);
   const selectedModelOption = resolvedModelOptions.find((item) => item.modelId === model);
   const selectedModelSupportsVision = selectedModelOption?.supportsVision ?? false;
   const isActiveProvider = selectedProvider?.isActive ?? activeStatus?.providerId === selectedProviderId;
   const canActivate = Boolean(selectedProviderId && providerStatus?.configured && !isActiveProvider);
   const canTest = Boolean(
-    selectedProviderId && baseUrl.trim() && model.trim() && (apiKey.trim() || providerStatus?.configured)
+    selectedProviderId &&
+      baseUrl.trim() &&
+      model.trim() &&
+      (isOAuthLikeAuthType(authType) ? providerStatus?.configured : apiKey.trim() || providerStatus?.configured)
   );
   const canTestActive = Boolean(activeStatus?.configured);
 
@@ -447,7 +670,7 @@ export function LlmSettingsClient() {
       <div className="grid gap-6 lg:grid-cols-[280px_minmax(0,1fr)]">
         <aside className="space-y-3">
           <p className="text-xs uppercase tracking-[0.22em] text-pine/70">Providers</p>
-          {providers.map((provider) => {
+          {filterVisibleProviders(providers).map((provider) => {
             const selected = provider.providerId === selectedProviderId;
             return (
               <button
@@ -468,7 +691,10 @@ export function LlmSettingsClient() {
                     <span className="badge-ai">生效中</span>
                   ) : null}
                 </div>
-                <p className="mt-2 text-xs text-ink/60">{provider.providerId}</p>
+                <p className="mt-2 text-xs text-ink/60">
+                  {PROVIDER_SUBTITLE_OVERRIDES[provider.providerId] ??
+                    (provider.subtitle || provider.providerId)}
+                </p>
                 <p className="mt-2 text-xs text-ink/55">
                   {STATUS_LABELS[provider.status] ?? provider.status}
                 </p>
@@ -480,12 +706,18 @@ export function LlmSettingsClient() {
         <section className="surface-panel p-6">
           <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
             <div>
-              <p className="text-xs uppercase tracking-[0.22em] text-pine/70">API Key Config</p>
+              <p className="text-xs uppercase tracking-[0.22em] text-pine/70">Connection</p>
               <h3 className="mt-2 text-2xl font-semibold text-ink">
                 {selectedProvider?.providerName ?? "选择 Provider"}
               </h3>
               <p className="mt-2 text-sm leading-6 text-ink/70">
-                API Key 仅保存在后端数据库，不会回显到浏览器。留空 API Key 字段则保留已有密钥不变。
+                {authType === "codex_oauth"
+                  ? "ChatGPT 登录 (Codex) 使用 ChatGPT Plus 订阅配额。授权时后端会在 localhost:1455 监听回调（实验性功能）。"
+                  : authType === "gemini_subscription"
+                    ? "Google 登录 (Gemini 订阅) 使用 Gemini CLI 同款 OAuth，走个人订阅/免费档配额（实验性功能）。"
+                    : authType === "oauth"
+                      ? "Platform OAuth 模式下由浏览器授权，Token 加密保存在后端。需自行配置 Client ID。"
+                      : "API Key 仅保存在后端数据库，不会回显到浏览器。留空 API Key 字段则保留已有密钥不变。"}
               </p>
             </div>
             {providerStatus ? (
@@ -502,7 +734,34 @@ export function LlmSettingsClient() {
 
           {!isActiveProvider ? (
             <div className="mt-4 rounded-2xl border border-amber-200/80 bg-amber-50 px-4 py-3 text-sm leading-6 text-amber-900">
-              此 Provider 尚未生效。保存 API Key 后，点击「设为生效」即可用于 LLM 建议。
+              此 Provider 尚未生效。保存配置或完成 OAuth 连接后，点击「设为生效」即可用于 LLM 建议。
+            </div>
+          ) : null}
+
+          {showAuthTabs ? (
+            <div className="mt-5 flex flex-wrap gap-2 rounded-full border border-line bg-white p-1">
+              <button
+                type="button"
+                onClick={() => handleAuthTypeChange("api_key")}
+                className={[
+                  "rounded-full px-4 py-2 text-sm transition",
+                  authType === "api_key" ? "bg-sand text-ink shadow-soft" : "text-ink/65"
+                ].join(" ")}
+              >
+                API Key
+              </button>
+              {supportsCodexOAuth ? (
+                <button
+                  type="button"
+                  onClick={() => handleAuthTypeChange("codex_oauth")}
+                  className={[
+                    "rounded-full px-4 py-2 text-sm transition",
+                    authType === "codex_oauth" ? "bg-sand text-ink shadow-soft" : "text-ink/65"
+                  ].join(" ")}
+                >
+                  ChatGPT 登录 (Codex)
+                </button>
+              ) : null}
             </div>
           ) : null}
 
@@ -604,23 +863,78 @@ export function LlmSettingsClient() {
               ) : null}
             </label>
 
-            <label className="block">
-              <span className="mb-2 block text-sm text-ink/75">API Key</span>
-              <input
-                type="password"
-                value={apiKey}
-                onChange={(event) => setApiKey(event.target.value)}
-                placeholder={
-                  providerStatus?.configured ? "已配置，输入新 Key 可覆盖" : "请输入 API Key"
-                }
-                autoComplete="off"
-                className="input-field"
-              />
-            </label>
+            {isOAuthLikeAuthType(authType) ? (
+              <div className="space-y-4 rounded-2xl border border-pine/15 bg-sand/40 p-4">
+                <p className="text-sm leading-6 text-ink/75">
+                  {providerStatus?.configured
+                    ? "账号已连接。可重新授权覆盖，或断开后改回 API Key。"
+                    : authType === "codex_oauth"
+                      ? "点击连接后在新窗口完成 ChatGPT 登录，本页将自动等待授权结果。"
+                      : authType === "gemini_subscription"
+                        ? "点击连接后在新窗口完成 Google 登录，本页将自动等待授权结果。"
+                        : "点击连接后跳转到厂商授权页，完成后会自动回到本系统。"}
+                </p>
+                {providerStatus?.status === "expired" ? (
+                  <div className="rounded-xl border border-clay/15 bg-[#fff5ef] px-3 py-2 text-sm text-clay">
+                    授权已过期，请重新连接。
+                  </div>
+                ) : null}
+                <div className="flex flex-wrap gap-3">
+                  <button
+                    type="button"
+                    onClick={handleStartOAuth}
+                    disabled={loading || isPending}
+                    className="btn-ai"
+                  >
+                    {providerStatus?.configured
+                      ? authType === "codex_oauth"
+                        ? "重新连接 ChatGPT"
+                        : authType === "gemini_subscription"
+                          ? "重新连接 Google"
+                          : "重新连接 OAuth"
+                      : authType === "codex_oauth"
+                        ? "连接 ChatGPT 账号"
+                        : authType === "gemini_subscription"
+                          ? "连接 Google 账号"
+                          : "连接 OAuth 账号"}
+                  </button>
+                  {providerStatus?.configured ? (
+                    <button
+                      type="button"
+                      onClick={handleRevokeOAuth}
+                      disabled={loading || isPending}
+                      className="btn-secondary"
+                    >
+                      断开连接
+                    </button>
+                  ) : null}
+                </div>
+              </div>
+            ) : (
+              <label className="block">
+                <span className="mb-2 block text-sm text-ink/75">API Key</span>
+                <input
+                  type="password"
+                  value={apiKey}
+                  onChange={(event) => setApiKey(event.target.value)}
+                  placeholder={
+                    providerStatus?.configured ? "已配置，输入新 Key 可覆盖" : "请输入 API Key"
+                  }
+                  autoComplete="off"
+                  className="input-field"
+                />
+              </label>
+            )}
 
             <div className="stat-cell">
-              默认地址与模型可在上方修改。若服务端 `.env` 中也配置了{" "}
-              <code className="text-pine">LLM_API_KEY</code>，数据库中的 Key 会优先生效。
+              {selectedProviderId === "openai"
+                ? "OpenAI 已合并原 OpenAI Compatible：可通过 Base URL 指向 Azure / 代理端点，无需单独 Provider。"
+                : "若服务端 `.env` 中也配置了 "}
+              {selectedProviderId !== "openai" ? (
+                <>
+                  <code className="text-pine">LLM_API_KEY</code>，数据库中的 Key 会优先生效。
+                </>
+              ) : null}
             </div>
 
             {error ? (

@@ -297,6 +297,172 @@ def _migration_013_asset_vision_analysis(session: Session) -> None:
         )
 
 
+def _migration_015_llm_oauth_and_openai_merge(session: Session) -> None:
+    session.exec(
+        text(
+            """
+            CREATE TABLE IF NOT EXISTS llmoauthpendingentity (
+                state TEXT PRIMARY KEY,
+                provider_id TEXT,
+                user_id TEXT,
+                code_verifier TEXT DEFAULT '',
+                redirect_uri TEXT DEFAULT '',
+                created_at TEXT DEFAULT '',
+                expires_at TEXT DEFAULT ''
+            )
+            """
+        )
+    )
+    session.exec(
+        text(
+            """
+            CREATE TABLE IF NOT EXISTS llmoauthtokenentity (
+                id TEXT PRIMARY KEY,
+                provider_id TEXT UNIQUE,
+                user_id TEXT,
+                access_token TEXT DEFAULT '',
+                refresh_token TEXT DEFAULT '',
+                expires_at TEXT DEFAULT '',
+                scopes TEXT DEFAULT '',
+                status TEXT DEFAULT 'authorized',
+                updated_at TEXT DEFAULT ''
+            )
+            """
+        )
+    )
+    session.exec(
+        text(
+            "CREATE INDEX IF NOT EXISTS ix_llmoauthpendingentity_provider_id "
+            "ON llmoauthpendingentity (provider_id)"
+        )
+    )
+    session.exec(
+        text(
+            "CREATE INDEX IF NOT EXISTS ix_llmoauthtokenentity_user_id "
+            "ON llmoauthtokenentity (user_id)"
+        )
+    )
+
+    inspector = inspect(engine)
+    if "llmproviderconfigentity" in inspector.get_table_names():
+        session.exec(
+            text(
+                """
+                UPDATE llmproviderconfigentity
+                SET provider_id = 'openai', id = 'llm_openai'
+                WHERE provider_id = 'openai-compatible'
+                """
+            )
+        )
+        session.exec(
+            text(
+                """
+                DELETE FROM llmproviderconfigentity
+                WHERE provider_id = 'openai-compatible'
+                """
+            )
+        )
+    if "appsettingentity" in inspector.get_table_names():
+        session.exec(
+            text(
+                """
+                UPDATE appsettingentity
+                SET value = 'openai'
+                WHERE key = 'llm_active_provider_id' AND value = 'openai-compatible'
+                """
+            )
+        )
+
+
+def _migration_016_subscription_oauth(session: Session) -> None:
+    inspector = inspect(engine)
+    if "llmoauthpendingentity" in inspector.get_table_names():
+        pending_columns = {column["name"] for column in inspector.get_columns("llmoauthpendingentity")}
+        if "oauth_mode" not in pending_columns:
+            session.exec(text("ALTER TABLE llmoauthpendingentity ADD COLUMN oauth_mode TEXT DEFAULT 'platform'"))
+        if "loopback_port" not in pending_columns:
+            session.exec(text("ALTER TABLE llmoauthpendingentity ADD COLUMN loopback_port INTEGER DEFAULT 0"))
+        if "flow_status" not in pending_columns:
+            session.exec(text("ALTER TABLE llmoauthpendingentity ADD COLUMN flow_status TEXT DEFAULT 'pending'"))
+        if "error_message" not in pending_columns:
+            session.exec(text("ALTER TABLE llmoauthpendingentity ADD COLUMN error_message TEXT DEFAULT ''"))
+
+    if "llmoauthtokenentity" not in inspector.get_table_names():
+        return
+
+    token_columns = {column["name"] for column in inspector.get_columns("llmoauthtokenentity")}
+    if "oauth_mode" in token_columns:
+        session.exec(
+            text(
+                "CREATE UNIQUE INDEX IF NOT EXISTS ix_llmoauth_provider_mode "
+                "ON llmoauthtokenentity (provider_id, oauth_mode)"
+            )
+        )
+        return
+
+    session.exec(
+        text(
+            """
+            CREATE TABLE llmoauthtokenentity_new (
+                id TEXT PRIMARY KEY,
+                provider_id TEXT,
+                oauth_mode TEXT DEFAULT 'platform',
+                user_id TEXT,
+                access_token TEXT DEFAULT '',
+                refresh_token TEXT DEFAULT '',
+                id_token TEXT DEFAULT '',
+                account_id TEXT DEFAULT '',
+                project_id TEXT DEFAULT '',
+                expires_at TEXT DEFAULT '',
+                scopes TEXT DEFAULT '',
+                status TEXT DEFAULT 'authorized',
+                updated_at TEXT DEFAULT ''
+            )
+            """
+        )
+    )
+    session.exec(
+        text(
+            """
+            INSERT INTO llmoauthtokenentity_new (
+                id, provider_id, oauth_mode, user_id, access_token, refresh_token,
+                id_token, account_id, project_id, expires_at, scopes, status, updated_at
+            )
+            SELECT
+                id, provider_id, 'platform', user_id, access_token, refresh_token,
+                '', '', '', expires_at, scopes, status, updated_at
+            FROM llmoauthtokenentity
+            """
+        )
+    )
+    session.exec(text("DROP TABLE llmoauthtokenentity"))
+    session.exec(text("ALTER TABLE llmoauthtokenentity_new RENAME TO llmoauthtokenentity"))
+    session.exec(
+        text(
+            "CREATE INDEX IF NOT EXISTS ix_llmoauthtokenentity_provider_id "
+            "ON llmoauthtokenentity (provider_id)"
+        )
+    )
+    session.exec(
+        text(
+            "CREATE INDEX IF NOT EXISTS ix_llmoauthtokenentity_oauth_mode "
+            "ON llmoauthtokenentity (oauth_mode)"
+        )
+    )
+    session.exec(
+        text(
+            "CREATE INDEX IF NOT EXISTS ix_llmoauthtokenentity_user_id "
+            "ON llmoauthtokenentity (user_id)"
+        )
+    )
+    session.exec(
+        text(
+            "CREATE UNIQUE INDEX IF NOT EXISTS ix_llmoauth_provider_mode "
+            "ON llmoauthtokenentity (provider_id, oauth_mode)"
+        )
+    )
+
+
 MIGRATIONS: list[tuple[int, str, object]] = [
     (1, "001_legacy_columns", _migration_001_legacy_columns),
     (2, "002_rhythm_analysis_metrics", _migration_002_rhythm_analysis_metrics),
@@ -312,6 +478,8 @@ MIGRATIONS: list[tuple[int, str, object]] = [
     (12, "012_llm_call_logs", _migration_012_llm_call_logs),
     (13, "013_asset_vision_analysis", _migration_013_asset_vision_analysis),
     (14, "014_allow_asset_reuse", _migration_014_allow_asset_reuse),
+    (15, "015_llm_oauth_and_openai_merge", _migration_015_llm_oauth_and_openai_merge),
+    (16, "016_subscription_oauth", _migration_016_subscription_oauth),
 ]
 
 

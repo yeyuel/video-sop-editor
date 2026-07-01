@@ -565,10 +565,19 @@ export function getLlmProviders(): Promise<LlmProvider[]> {
 
 export function getLlmProviderModels(
   providerId: string,
-  options?: { live?: boolean }
+  options?: { live?: boolean; authType?: string }
 ): Promise<LlmModelOption[]> {
-  const query = options?.live ? "?live=true" : "";
-  return requestLlmAdmin<LlmModelOption[]>(`/providers/${providerId}/models${query}`);
+  const params = new URLSearchParams();
+  if (options?.live) {
+    params.set("live", "true");
+  }
+  if (options?.authType) {
+    params.set("auth_type", options.authType);
+  }
+  const query = params.toString();
+  return requestLlmAdmin<LlmModelOption[]>(
+    `/providers/${providerId}/models${query ? `?${query}` : ""}`
+  );
 }
 
 export function getLlmVisionCapability(model?: string): Promise<LlmVisionCapability> {
@@ -594,6 +603,79 @@ export type LlmAuditLog = {
 
 export function getLlmAuditLogs(limit = 20): Promise<LlmAuditLog[]> {
   return requestLlmAdmin<LlmAuditLog[]>(`/audit-logs?limit=${limit}`);
+}
+
+export type LlmOAuthStart = {
+  authorizationUrl: string;
+  state: string;
+  message: string;
+  requiresPoll?: boolean;
+};
+
+export function startLlmOAuth(providerId: string): Promise<LlmOAuthStart> {
+  return requestLlmAdmin<LlmOAuthStart>(`/providers/${providerId}/oauth/start`, {
+    method: "POST"
+  });
+}
+
+export function startLlmSubscriptionOAuth(
+  providerId: string,
+  authType: "codex_oauth" | "gemini_subscription"
+): Promise<LlmOAuthStart> {
+  return requestLlmAdmin<LlmOAuthStart>(
+    `/providers/${providerId}/subscription-oauth/start?auth_type=${encodeURIComponent(authType)}`,
+    { method: "POST" }
+  );
+}
+
+export function pollLlmSubscriptionOAuth(
+  providerId: string,
+  state: string
+): Promise<{ status: string; message: string; configured: boolean; authType: string }> {
+  return requestLlmAdmin<{ status: string; message: string; configured: boolean; authType: string }>(
+    `/providers/${providerId}/subscription-oauth/poll?state=${encodeURIComponent(state)}`
+  );
+}
+
+export function completeLlmSubscriptionOAuthCallback(
+  providerId: string,
+  authType: "codex_oauth" | "gemini_subscription",
+  payload: { code: string; state: string }
+): Promise<LlmStatus> {
+  return requestLlmAdmin<LlmStatus>(
+    `/providers/${providerId}/subscription-oauth/callback?auth_type=${encodeURIComponent(authType)}`,
+    {
+      method: "POST",
+      body: JSON.stringify(payload)
+    }
+  );
+}
+
+export function revokeLlmSubscriptionOAuth(
+  providerId: string,
+  authType: "codex_oauth" | "gemini_subscription"
+): Promise<{ revoked: boolean; message: string }> {
+  return requestLlmAdmin<{ revoked: boolean; message: string }>(
+    `/providers/${providerId}/subscription-oauth/revoke?auth_type=${encodeURIComponent(authType)}`,
+    { method: "POST" }
+  );
+}
+
+export function completeLlmOAuthCallback(
+  providerId: string,
+  payload: { code: string; state: string }
+): Promise<LlmStatus> {
+  return requestLlmAdmin<LlmStatus>(`/providers/${providerId}/oauth/callback`, {
+    method: "POST",
+    body: JSON.stringify(payload)
+  });
+}
+
+export function revokeLlmOAuth(providerId: string): Promise<{ revoked: boolean; message: string }> {
+  return requestLlmAdmin<{ revoked: boolean; message: string }>(
+    `/providers/${providerId}/oauth/revoke`,
+    { method: "POST" }
+  );
 }
 
 export function previewExport(
