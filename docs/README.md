@@ -16,6 +16,8 @@
 - `phase3-master.md`：三期主控文档，含已锁定决策与 Sprint 11～18 路线（**已关闭**）。
 - `phase3-checklist.md`：三期执行清单。
 - `phase3-backlog.md`：四期需求池（三期移出项）。
+- `phase4-master.md`：四期主控文档，聚焦自动粗剪质量、平台化节奏、剪映节拍对齐和 LLM 稳定性。
+- `phase4-checklist.md`：四期执行清单，按 P4-A / P4-B / P4-C 分阶段跟踪落地。
 - `regression-sprint3.md`：Sprint 3 关键路径回归测试说明与运行命令。
 - `regression-sprint11.md`：Sprint 11 E2E / lifespan / 节拍网格回归。
 - `regression-sprint18.md`：Sprint 18 三期验收冻结与四决策表。
@@ -30,5 +32,5 @@
 
 - 看业务逻辑先读 `prd.md` 和 `sop.md`。
 - 看字段和接口先读 `api.md`。
-- 开始三期开发前，先读 `phase3-master.md` 和 `phase3-checklist.md`。
+- 开始四期开发前，先读 `phase4-master.md` 和 `phase4-checklist.md`。
 - 开始修改中文文案、文档或脚本前，先读 `encoding-guardrails.md`，避免把乱码重新写回仓库。
