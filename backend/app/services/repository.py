@@ -83,7 +83,11 @@ from app.services.rhythm_generation import (
     recommend_beat_mode,
 )
 from app.services.rhythm_profile import build_attention_beats, build_rhythm_profile
-from app.services.beat_grid import filter_beats_for_capcut_mode, normalize_beat_times
+from app.services.beat_grid import (
+    apply_beat_offset,
+    filter_beats_for_capcut_mode,
+    normalize_beat_times,
+)
 from app.services.serialization import dumps_list, loads_float_list, loads_str_list
 from app.services.storyboard_generation import (
     asset_order_key,
@@ -867,10 +871,19 @@ class SqlRepository:
                     float(project.target_duration_sec),
                     coarse_beats=coarse_beats or None,
                 )
+                beat_points = apply_beat_offset(
+                    beat_points,
+                    float(project.target_duration_sec),
+                    self._beat_offset_from_payload(payload.beatCalibration),
+                )
                 rhythm.raw_beat_points = dumps_list(raw_beats)
                 rhythm.coarse_beat_points = dumps_list(coarse_beats)
             else:
-                beat_points = payload.beatPoints
+                beat_points = apply_beat_offset(
+                    payload.beatPoints,
+                    float(project.target_duration_sec),
+                    self._beat_offset_from_payload(payload.beatCalibration),
+                )
                 if payload.rawBeatPoints:
                     rhythm.raw_beat_points = dumps_list(raw_beats)
                 elif raw_beats:
@@ -1663,6 +1676,13 @@ class SqlRepository:
         except json.JSONDecodeError:
             return []
         return [item for item in payload if isinstance(item, dict)] if isinstance(payload, list) else []
+
+    @staticmethod
+    def _beat_offset_from_payload(payload: dict[str, Any]) -> float:
+        try:
+            return float(payload.get("beatOffsetSec", 0) or 0)
+        except (TypeError, ValueError):
+            return 0.0
 
     @staticmethod
     def _load_bgm_recommendations(raw_value: str) -> list[BgmRecommendationRead]:

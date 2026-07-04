@@ -76,3 +76,21 @@ export function filterBeatsForCapcutMode(
   }
   return normalizeBeatTimes(filtered, targetDurationSec);
 }
+
+export function applyBeatOffset(
+  beatPoints: number[],
+  targetDurationSec: number,
+  offsetSec: number
+): number[] {
+  if (beatPoints.length === 0) {
+    return [];
+  }
+  if (Math.abs(offsetSec) < 0.001) {
+    return normalizeBeatTimes(beatPoints, targetDurationSec);
+  }
+
+  const shifted = beatPoints
+    .map((point) => Number((point + offsetSec).toFixed(2)))
+    .filter((point) => point >= 0 && point <= targetDurationSec);
+  return normalizeBeatTimes(shifted, targetDurationSec);
+}

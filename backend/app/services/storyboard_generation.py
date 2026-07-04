@@ -13,7 +13,11 @@ from app.models.schemas import (
     StoryboardSegmentWrite,
     StoryboardValidationRead,
 )
-from app.services.beat_grid import filter_beats_for_capcut_mode, normalize_beat_times
+from app.services.beat_grid import (
+    apply_beat_offset,
+    filter_beats_for_capcut_mode,
+    normalize_beat_times,
+)
 from app.services.llm import LlmCallResult, build_llm_meta, llm_suggestion_service
 from app.services.llm.progress import ProgressReporter, emit_progress
 
@@ -153,13 +157,17 @@ def resolve_storyboard_beat_points(
 
     raw_source = rhythm.rawBeatPoints or rhythm.beatPoints
     if raw_source:
-        return filter_beats_for_capcut_mode(
+        resolved = filter_beats_for_capcut_mode(
             normalize_beat_times(raw_source, float(target_duration_sec)),
             beat_mode,
             float(target_duration_sec),
             coarse_beats=rhythm.coarseBeatPoints or None,
         )
-    return rhythm.beatPoints
+    else:
+        resolved = rhythm.beatPoints
+
+    beat_offset = float(rhythm.beatCalibration.get("beatOffsetSec", 0) or 0)
+    return apply_beat_offset(resolved, float(target_duration_sec), beat_offset)
 
 
 def _dominant_beat_mode(

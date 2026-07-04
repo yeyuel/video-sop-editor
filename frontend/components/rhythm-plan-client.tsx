@@ -23,6 +23,7 @@ import { BGM_RECOMMEND_LLM_STAGES, RHYTHM_LLM_STAGES } from "@/lib/llm-progress-
 import { getBgmPhaseLabel, isRhythmAnalyzed } from "@/lib/rhythm-workflow";
 import { useLlmProgress } from "@/lib/use-llm-progress";
 import {
+  applyBeatOffset,
   capcutBeatModeOptions,
   filterBeatsForCapcutMode,
   getCapcutBeatModeDescription
@@ -32,7 +33,7 @@ import type { BgmRecommendation, RhythmPlan } from "@/types/domain";
 type RhythmPlanClientProps = {
   projectId: string;
   targetDurationSec: number;
-  initialPlan: RhythmPlan;
+  initialPlan: RhythmPlan | null | undefined;
 };
 
 function listToText(value: string[]) {
@@ -55,6 +56,20 @@ function parseNumberList(value: string) {
     .split(/[,\s]+/)
     .map((item) => Number(item.trim()))
     .filter((item) => !Number.isNaN(item));
+}
+
+function parseOptionalNumber(value: string) {
+  const parsed = Number(value.trim());
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function clampBeatOffset(value: number) {
+  return Math.min(0.5, Math.max(-0.5, value));
+}
+
+function formatBeatOffset(value: number) {
+  const rounded = Math.round(value * 100) / 100;
+  return Object.is(rounded, -0) ? "0" : String(rounded);
 }
 
 function getAnalysisSourceLabel(source: string) {
@@ -171,17 +186,98 @@ function mergeSuggestedFields(current: RhythmSuggestField[], detected: RhythmSug
   return [...new Set([...current, ...detected])];
 }
 
+function emptyRhythmPlan(): RhythmPlan {
+  return {
+    bgmStyle: "",
+    selectedTrackName: "",
+    audioFileName: "",
+    audioFilePath: "",
+    analysisSource: "manual",
+    analysisNotes: [],
+    detectedBpm: 0,
+    audioDurationSec: 0,
+    rawBeatPoints: [],
+    coarseBeatPoints: [],
+    beatMode: "none",
+    beatPoints: [],
+    rhythmNotes: [],
+    darkCutSuggestions: [],
+    photoMotionSuggestions: [],
+    recommendedBgm: [],
+    selectedBgmId: "",
+    bgmPhase: "empty",
+    rhythmProfile: {},
+    attentionBeats: [],
+    beatCalibration: {},
+    audioFingerprint: "",
+    audioAnalysisVersion: ""
+  };
+}
+
+function asNumberList(value: unknown) {
+  return Array.isArray(value)
+    ? value.map((item) => Number(item)).filter((item) => Number.isFinite(item))
+    : [];
+}
+
+function asStringList(value: unknown) {
+  return Array.isArray(value)
+    ? value.map((item) => String(item).trim()).filter(Boolean)
+    : [];
+}
+
+function asObjectRecord(value: unknown) {
+  return value && typeof value === "object" && !Array.isArray(value) ? value : {};
+}
+
+function normalizeRhythmPlan(plan: RhythmPlan | null | undefined): RhythmPlan {
+  const source = plan ?? emptyRhythmPlan();
+  return {
+    ...source,
+    analysisNotes: asStringList(source.analysisNotes),
+    attentionBeats: Array.isArray(source.attentionBeats) ? source.attentionBeats : [],
+    beatCalibration: asObjectRecord(source.beatCalibration) as RhythmPlan["beatCalibration"],
+    beatPoints: asNumberList(source.beatPoints),
+    coarseBeatPoints: asNumberList(source.coarseBeatPoints),
+    darkCutSuggestions: asNumberList(source.darkCutSuggestions),
+    photoMotionSuggestions: asStringList(source.photoMotionSuggestions),
+    rawBeatPoints: asNumberList(source.rawBeatPoints),
+    recommendedBgm: Array.isArray(source.recommendedBgm)
+      ? source.recommendedBgm.map((item) => ({
+          ...item,
+          styleTags: asStringList(item.styleTags)
+        }))
+      : [],
+    rhythmNotes: asStringList(source.rhythmNotes),
+    rhythmProfile: asObjectRecord(source.rhythmProfile) as RhythmPlan["rhythmProfile"],
+    audioFingerprint: source.audioFingerprint ?? "",
+    audioAnalysisVersion: source.audioAnalysisVersion ?? ""
+  };
+}
+
 export function RhythmPlanClient({
   projectId,
   targetDurationSec,
   initialPlan
 }: RhythmPlanClientProps) {
   const router = useRouter();
-  const [plan, setPlan] = useState(initialPlan);
-  const [beatPointsText, setBeatPointsText] = useState(numberListToText(initialPlan.beatPoints));
-  const [rhythmNotesText, setRhythmNotesText] = useState(listToText(initialPlan.rhythmNotes));
-  const [darkCutsText, setDarkCutsText] = useState(numberListToText(initialPlan.darkCutSuggestions));
-  const [photoText, setPhotoText] = useState(listToText(initialPlan.photoMotionSuggestions));
+  const normalizedInitialPlan = normalizeRhythmPlan(initialPlan);
+  const [plan, setPlan] = useState(normalizedInitialPlan);
+  const [beatPointsText, setBeatPointsText] = useState(
+    numberListToText(normalizedInitialPlan.beatPoints)
+  );
+  const [beatOffsetText, setBeatOffsetText] = useState(
+    String(normalizedInitialPlan.beatCalibration?.beatOffsetSec ?? 0)
+  );
+  const [rhythmNotesText, setRhythmNotesText] = useState(
+    listToText(normalizedInitialPlan.rhythmNotes)
+  );
+  const [darkCutsText, setDarkCutsText] = useState(
+    numberListToText(normalizedInitialPlan.darkCutSuggestions)
+  );
+  const [photoText, setPhotoText] = useState(
+    listToText(normalizedInitialPlan.photoMotionSuggestions)
+  );
   const [audioFile, setAudioFile] = useState<File | null>(null);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState<{
@@ -217,11 +313,13 @@ export function RhythmPlanClient({
   }
 
   function syncFromPlan(nextPlan: RhythmPlan) {
-    setPlan(nextPlan);
-    setBeatPointsText(numberListToText(nextPlan.beatPoints));
-    setRhythmNotesText(listToText(nextPlan.rhythmNotes));
-    setDarkCutsText(numberListToText(nextPlan.darkCutSuggestions));
-    setPhotoText(listToText(nextPlan.photoMotionSuggestions));
+    const normalizedPlan = normalizeRhythmPlan(nextPlan);
+    setPlan(normalizedPlan);
+    setBeatPointsText(numberListToText(normalizedPlan.beatPoints));
+    setBeatOffsetText(String(normalizedPlan.beatCalibration?.beatOffsetSec ?? 0));
+    setRhythmNotesText(listToText(normalizedPlan.rhythmNotes));
+    setDarkCutsText(numberListToText(normalizedPlan.darkCutSuggestions));
+    setPhotoText(listToText(normalizedPlan.photoMotionSuggestions));
   }
 
   function handleRecommendBgm() {
@@ -326,10 +424,43 @@ export function RhythmPlanClient({
           targetDurationSec,
           current.coarseBeatPoints
         );
-        setBeatPointsText(numberListToText(filtered));
+        setBeatPointsText(
+          numberListToText(
+            applyBeatOffset(filtered, targetDurationSec, parseOptionalNumber(beatOffsetText))
+          )
+        );
       }
       return nextPlan;
     });
+  }
+
+  function handleBeatOffsetChange(nextValue: string) {
+    setBeatOffsetText(nextValue);
+    applyBeatOffsetPreview(parseOptionalNumber(nextValue));
+  }
+
+  function handleBeatOffsetSliderChange(nextValue: string) {
+    const offset = clampBeatOffset(Number(nextValue));
+    setBeatOffsetText(formatBeatOffset(offset));
+    applyBeatOffsetPreview(offset);
+  }
+
+  function applyBeatOffsetPreview(offset: number) {
+    if (plan.rawBeatPoints.length > 0 && plan.beatMode !== "none") {
+      const filtered = filterBeatsForCapcutMode(
+        plan.rawBeatPoints,
+        plan.beatMode,
+        targetDurationSec,
+        plan.coarseBeatPoints
+      );
+      setBeatPointsText(numberListToText(applyBeatOffset(filtered, targetDurationSec, offset)));
+    } else {
+      setBeatPointsText(
+        numberListToText(
+          applyBeatOffset(parseNumberList(beatPointsText), targetDurationSec, offset)
+        )
+      );
+    }
   }
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -344,6 +475,13 @@ export function RhythmPlanClient({
         const nextPlan = await saveRhythmPlan(projectId, {
           ...plan,
           beatPoints: parseNumberList(beatPointsText),
+          beatCalibration: {
+            ...plan.beatCalibration,
+            source: plan.analysisSource === "audio_upload" ? "manual" : plan.beatCalibration?.source,
+            beatOffsetSec: parseOptionalNumber(beatOffsetText),
+            densityMode: plan.beatMode,
+            referenceBeatPoints: plan.beatCalibration?.referenceBeatPoints ?? []
+          },
           rhythmNotes: parseTextList(rhythmNotesText),
           darkCutSuggestions: parseNumberList(darkCutsText),
           photoMotionSuggestions: parseTextList(photoText)
@@ -755,6 +893,52 @@ export function RhythmPlanClient({
               "input-field disabled:bg-sand/40"
             )}
           />
+        </label>
+
+        <label className="block">
+          <span className="mb-2 block text-sm text-ink/75">整体节拍偏移（秒）</span>
+          <div className="rounded-2xl border border-pine/20 bg-sand/30 px-4 py-4">
+            <div className="flex items-center gap-4">
+              <span className="text-xs text-ink/45">提前 -0.5s</span>
+              <input
+                type="range"
+                min="-0.5"
+                max="0.5"
+                step="0.01"
+                disabled={!canEditBeats}
+                value={clampBeatOffset(parseOptionalNumber(beatOffsetText))}
+                onChange={(event) => handleBeatOffsetSliderChange(event.target.value)}
+                className="h-2 flex-1 cursor-pointer accent-pine disabled:cursor-not-allowed disabled:opacity-50"
+              />
+              <span className="text-xs text-ink/45">滞后 +0.5s</span>
+            </div>
+            <div className="mt-3 flex flex-wrap items-center gap-3">
+              <input
+                readOnly={!canEditBeats}
+                value={beatOffsetText}
+                onChange={(event) => handleBeatOffsetChange(event.target.value)}
+                onBlur={() =>
+                  setBeatOffsetText(formatBeatOffset(clampBeatOffset(parseOptionalNumber(beatOffsetText))))
+                }
+                placeholder="例如：0.08 或 -0.12"
+                className="w-36 rounded-full border border-pine/25 bg-white px-4 py-2 text-sm outline-none transition focus:border-pine disabled:bg-sand/40"
+              />
+              <span className="text-sm text-ink/60">
+                当前偏移：{formatBeatOffset(clampBeatOffset(parseOptionalNumber(beatOffsetText)))}s
+              </span>
+              <button
+                type="button"
+                disabled={!canEditBeats}
+                onClick={() => handleBeatOffsetSliderChange("0")}
+                className="rounded-full border border-pine/20 bg-white px-3 py-2 text-xs font-medium text-pine transition hover:bg-mist disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                归零
+              </button>
+            </div>
+          </div>
+          <p className="mt-2 text-xs text-ink/55">
+            当系统节拍整体比剪映靠前或靠后时，在这里微调整体偏移；保存后分镜会使用校准后的节拍点。
+          </p>
         </label>
 
         <label className="block md:col-span-2">

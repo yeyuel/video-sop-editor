@@ -319,6 +319,7 @@ P4-A 新增字段：
 - `attentionBeats`：内容注意力点，描述钩子、推进、反转、高潮、收尾等内容节点。
 - `beatCalibration`：节拍校准参数，当前先保存来源、偏移、密度模式和参考点。
 - `audioFingerprint` / `audioAnalysisVersion`：用于后续同音频复用校准和识别版本追踪。
+- `beatCalibration.beatOffsetSec`：整体节拍偏移秒数。保存节奏规划后，服务端会基于原始节拍重新计算 `beatPoints`，分镜生成和前端吸附都会使用校准后的结果。
 
 ## 4.5 上传音频并识别节拍
 

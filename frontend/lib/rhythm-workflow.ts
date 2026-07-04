@@ -4,7 +4,7 @@ export function isRhythmAnalyzed(plan: RhythmPlan): boolean {
   return (
     plan.bgmPhase === "analyzed" &&
     plan.analysisSource === "audio_upload" &&
-    plan.beatPoints.length > 0 &&
+    (plan.beatPoints?.length ?? 0) > 0 &&
     Boolean(plan.selectedBgmId) &&
     Boolean(plan.audioFileName)
   );

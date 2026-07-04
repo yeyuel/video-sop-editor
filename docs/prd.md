@@ -359,7 +359,7 @@
 
 - `rhythmProfile`：按平台、视频类型和目标时长生成平台节奏画像，区分抖音/快手、小红书、B 站攻略、B 站 Vlog、视频号和 YouTube 等节奏生态。
 - `attentionBeats`：内容注意力点，承接“时钟法则”和“射门集锦法则”，用于标记钩子、推进、反转、高潮和收尾。
-- `beatCalibration`：节拍校准参数，当前先保存来源、偏移、密度模式和参考节拍点，为后续向剪映踩点结果靠齐做准备。
+- `beatCalibration`：节拍校准参数，当前支持整体偏移 `beatOffsetSec` 和密度模式保存；保存后分镜生成与前端节拍吸附会使用校准后的节拍点。参考节拍点和 scale 校准后续继续增强。
 - 分镜段新增 `attentionRole`、`visualStrength`、`motionPolicy`、`transitionPolicy`，当前先由规则推断，后续可接入视觉模型和 LLM 编排。
 
 二期升级优先级（剩余）：

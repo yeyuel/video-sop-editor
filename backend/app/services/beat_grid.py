@@ -77,6 +77,24 @@ def filter_beats_for_capcut_mode(
     return normalize_beat_times(filtered, target_duration_sec)
 
 
+def apply_beat_offset(
+    beat_points: list[float],
+    target_duration_sec: float,
+    offset_sec: float,
+) -> list[float]:
+    if not beat_points:
+        return []
+    if abs(offset_sec) < 0.001:
+        return normalize_beat_times(beat_points, target_duration_sec)
+
+    shifted = [
+        round(point + offset_sec, 2)
+        for point in beat_points
+        if 0 <= point + offset_sec <= float(target_duration_sec)
+    ]
+    return normalize_beat_times(shifted, target_duration_sec)
+
+
 def recommend_capcut_beat_mode(bpm: int, beat_interval_sec: float | None = None) -> str:
     """根据曲速推荐默认踩点模式（与剪映手动选模式的常见习惯一致）。"""
     interval = beat_interval_sec or (60 / bpm if bpm > 0 else 1.0)

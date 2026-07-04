@@ -242,6 +242,30 @@ def test_resolve_storyboard_beat_points_disabled_when_not_aligned() -> None:
     assert beat_points == []
 
 
+def test_resolve_storyboard_beat_points_applies_calibration_offset() -> None:
+    rhythm = RhythmPlanRead(
+        bgmStyle="",
+        selectedTrackName="",
+        beatMode="beat_2",
+        beatPoints=[0.0, 1.0, 2.0, 3.0],
+        rawBeatPoints=[0.0, 1.0, 2.0, 3.0],
+        coarseBeatPoints=[],
+        rhythmNotes=[],
+        darkCutSuggestions=[],
+        photoMotionSuggestions=[],
+        beatCalibration={"beatOffsetSec": 0.2},
+    )
+
+    beat_points = resolve_storyboard_beat_points(
+        rhythm,
+        beat_mode="beat_2",
+        target_duration_sec=3,
+        align_to_beat=True,
+    )
+
+    assert beat_points == [0.0, 0.2, 1.2, 2.2, 3.0]
+
+
 def test_align_storyboard_plan_preserves_asset_order() -> None:
     assets = [
         _asset("HEMU_002", 1.0),

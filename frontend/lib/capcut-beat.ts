@@ -52,6 +52,24 @@ function normalizeBeatTimes(candidateTimes: number[], targetDurationSec: number)
   return uniquePoints;
 }
 
+export function applyBeatOffset(
+  beatPoints: number[],
+  targetDurationSec: number,
+  offsetSec: number
+) {
+  if (!beatPoints.length) {
+    return [];
+  }
+  if (Math.abs(offsetSec) < 0.001) {
+    return normalizeBeatTimes(beatPoints, targetDurationSec);
+  }
+
+  const shifted = beatPoints
+    .map((point) => Math.round((point + offsetSec) * 100) / 100)
+    .filter((point) => point >= 0 && point <= targetDurationSec);
+  return normalizeBeatTimes(shifted, targetDurationSec);
+}
+
 export function filterBeatsForCapcutMode(
   fineBeats: number[],
   beatMode: string,

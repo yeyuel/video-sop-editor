@@ -1,8 +1,15 @@
-import { filterBeatsForCapcutMode, normalizeBeatTimes } from "@/lib/storyboard-beat-grid";
+import {
+  applyBeatOffset,
+  filterBeatsForCapcutMode,
+  normalizeBeatTimes
+} from "@/lib/storyboard-beat-grid";
 import type { RhythmPlan } from "@/types/domain";
 
 export function resolveStoryboardBeatPoints(
-  rhythmPlan: Pick<RhythmPlan, "beatPoints" | "rawBeatPoints" | "coarseBeatPoints">,
+  rhythmPlan: Pick<
+    RhythmPlan,
+    "beatCalibration" | "beatPoints" | "rawBeatPoints" | "coarseBeatPoints"
+  >,
   options: {
     alignToBeat?: boolean;
     beatMode: string;
@@ -16,16 +23,18 @@ export function resolveStoryboardBeatPoints(
 
   const rawSource =
     rhythmPlan.rawBeatPoints.length > 0 ? rhythmPlan.rawBeatPoints : rhythmPlan.beatPoints;
+  const beatOffsetSec = Number(rhythmPlan.beatCalibration?.beatOffsetSec ?? 0);
   if (rawSource.length > 0) {
-    return filterBeatsForCapcutMode(
+    const resolved = filterBeatsForCapcutMode(
       normalizeBeatTimes(rawSource, targetDurationSec),
       beatMode,
       targetDurationSec,
       rhythmPlan.coarseBeatPoints.length > 0 ? rhythmPlan.coarseBeatPoints : undefined
     );
+    return applyBeatOffset(resolved, targetDurationSec, beatOffsetSec);
   }
 
-  return rhythmPlan.beatPoints;
+  return applyBeatOffset(rhythmPlan.beatPoints, targetDurationSec, beatOffsetSec);
 }
 
 /** 分镜编辑吸附网格 — 与 backend resolve_validation_beat_points / 生成网格一致。 */
