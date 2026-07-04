@@ -203,6 +203,10 @@ class StoryboardSegmentRead(BaseModel):
     beatMode: str
     beatPoints: list[float]
     subtitle: str
+    attentionRole: str = ""
+    visualStrength: str = ""
+    motionPolicy: str = ""
+    transitionPolicy: str = ""
 
 
 class StoryboardSegmentWrite(BaseModel):
@@ -216,6 +220,10 @@ class StoryboardSegmentWrite(BaseModel):
     beatMode: str
     beatPoints: list[float] = Field(default_factory=list)
     subtitle: str
+    attentionRole: str = ""
+    visualStrength: str = ""
+    motionPolicy: str = ""
+    transitionPolicy: str = ""
 
 
 class StoryboardGenerateRequest(BaseModel):
@@ -308,6 +316,11 @@ class RhythmPlanRead(BaseModel):
     recommendedBgm: list[BgmRecommendationRead] = Field(default_factory=list)
     selectedBgmId: str = ""
     bgmPhase: str = "empty"
+    rhythmProfile: dict[str, Any] = Field(default_factory=dict)
+    attentionBeats: list[dict[str, Any]] = Field(default_factory=list)
+    beatCalibration: dict[str, Any] = Field(default_factory=dict)
+    audioFingerprint: str = ""
+    audioAnalysisVersion: str = ""
 
 
 class RhythmPlanWriteRequest(BaseModel):
@@ -329,6 +342,11 @@ class RhythmPlanWriteRequest(BaseModel):
     recommendedBgm: list[BgmRecommendationRead] | None = None
     selectedBgmId: str | None = None
     bgmPhase: str | None = None
+    rhythmProfile: dict[str, Any] = Field(default_factory=dict)
+    attentionBeats: list[dict[str, Any]] = Field(default_factory=list)
+    beatCalibration: dict[str, Any] = Field(default_factory=dict)
+    audioFingerprint: str = ""
+    audioAnalysisVersion: str = ""
 
 
 class ExportPlanRead(BaseModel):

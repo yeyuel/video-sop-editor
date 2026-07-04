@@ -355,6 +355,13 @@
 - `darkCutSuggestions`：音频上传时基于能量局部低谷推断；无音频时回退 25%/50%/75% 结构点。
 - `bgmStyle` 和 `rhythmNotes`：配置 LLM 时优先生成；失败回退模板/规则文案。
 
+四期 P4-A 已开始新增：
+
+- `rhythmProfile`：按平台、视频类型和目标时长生成平台节奏画像，区分抖音/快手、小红书、B 站攻略、B 站 Vlog、视频号和 YouTube 等节奏生态。
+- `attentionBeats`：内容注意力点，承接“时钟法则”和“射门集锦法则”，用于标记钩子、推进、反转、高潮和收尾。
+- `beatCalibration`：节拍校准参数，当前先保存来源、偏移、密度模式和参考节拍点，为后续向剪映踩点结果靠齐做准备。
+- 分镜段新增 `attentionRole`、`visualStrength`、`motionPolicy`、`transitionPolicy`，当前先由规则推断，后续可接入视觉模型和 LLM 编排。
+
 二期升级优先级（剩余）：
 
 1. ~~`beatPoints`~~（已完成）

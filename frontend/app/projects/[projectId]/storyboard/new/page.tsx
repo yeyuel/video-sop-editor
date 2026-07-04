@@ -63,7 +63,11 @@ export default async function ProjectStoryboardNewPage({
     rhythm: referenceSegment?.rhythm ?? "balanced",
     beatMode,
     beatPoints: sliceBeatPoints(snapBeatPoints, startTime, endTime),
-    subtitle: ""
+    subtitle: "",
+    attentionRole: referenceSegment?.attentionRole ?? "",
+    visualStrength: referenceSegment?.visualStrength ?? "",
+    motionPolicy: referenceSegment?.motionPolicy ?? "",
+    transitionPolicy: referenceSegment?.transitionPolicy ?? ""
   };
 
   return (

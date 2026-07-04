@@ -93,6 +93,10 @@ class StoryboardSegmentEntity(SQLModel, table=True):
     beat_mode: str
     beat_points: str
     subtitle: str
+    attention_role: str = ""
+    visual_strength: str = ""
+    motion_policy: str = ""
+    transition_policy: str = ""
 
 
 class RhythmPlanEntity(SQLModel, table=True):
@@ -116,6 +120,11 @@ class RhythmPlanEntity(SQLModel, table=True):
     recommended_bgm: str = "[]"
     selected_bgm_id: str = ""
     bgm_phase: str = "empty"
+    rhythm_profile_json: str = "{}"
+    attention_beats_json: str = "[]"
+    beat_calibration_json: str = "{}"
+    audio_fingerprint: str = ""
+    audio_analysis_version: str = ""
 
 
 class PublishPlanEntity(SQLModel, table=True):

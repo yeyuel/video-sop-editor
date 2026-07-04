@@ -39,6 +39,53 @@ STORYBOARD_LLM_TOKENS_PER_ASSET = 80
 STORYBOARD_LLM_MAX_TOKENS_CAP = 8000
 
 
+def infer_visual_strength(asset: AssetRead) -> str:
+    score = 0
+    shot_type = asset.shotType.lower()
+    if shot_type in {"wide", "aerial", "closeup", "大景", "航拍", "特写"}:
+        score += 2
+    if asset.informationDensity == "high":
+        score += 1
+    if any(tag in {"main_climax", "slow_climax", "opening_hook", "主高潮", "慢高潮", "开头钩子"} for tag in asset.functionTags):
+        score += 2
+    strong_words = {"雪山", "日落", "航拍", "人像", "动物", "冲突", "反转", "蓝调", "金色"}
+    if any(tag in strong_words for tag in [*asset.visualTags, *asset.emotionTags]):
+        score += 1
+    if score >= 4:
+        return "strong"
+    if score >= 2:
+        return "medium"
+    return "weak"
+
+
+def infer_attention_role(function_name: str) -> str:
+    role_map = {
+        "opening_hook": "hook",
+        "rhythm_hit": "push",
+        "slow_climax": "climax",
+        "main_climax": "climax",
+        "transition_buffer": "buffer",
+        "ending": "ending",
+    }
+    return role_map.get(function_name, "supporting")
+
+
+def infer_motion_policy(asset: AssetRead, visual_strength: str) -> str:
+    if asset.mediaType == "photo":
+        return "slow_push" if visual_strength != "weak" else "gentle_zoom"
+    if visual_strength == "strong":
+        return "hold_or_speed_ramp"
+    return "natural_cut"
+
+
+def infer_transition_policy(attention_role: str) -> str:
+    if attention_role in {"hook", "climax"}:
+        return "hard_cut"
+    if attention_role == "buffer":
+        return "fade_or_match_cut"
+    return "clean_cut"
+
+
 def _theme_context_for_llm(theme: NarrativeThemeRead) -> dict[str, str]:
     return {
         "title": theme.title,
@@ -57,6 +104,8 @@ def _rhythm_context_for_llm(rhythm: RhythmPlanRead | None, beat_mode: str) -> di
         "detectedBpm": rhythm.detectedBpm,
         "bgmStyle": rhythm.bgmStyle,
         "selectedTrackName": rhythm.selectedTrackName,
+        "rhythmProfile": rhythm.rhythmProfile,
+        "attentionBeats": rhythm.attentionBeats,
         "rhythmNotesSummary": notes,
     }
 
@@ -334,6 +383,9 @@ def _build_segment_write(
         str(plan_item.get("subtitle", "")).strip() if plan_item else ""
     ) or fallback_subtitle
 
+    attention_role = infer_attention_role(function_name)
+    visual_strength = infer_visual_strength(asset)
+
     segment = StoryboardSegmentWrite(
         id=f"seg_{uuid4().hex[:8]}",
         startTime=round(current_time, 2),
@@ -345,6 +397,10 @@ def _build_segment_write(
         beatMode=beat_mode,
         beatPoints=segment_beats,
         subtitle=subtitle,
+        attentionRole=attention_role,
+        visualStrength=visual_strength,
+        motionPolicy=infer_motion_policy(asset, visual_strength),
+        transitionPolicy=infer_transition_policy(attention_role),
     )
     return segment, round(end_time, 2), beat_index
 
@@ -476,6 +532,10 @@ def segment_read_to_write(segment: StoryboardSegmentRead) -> StoryboardSegmentWr
         beatMode=segment.beatMode,
         beatPoints=segment.beatPoints,
         subtitle=segment.subtitle,
+        attentionRole=segment.attentionRole,
+        visualStrength=segment.visualStrength,
+        motionPolicy=segment.motionPolicy,
+        transitionPolicy=segment.transitionPolicy,
     )
 
 

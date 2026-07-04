@@ -278,7 +278,31 @@ Base URL:
   "photoMotionSuggestions": ["照片素材优先慢推"],
   "recommendedBgm": [],
   "selectedBgmId": "bgm_xxx",
-  "bgmPhase": "analyzed"
+  "bgmPhase": "analyzed",
+  "rhythmProfile": {
+    "mode": "highlight_reel",
+    "cutDensity": "fast",
+    "subtitleDensity": "strong_hook",
+    "attentionIntervalSec": 12,
+    "motionPolicy": "快切为主，照片只用于强视觉定格或轻微推拉。"
+  },
+  "attentionBeats": [
+    {
+      "time": 0,
+      "role": "hook",
+      "label": "开头钩子",
+      "description": "开头钩子：在 0s 附近安排强信息或强画面。"
+    }
+  ],
+  "beatCalibration": {
+    "source": "audio_upload",
+    "beatOffsetSec": 0,
+    "densityMode": "beat_2",
+    "referenceBeatPoints": [],
+    "confidence": "auto"
+  },
+  "audioFingerprint": "demo-track.mp3:180.5:120",
+  "audioAnalysisVersion": "librosa"
 }
 ```
 
@@ -288,6 +312,13 @@ Base URL:
 - `audio_upload`：音频识别成功
 - `rule_fallback`：音频识别失败；**不写入占位节拍点**，需重新上传有效 BGM
 - `manual`：用户手工编辑后保存
+
+P4-A 新增字段：
+
+- `rhythmProfile`：平台节奏画像，描述平台节奏模式、切镜密度、字幕密度和动效策略。
+- `attentionBeats`：内容注意力点，描述钩子、推进、反转、高潮、收尾等内容节点。
+- `beatCalibration`：节拍校准参数，当前先保存来源、偏移、密度模式和参考点。
+- `audioFingerprint` / `audioAnalysisVersion`：用于后续同音频复用校准和识别版本追踪。
 
 ## 4.5 上传音频并识别节拍
 
@@ -371,7 +402,11 @@ Base URL:
       "rhythm": "balanced",
       "beatMode": "beat_1",
       "beatPoints": [0, 0.5, 1, 1.5],
-      "subtitle": "喀纳斯 / 蓝冰河流特写"
+      "subtitle": "喀纳斯 / 蓝冰河流特写",
+      "attentionRole": "hook",
+      "visualStrength": "strong",
+      "motionPolicy": "hold_or_speed_ramp",
+      "transitionPolicy": "hard_cut"
     }
   ]
 }
@@ -399,7 +434,11 @@ Base URL:
   "rhythm": "balanced",
   "beatMode": "beat_1",
   "beatPoints": [12, 12.5, 13],
-  "subtitle": "喀纳斯 / 湖边回望"
+  "subtitle": "喀纳斯 / 湖边回望",
+  "attentionRole": "supporting",
+  "visualStrength": "medium",
+  "motionPolicy": "natural_cut",
+  "transitionPolicy": "clean_cut"
 }
 ```
 
@@ -407,6 +446,7 @@ Base URL:
 
 - 用于单条分镜详细编辑
 - 前端保存成功后可直接返回分镜列表页
+- P4-A 新增 `attentionRole`、`visualStrength`、`motionPolicy`、`transitionPolicy`，用于后续节点驱动分镜和剪映草稿效果增强
 
 ## 5.5 删除单条分镜
 

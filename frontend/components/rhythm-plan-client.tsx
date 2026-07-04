@@ -71,6 +71,39 @@ function formatTrackLabel(item: BgmRecommendation) {
   return item.artist ? `${item.artist} - ${item.title}` : item.title;
 }
 
+function getRhythmModeLabel(mode?: string) {
+  const labels: Record<string, string> = {
+    highlight_reel: "射门集锦型",
+    seed_and_guide: "种草攻略型",
+    chapter_explainer: "章节讲解型",
+    emotional_vlog: "情绪 Vlog 型",
+    stable_story: "稳定叙事型",
+    chapter_story: "章节故事型"
+  };
+  return mode ? labels[mode] ?? mode : "未生成";
+}
+
+function getCutDensityLabel(value?: string) {
+  const labels: Record<string, string> = {
+    fast: "快切",
+    medium_fast: "中快",
+    medium: "中速",
+    medium_slow: "中慢",
+    chaptered: "章节化"
+  };
+  return value ? labels[value] ?? value : "未生成";
+}
+
+function getCalibrationLabel(source?: string) {
+  const labels: Record<string, string> = {
+    rule: "规则估算",
+    bgm_recommend: "等待音频",
+    audio_upload: "音频识别",
+    manual: "手动调整"
+  };
+  return source ? labels[source] ?? source : "未校准";
+}
+
 type RhythmSuggestField =
   | "bgmStyle"
   | "selectedTrackName"
@@ -455,6 +488,50 @@ export function RhythmPlanClient({
           </div>
           <span className="badge-ai">当前：{getBgmPhaseLabel(plan.bgmPhase)}</span>
         </div>
+      </div>
+
+      <div className="surface-panel p-5">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h3 className="text-lg font-semibold text-ink">平台节奏画像</h3>
+            <p className="mt-1 text-sm text-ink/65">
+              这里描述内容节奏结构；下方“节拍点”描述音乐卡点，两者会共同影响后续分镜。
+            </p>
+          </div>
+          <span className="badge-ai">
+            {getRhythmModeLabel(plan.rhythmProfile?.mode as string | undefined)}
+          </span>
+        </div>
+        <div className="mt-4 grid gap-3 md:grid-cols-3">
+          <div className="stat-cell">
+            切镜密度：{getCutDensityLabel(plan.rhythmProfile?.cutDensity as string | undefined)}
+          </div>
+          <div className="stat-cell">
+            字幕密度：{String(plan.rhythmProfile?.subtitleDensity ?? "未生成")}
+          </div>
+          <div className="stat-cell">
+            校准状态：{getCalibrationLabel(plan.beatCalibration?.source)}
+          </div>
+        </div>
+        {plan.rhythmProfile?.motionPolicy ? (
+          <p className="mt-3 rounded-2xl bg-sand/60 px-4 py-3 text-sm leading-6 text-ink/70">
+            动效策略：{String(plan.rhythmProfile.motionPolicy)}
+          </p>
+        ) : null}
+        {plan.attentionBeats.length > 0 ? (
+          <div className="mt-4 grid gap-2">
+            <p className="text-sm font-medium text-ink/75">内容注意力点</p>
+            <div className="flex flex-wrap gap-2">
+              {plan.attentionBeats.map((beat, index) => (
+                <span key={`${beat.time}-${beat.role}-${index}`} className="stat-pill">
+                  {beat.time}s · {beat.label}
+                </span>
+              ))}
+            </div>
+          </div>
+        ) : (
+          <p className="mt-3 text-sm text-ink/55">生成 BGM 推荐或上传音频后会同步生成注意力点。</p>
+        )}
       </div>
 
       <div className="surface-panel p-5">

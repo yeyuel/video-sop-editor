@@ -6,6 +6,7 @@ from app.services.audio_analysis import BeatAnalysisResult
 from app.services.audio_structure import suggest_dark_cuts_from_energy
 from app.services.beat_grid import filter_beats_for_capcut_mode, normalize_beat_times
 from app.services.rhythm_copy import resolve_rhythm_copy
+from app.services.rhythm_profile import build_attention_beats, build_rhythm_profile
 from app.services.rhythm_track import resolve_selected_track_name
 from app.services.llm.progress import ProgressReporter, emit_progress
 
@@ -95,6 +96,8 @@ def build_rule_rhythm_payload(
         rhythm_notes_fallback=rhythm_notes_fallback,
         on_progress=on_progress,
     )
+    rhythm_profile = build_rhythm_profile(project, assets, theme)
+    attention_beats = build_attention_beats(project, rhythm_profile["mode"])
 
     return RhythmPlanWriteRequest(
         bgmStyle=bgm_style,
@@ -111,6 +114,16 @@ def build_rule_rhythm_payload(
         rhythmNotes=rhythm_notes,
         darkCutSuggestions=build_rule_dark_cuts(project.target_duration_sec),
         photoMotionSuggestions=build_photo_motion_suggestions(assets),
+        rhythmProfile=rhythm_profile,
+        attentionBeats=attention_beats,
+        beatCalibration={
+            "source": "rule",
+            "beatOffsetSec": 0,
+            "densityMode": beat_mode,
+            "referenceBeatPoints": [],
+        },
+        audioFingerprint="",
+        audioAnalysisVersion="rule_v1",
     ), llm_meta
 
 
@@ -134,6 +147,8 @@ def build_audio_rhythm_payload(
         rhythm_notes_fallback=build_rhythm_notes(project, assets, theme),
         on_progress=on_progress,
     )
+    rhythm_profile = build_rhythm_profile(project, assets, theme)
+    attention_beats = build_attention_beats(project, rhythm_profile["mode"])
 
     return RhythmPlanWriteRequest(
         bgmStyle=bgm_style,
@@ -155,6 +170,17 @@ def build_audio_rhythm_payload(
         + [f"当前节拍点来自音频分析（{analysis.analysis_engine}），识别 BPM 为 {analysis.bpm}。"],
         darkCutSuggestions=analysis.dark_cut_suggestions,
         photoMotionSuggestions=build_photo_motion_suggestions(assets),
+        rhythmProfile=rhythm_profile,
+        attentionBeats=attention_beats,
+        beatCalibration={
+            "source": "audio_upload",
+            "beatOffsetSec": 0,
+            "densityMode": analysis.beat_mode,
+            "referenceBeatPoints": [],
+            "confidence": "auto",
+        },
+        audioFingerprint=f"{audio_file_name}:{analysis.audio_duration_sec}:{analysis.bpm}",
+        audioAnalysisVersion=analysis.analysis_engine,
     ), llm_meta
 
 

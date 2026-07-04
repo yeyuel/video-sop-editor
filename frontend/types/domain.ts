@@ -78,6 +78,10 @@ export type StoryboardSegment = {
   beatMode: string;
   beatPoints: number[];
   subtitle: string;
+  attentionRole: string;
+  visualStrength: string;
+  motionPolicy: string;
+  transitionPolicy: string;
 };
 
 export type StoryboardValidation = {
@@ -143,6 +147,31 @@ export type RhythmPlan = {
   recommendedBgm: BgmRecommendation[];
   selectedBgmId: string;
   bgmPhase: "empty" | "recommended" | "analyzed";
+  rhythmProfile: {
+    mode?: string;
+    cutDensity?: string;
+    subtitleDensity?: string;
+    motionPolicy?: string;
+    attentionIntervalSec?: number;
+    [key: string]: unknown;
+  };
+  attentionBeats: Array<{
+    time: number;
+    role: string;
+    label: string;
+    description?: string;
+    [key: string]: unknown;
+  }>;
+  beatCalibration: {
+    source?: string;
+    beatOffsetSec?: number;
+    densityMode?: string;
+    referenceBeatPoints?: number[];
+    confidence?: string;
+    [key: string]: unknown;
+  };
+  audioFingerprint: string;
+  audioAnalysisVersion: string;
 };
 
 export type ExportPlan = {

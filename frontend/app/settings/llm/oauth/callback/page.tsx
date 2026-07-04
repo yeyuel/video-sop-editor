@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useEffect, useState, useTransition } from "react";
+import { Suspense, useEffect, useState, useTransition } from "react";
 
 import { BlockingNotice, ToastNotice } from "@/components/async-status";
 import {
@@ -10,7 +10,7 @@ import {
   completeLlmSubscriptionOAuthCallback
 } from "@/lib/browser-api";
 
-export default function LlmOAuthCallbackPage() {
+function LlmOAuthCallbackContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [isPending, startTransition] = useTransition();
@@ -70,5 +70,22 @@ export default function LlmOAuthCallbackPage() {
         )}
       </div>
     </div>
+  );
+}
+
+export default function LlmOAuthCallbackPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="mx-auto max-w-lg space-y-4 py-16">
+          <div className="surface-panel p-6">
+            <h1 className="text-xl font-semibold text-ink">LLM OAuth 回调</h1>
+            <p className="mt-3 text-sm leading-6 text-ink/70">正在读取授权参数…</p>
+          </div>
+        </div>
+      }
+    >
+      <LlmOAuthCallbackContent />
+    </Suspense>
   );
 }

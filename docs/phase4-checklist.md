@@ -18,19 +18,19 @@ P4-A 只做会直接影响节奏、分镜和剪映草稿质量的能力。自动
 
 ### Sprint 19A：平台节奏画像与 attention beats
 
-- [ ] 定义 `rhythmProfile` schema
-- [ ] 定义 `attentionBeats` schema
+- [x] 定义 `rhythmProfile` schema
+- [x] 定义 `attentionBeats` schema
 - [ ] 增加平台节奏模式：`highlight_reel`
 - [ ] 增加平台节奏模式：`seed_and_guide`
 - [ ] 增加平台节奏模式：`chapter_explainer`
 - [ ] 增加平台节奏模式：`emotional_vlog`
 - [ ] 增加平台节奏模式：`stable_story`
-- [ ] 节奏生成逻辑接入 `platform + videoType + targetDurationSec`
-- [ ] 节奏页区分展示音乐节拍点和内容注意力点
-- [ ] 分镜生成读取 `attentionBeats`
-- [ ] 更新 `prd.md`
-- [ ] 更新 `api.md`
-- [ ] 增加回归测试
+- [x] 节奏生成逻辑接入 `platform + videoType + targetDurationSec`
+- [x] 节奏页区分展示音乐节拍点和内容注意力点
+- [x] 分镜生成读取 `attentionBeats`
+- [x] 更新 `prd.md`
+- [x] 更新 `api.md`
+- [x] 增加回归测试
 
 验收：
 
@@ -41,7 +41,7 @@ P4-A 只做会直接影响节奏、分镜和剪映草稿质量的能力。自动
 ### Sprint 20A：剪映节拍对齐优化
 
 - [ ] 梳理当前 `librosa` / 能量检测 / 剪映模式之间的差异
-- [ ] 定义 `beatCalibration` schema
+- [x] 定义 `beatCalibration` schema
 - [ ] 增加整体节拍偏移 `beatOffsetSec`
 - [ ] 增加节拍密度校准策略
 - [ ] 支持用户手动输入剪映参考节拍点
@@ -61,9 +61,9 @@ P4-A 只做会直接影响节奏、分镜和剪映草稿质量的能力。自动
 
 ### Sprint 21A：节点驱动分镜编排
 
-- [ ] 定义 `attentionRole`
-- [ ] 定义规则推断版 `visualStrength`
-- [ ] `visualStrength` 先基于 `shotType`、`informationDensity`、`functionTags`、`emotionTags`、`visualTags` 推断
+- [x] 定义 `attentionRole`
+- [x] 定义规则推断版 `visualStrength`
+- [x] `visualStrength` 先基于 `shotType`、`informationDensity`、`functionTags`、`emotionTags`、`visualTags` 推断
 - [ ] 分镜生成 prompt 接入平台节奏画像
 - [ ] 规则生成接入平台节奏画像
 - [ ] 强视觉素材优先放入钩子、反转、高潮位
@@ -82,8 +82,8 @@ P4-A 只做会直接影响节奏、分镜和剪映草稿质量的能力。自动
 
 ### Sprint 22A：粗剪效果增强
 
-- [ ] 定义 `transitionPolicy`
-- [ ] 定义 `motionPolicy`
+- [x] 定义 `transitionPolicy`
+- [x] 定义 `motionPolicy`
 - [ ] 定义字幕策略字段
 - [ ] 预留口播字段
 - [ ] 剪映草稿导出支持基础转场策略

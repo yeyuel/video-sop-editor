@@ -44,6 +44,10 @@
 | 13 | `013_asset_vision_analysis` | 素材 Vision 分析 JSON + status |
 | 14 | `014_allow_asset_reuse` | 项目表 `allow_asset_reuse`（镜头复用开关，默认关闭） |
 | 15 | `015_llm_oauth_and_openai_merge` | OAuth token 表 + pending state；`openai-compatible` → `openai` |
+| 16 | `016_subscription_oauth` | 订阅型 OAuth / device flow 所需字段与 token 表结构升级 |
+| 17 | `017_project_jianying_draft_root` | 项目表新增 `jianying_draft_root` |
+| 18 | `018_phase4_rhythm_profile` | 节奏表新增 `rhythm_profile_json`、`attention_beats_json`、`beat_calibration_json`、`audio_fingerprint`、`audio_analysis_version` |
+| 19 | `019_phase4_storyboard_segment_roles` | 分镜表新增 `attention_role`、`visual_strength`、`motion_policy`、`transition_policy` |
 
 ## 5. 注意事项
 

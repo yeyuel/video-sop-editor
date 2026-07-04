@@ -115,7 +115,11 @@ export const fallbackWorkspace: WorkspaceData = {
       rhythm: "balanced",
       beatMode: "strong_weak",
       beatPoints: [0, 0.9],
-      subtitle: "五月台州，先在国清寺安静下来"
+      subtitle: "五月台州，先在国清寺安静下来",
+      attentionRole: "hook",
+      visualStrength: "strong",
+      motionPolicy: "hold_or_speed_ramp",
+      transitionPolicy: "hard_cut"
     },
     {
       id: "seg_0f0e0b0d",
@@ -127,7 +131,11 @@ export const fallbackWorkspace: WorkspaceData = {
       rhythm: "balanced",
       beatMode: "strong_weak",
       beatPoints: [0.9, 3.85],
-      subtitle: "橙墙灰瓦，五月绿到失语"
+      subtitle: "橙墙灰瓦，五月绿到失语",
+      attentionRole: "buffer",
+      visualStrength: "medium",
+      motionPolicy: "natural_cut",
+      transitionPolicy: "fade_or_match_cut"
     }
   ],
   storyboardValidation: fallbackValidation,
@@ -149,7 +157,29 @@ export const fallbackWorkspace: WorkspaceData = {
     photoMotionSuggestions: ["当前以视频素材为主，可在情绪段落加入轻微速度变化。"],
     recommendedBgm: [],
     selectedBgmId: "bgm_e8dccff1",
-    bgmPhase: "analyzed"
+    bgmPhase: "analyzed",
+    rhythmProfile: {
+      mode: "highlight_reel",
+      cutDensity: "fast",
+      subtitleDensity: "strong_hook",
+      motionPolicy: "快切为主，照片只用于强视觉定格或轻微推拉。",
+      attentionIntervalSec: 12
+    },
+    attentionBeats: [
+      { time: 0, role: "hook", label: "开头钩子" },
+      { time: 10, role: "push", label: "推进" },
+      { time: 20, role: "turn", label: "反转" },
+      { time: 30, role: "climax", label: "高潮" },
+      { time: 40, role: "ending", label: "收尾" }
+    ],
+    beatCalibration: {
+      source: "audio_upload",
+      beatOffsetSec: 0,
+      densityMode: "strong_weak",
+      referenceBeatPoints: []
+    },
+    audioFingerprint: "風の住む街.mp3:44.86:57",
+    audioAnalysisVersion: "mock"
   },
   exportPlan: fallbackExportPlan
 };

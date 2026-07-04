@@ -475,6 +475,60 @@ def _migration_017_project_jianying_draft_root(session: Session) -> None:
         )
 
 
+def _migration_018_phase4_rhythm_profile(session: Session) -> None:
+    inspector = inspect(engine)
+    if "rhythmplanentity" not in inspector.get_table_names():
+        return
+
+    rhythm_columns = {column["name"] for column in inspector.get_columns("rhythmplanentity")}
+    if "rhythm_profile_json" not in rhythm_columns:
+        session.exec(
+            text("ALTER TABLE rhythmplanentity ADD COLUMN rhythm_profile_json TEXT DEFAULT '{}'")
+        )
+    if "attention_beats_json" not in rhythm_columns:
+        session.exec(
+            text("ALTER TABLE rhythmplanentity ADD COLUMN attention_beats_json TEXT DEFAULT '[]'")
+        )
+    if "beat_calibration_json" not in rhythm_columns:
+        session.exec(
+            text("ALTER TABLE rhythmplanentity ADD COLUMN beat_calibration_json TEXT DEFAULT '{}'")
+        )
+    if "audio_fingerprint" not in rhythm_columns:
+        session.exec(
+            text("ALTER TABLE rhythmplanentity ADD COLUMN audio_fingerprint TEXT DEFAULT ''")
+        )
+    if "audio_analysis_version" not in rhythm_columns:
+        session.exec(
+            text("ALTER TABLE rhythmplanentity ADD COLUMN audio_analysis_version TEXT DEFAULT ''")
+        )
+
+
+def _migration_019_phase4_storyboard_segment_roles(session: Session) -> None:
+    inspector = inspect(engine)
+    if "storyboardsegmententity" not in inspector.get_table_names():
+        return
+
+    segment_columns = {
+        column["name"] for column in inspector.get_columns("storyboardsegmententity")
+    }
+    if "attention_role" not in segment_columns:
+        session.exec(
+            text("ALTER TABLE storyboardsegmententity ADD COLUMN attention_role TEXT DEFAULT ''")
+        )
+    if "visual_strength" not in segment_columns:
+        session.exec(
+            text("ALTER TABLE storyboardsegmententity ADD COLUMN visual_strength TEXT DEFAULT ''")
+        )
+    if "motion_policy" not in segment_columns:
+        session.exec(
+            text("ALTER TABLE storyboardsegmententity ADD COLUMN motion_policy TEXT DEFAULT ''")
+        )
+    if "transition_policy" not in segment_columns:
+        session.exec(
+            text("ALTER TABLE storyboardsegmententity ADD COLUMN transition_policy TEXT DEFAULT ''")
+        )
+
+
 MIGRATIONS: list[tuple[int, str, object]] = [
     (1, "001_legacy_columns", _migration_001_legacy_columns),
     (2, "002_rhythm_analysis_metrics", _migration_002_rhythm_analysis_metrics),
@@ -493,6 +547,8 @@ MIGRATIONS: list[tuple[int, str, object]] = [
     (15, "015_llm_oauth_and_openai_merge", _migration_015_llm_oauth_and_openai_merge),
     (16, "016_subscription_oauth", _migration_016_subscription_oauth),
     (17, "017_project_jianying_draft_root", _migration_017_project_jianying_draft_root),
+    (18, "018_phase4_rhythm_profile", _migration_018_phase4_rhythm_profile),
+    (19, "019_phase4_storyboard_segment_roles", _migration_019_phase4_storyboard_segment_roles),
 ]
 
 

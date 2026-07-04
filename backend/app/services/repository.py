@@ -82,6 +82,7 @@ from app.services.rhythm_generation import (
     build_rule_rhythm_payload,
     recommend_beat_mode,
 )
+from app.services.rhythm_profile import build_attention_beats, build_rhythm_profile
 from app.services.beat_grid import filter_beats_for_capcut_mode, normalize_beat_times
 from app.services.serialization import dumps_list, loads_float_list, loads_str_list
 from app.services.storyboard_generation import (
@@ -587,6 +588,8 @@ class SqlRepository:
             on_progress=on_progress,
         )
         beat_mode = recommend_beat_mode(project.video_type)
+        rhythm_profile = build_rhythm_profile(project, assets, theme)
+        attention_beats = build_attention_beats(project, rhythm_profile["mode"])
         rhythm_payload = RhythmPlanWriteRequest(
             bgmStyle=bgm_style,
             selectedTrackName="",
@@ -607,6 +610,16 @@ class SqlRepository:
             recommendedBgm=recommendations,
             selectedBgmId="",
             bgmPhase="recommended",
+            rhythmProfile=rhythm_profile,
+            attentionBeats=attention_beats,
+            beatCalibration={
+                "source": "bgm_recommend",
+                "beatOffsetSec": 0,
+                "densityMode": beat_mode,
+                "referenceBeatPoints": [],
+            },
+            audioFingerprint="",
+            audioAnalysisVersion="",
         )
         emit_progress(on_progress, "saving", "正在保存 BGM 推荐…", progress=94)
         plan = self.upsert_rhythm_plan(session, project_id, rhythm_payload, audio_file_path="")
@@ -744,6 +757,17 @@ class SqlRepository:
         rhythm.raw_beat_points = "[]"
         rhythm.coarse_beat_points = "[]"
         rhythm.beat_points = "[]"
+        rhythm.beat_calibration_json = json.dumps(
+            {
+                "source": "manual",
+                "beatOffsetSec": 0,
+                "densityMode": rhythm.beat_mode,
+                "referenceBeatPoints": [],
+            },
+            ensure_ascii=False,
+        )
+        rhythm.audio_fingerprint = ""
+        rhythm.audio_analysis_version = ""
         if rhythm.analysis_source == "audio_upload":
             rhythm.analysis_source = "manual"
         rhythm.bgm_phase = "recommended" if self._load_bgm_recommendations(rhythm.recommended_bgm) else "empty"
@@ -785,6 +809,11 @@ class SqlRepository:
                 rhythm_notes="[]",
                 dark_cut_suggestions="[]",
                 photo_motion_suggestions="[]",
+                rhythm_profile_json="{}",
+                attention_beats_json="[]",
+                beat_calibration_json="{}",
+                audio_fingerprint="",
+                audio_analysis_version="",
             )
 
         rhythm.bgm_style = payload.bgmStyle
@@ -861,6 +890,16 @@ class SqlRepository:
         rhythm.rhythm_notes = dumps_list(payload.rhythmNotes)
         rhythm.dark_cut_suggestions = dumps_list(payload.darkCutSuggestions)
         rhythm.photo_motion_suggestions = dumps_list(payload.photoMotionSuggestions)
+        if payload.rhythmProfile:
+            rhythm.rhythm_profile_json = json.dumps(payload.rhythmProfile, ensure_ascii=False)
+        if payload.attentionBeats:
+            rhythm.attention_beats_json = json.dumps(payload.attentionBeats, ensure_ascii=False)
+        if payload.beatCalibration:
+            rhythm.beat_calibration_json = json.dumps(payload.beatCalibration, ensure_ascii=False)
+        if payload.audioFingerprint:
+            rhythm.audio_fingerprint = payload.audioFingerprint
+        if payload.audioAnalysisVersion:
+            rhythm.audio_analysis_version = payload.audioAnalysisVersion
 
         if payload.recommendedBgm is not None:
             rhythm.recommended_bgm = self._dump_bgm_recommendations(payload.recommendedBgm)
@@ -1119,6 +1158,10 @@ class SqlRepository:
         segment.beat_mode = payload.beatMode
         segment.beat_points = dumps_list(payload.beatPoints)
         segment.subtitle = payload.subtitle
+        segment.attention_role = payload.attentionRole
+        segment.visual_strength = payload.visualStrength
+        segment.motion_policy = payload.motionPolicy
+        segment.transition_policy = payload.transitionPolicy
 
         session.add(segment)
         session.commit()
@@ -1559,6 +1602,10 @@ class SqlRepository:
             beatMode=item.beat_mode,
             beatPoints=loads_float_list(item.beat_points),
             subtitle=item.subtitle,
+            attentionRole=getattr(item, "attention_role", "") or "",
+            visualStrength=getattr(item, "visual_strength", "") or "",
+            motionPolicy=getattr(item, "motion_policy", "") or "",
+            transitionPolicy=getattr(item, "transition_policy", "") or "",
         )
 
     @staticmethod
@@ -1584,7 +1631,38 @@ class SqlRepository:
             ),
             selectedBgmId=getattr(item, "selected_bgm_id", "") or "",
             bgmPhase=getattr(item, "bgm_phase", "empty") or "empty",
+            rhythmProfile=SqlRepository._load_json_object(
+                getattr(item, "rhythm_profile_json", "{}") or "{}"
+            ),
+            attentionBeats=SqlRepository._load_json_list(
+                getattr(item, "attention_beats_json", "[]") or "[]"
+            ),
+            beatCalibration=SqlRepository._load_json_object(
+                getattr(item, "beat_calibration_json", "{}") or "{}"
+            ),
+            audioFingerprint=getattr(item, "audio_fingerprint", "") or "",
+            audioAnalysisVersion=getattr(item, "audio_analysis_version", "") or "",
         )
+
+    @staticmethod
+    def _load_json_object(raw_value: str) -> dict[str, Any]:
+        if not raw_value:
+            return {}
+        try:
+            payload = json.loads(raw_value)
+        except json.JSONDecodeError:
+            return {}
+        return payload if isinstance(payload, dict) else {}
+
+    @staticmethod
+    def _load_json_list(raw_value: str) -> list[dict[str, Any]]:
+        if not raw_value:
+            return []
+        try:
+            payload = json.loads(raw_value)
+        except json.JSONDecodeError:
+            return []
+        return [item for item in payload if isinstance(item, dict)] if isinstance(payload, list) else []
 
     @staticmethod
     def _load_bgm_recommendations(raw_value: str) -> list[BgmRecommendationRead]:
@@ -1715,6 +1793,10 @@ class SqlRepository:
                     beat_mode=segment.beatMode,
                     beat_points=dumps_list(segment.beatPoints),
                     subtitle=segment.subtitle,
+                    attention_role=segment.attentionRole,
+                    visual_strength=segment.visualStrength,
+                    motion_policy=segment.motionPolicy,
+                    transition_policy=segment.transitionPolicy,
                 )
             )
         session.commit()
