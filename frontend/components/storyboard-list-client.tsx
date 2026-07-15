@@ -9,6 +9,7 @@ import { LlmProgressOverlay } from "@/components/llm-progress-overlay";
 import { ConfirmDialog, EmptyState, InlineErrorBanner, ValidationIssuesPanel } from "@/components/ui-primitives";
 import {
   deleteStoryboardSegment,
+  fillStoryboardVoiceoverFromSubtitles,
   generateStoryboard,
   generateStoryboardWithLlm,
   reorderStoryboard
@@ -21,8 +22,15 @@ import {
 } from "@/lib/llm-progress-stages";
 import { describeLlmStatus, llmNoticeTone } from "@/lib/llm-status";
 import {
+  getStoryboardAttentionRoleLabel,
   getStoryboardBeatModeLabel,
-  getStoryboardFunctionLabel
+  getStoryboardFunctionLabel,
+  getStoryboardMotionPolicyLabel,
+  getStoryboardSubtitlePolicyLabel,
+  getStoryboardTransitionPolicyLabel,
+  getStoryboardVoiceoverRoleLabel,
+  getStoryboardVoiceoverTimingLabel,
+  getStoryboardVisualStrengthLabel
 } from "@/lib/storyboard-options";
 import type { StoryboardBundle } from "@/types/domain";
 
@@ -318,6 +326,29 @@ export function StoryboardListClient({
     });
   }
 
+  function handleFillVoiceoverFromSubtitles() {
+    setError("");
+    startTransition(async () => {
+      try {
+        const nextBundle = await fillStoryboardVoiceoverFromSubtitles(projectId, {
+          overwriteExisting: false,
+          role: "narration",
+          timing: "follow_segment"
+        });
+        setBundle(nextBundle);
+        router.refresh();
+        setNotice({
+          title: "口播稿已生成",
+          message: "已根据字幕补齐空白口播稿；已有口播内容不会被覆盖。"
+        });
+      } catch (submitError) {
+        showError(
+          submitError instanceof Error ? submitError.message : "生成口播稿失败，请稍后再试。"
+        );
+      }
+    });
+  }
+
   return (
     <>
       <BlockingNotice
@@ -376,6 +407,14 @@ export function StoryboardListClient({
               <Link href={`/projects/${projectId}/storyboard/new`} className="btn-secondary">
                 手工新增分镜
               </Link>
+              <button
+                type="button"
+                onClick={handleFillVoiceoverFromSubtitles}
+                disabled={isPending || Boolean(llmProgress) || bundle.segments.length === 0}
+                className="btn-secondary disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                从字幕生成口播稿
+              </button>
             </div>
           </div>
         </div>
@@ -411,6 +450,7 @@ export function StoryboardListClient({
                 .filter((item) => item.assetId === segment.assetId).length;
               const showReuseBadge =
                 allowAssetReuse && reuseTotal > 1 && reuseOccurrence > 1;
+              const hasSelectionTrace = Boolean(segment.selectionTrace?.trim());
 
               return (
                 <article
@@ -432,10 +472,19 @@ export function StoryboardListClient({
                         </span>
                         <span className="stat-pill">{duration}s</span>
                         <span className="badge">{getStoryboardFunctionLabel(segment.function)}</span>
+                        {segment.attentionRole ? (
+                          <span className="badge-ai">
+                            {getStoryboardAttentionRoleLabel(segment.attentionRole)}
+                          </span>
+                        ) : null}
                         {allowAssetReuse && reuseTotal > 1 ? (
                           <span className="badge-ai">×{reuseTotal}</span>
                         ) : null}
                         {showReuseBadge ? <span className="badge">复用</span> : null}
+                        {hasSelectionTrace ? <span className="badge-ai">可追溯</span> : null}
+                        {segment.voiceoverText?.trim() ? (
+                          <span className="badge-ai">口播</span>
+                        ) : null}
                       </div>
                       <h3 className="mt-3 text-lg font-semibold text-ink">
                         {segment.shotDescription}
@@ -488,7 +537,50 @@ export function StoryboardListClient({
                     <div className="stat-cell">时长：{duration}s</div>
                     <div className="stat-cell">素材：{segment.assetId}</div>
                     <div className="stat-cell">节拍：{getStoryboardBeatModeLabel(segment.beatMode)}</div>
+                    <div className="stat-cell">
+                      注意力：{getStoryboardAttentionRoleLabel(segment.attentionRole)}
+                    </div>
+                    <div className="stat-cell">
+                      视觉强度：{getStoryboardVisualStrengthLabel(segment.visualStrength)}
+                    </div>
+                    <div className="stat-cell">
+                      动效：{getStoryboardMotionPolicyLabel(segment.motionPolicy)}
+                    </div>
+                    <div className="stat-cell">
+                      转场：{getStoryboardTransitionPolicyLabel(segment.transitionPolicy)}
+                    </div>
+                    <div className="stat-cell">
+                      字幕：{getStoryboardSubtitlePolicyLabel(segment.subtitlePolicy)}
+                    </div>
+                    <div className="stat-cell">
+                      口播角色：{getStoryboardVoiceoverRoleLabel(segment.voiceoverRole)}
+                    </div>
+                    <div className="stat-cell">
+                      口播时间：{getStoryboardVoiceoverTimingLabel(segment.voiceoverTiming)}
+                    </div>
                   </div>
+
+                  {segment.voiceoverText?.trim() ? (
+                    <details className="mt-4 rounded-3xl border border-pine/10 bg-sand/40 px-4 py-3">
+                      <summary className="cursor-pointer select-none text-sm font-semibold text-pine">
+                        查看口播预留
+                      </summary>
+                      <p className="mt-2 text-sm leading-6 text-ink/65">
+                        {segment.voiceoverText}
+                      </p>
+                    </details>
+                  ) : null}
+
+                  {hasSelectionTrace ? (
+                    <details className="mt-4 rounded-3xl border border-pine/10 bg-mist/60 px-4 py-3">
+                      <summary className="cursor-pointer select-none text-sm font-semibold text-pine">
+                        查看算法追溯
+                      </summary>
+                      <p className="mt-2 text-sm leading-6 text-ink/65">
+                        {segment.selectionTrace}
+                      </p>
+                    </details>
+                  ) : null}
                 </article>
               );
             })}

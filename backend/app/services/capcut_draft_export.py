@@ -35,6 +35,16 @@ JIANYING_FONT_YOURAN = {
 }
 
 DEFAULT_BGM_FADE_OUT_SEC = 1.0
+DEFAULT_BGM_FADE_IN_SEC = 0.4
+DEFAULT_BGM_VOLUME = 0.8
+DUCKED_BGM_VOLUME = 0.35
+
+JIANYING_DISSOLVE_TRANSITION = {
+    "name": "叠化",
+    "effect_id": "322577",
+    "resource_id": "6724845717472416269",
+    "is_overlap": True,
+}
 
 
 def default_jianying_draft_root() -> str:
@@ -76,20 +86,27 @@ def text_style_range(text: str) -> list[int]:
     return [0, len(text)]
 
 
-def build_text_content(text: str, *, font_size: float = CAPTION_FONT_SIZE) -> str:
+def build_text_content(
+    text: str,
+    *,
+    font_size: float = CAPTION_FONT_SIZE,
+    alpha: float = 1.0,
+    bold: bool = False,
+) -> str:
+    clamped_alpha = min(1.0, max(0.0, alpha))
     payload = {
         "styles": [
             {
                 "fill": {
-                    "alpha": 1.0,
+                    "alpha": clamped_alpha,
                     "content": {
                         "render_type": "solid",
-                        "solid": {"alpha": 1.0, "color": [1, 1, 1]},
+                        "solid": {"alpha": clamped_alpha, "color": [1, 1, 1]},
                     },
                 },
                 "range": text_style_range(text),
                 "size": font_size,
-                "bold": False,
+                "bold": bold,
                 "italic": False,
                 "underline": False,
                 "strokes": [],
@@ -225,6 +242,7 @@ def _base_segment(
     render_index: int,
     clip: dict[str, Any] | None = None,
     volume: float = 1.0,
+    common_keyframes: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     return {
         "id": segment_id,
@@ -241,7 +259,7 @@ def _base_segment(
         "track_render_index": 0,
         "track_attribute": 0,
         "extra_material_refs": companion_refs,
-        "common_keyframes": [],
+        "common_keyframes": common_keyframes or [],
         "keyframe_refs": [],
     }
 
@@ -317,12 +335,25 @@ def _audio_material(
     }
 
 
-def _text_material(*, material_id: str, text: str) -> dict[str, Any]:
+def _text_material(
+    *,
+    material_id: str,
+    text: str,
+    alpha: float = 1.0,
+    font_size: float = CAPTION_FONT_SIZE,
+    bold: bool = False,
+) -> dict[str, Any]:
     # Match pyJianYingDraft TextSegment.export_material(): font lives in content JSON.
+    clamped_alpha = min(1.0, max(0.0, alpha))
     return {
         "id": material_id,
         "type": "text",
-        "content": build_text_content(text),
+        "content": build_text_content(
+            text,
+            alpha=clamped_alpha,
+            font_size=font_size,
+            bold=bold,
+        ),
         "alignment": 1,
         "typesetting": 0,
         "letter_spacing": 0.0,
@@ -331,7 +362,7 @@ def _text_material(*, material_id: str, text: str) -> dict[str, Any]:
         "line_max_width": 0.82,
         "force_apply_line_max_width": False,
         "check_flag": 7,
-        "global_alpha": 1.0,
+        "global_alpha": clamped_alpha,
     }
 
 
@@ -351,6 +382,7 @@ def _attach_bgm_fade_out(
     *,
     timeline_duration_us: int,
     fade_out_sec: float = DEFAULT_BGM_FADE_OUT_SEC,
+    fade_in_sec: float = DEFAULT_BGM_FADE_IN_SEC,
 ) -> list[str]:
     if timeline_duration_us <= 0:
         return companion_refs
@@ -358,11 +390,134 @@ def _attach_bgm_fade_out(
         seconds_to_microseconds(fade_out_sec),
         max(seconds_to_microseconds(0.2), timeline_duration_us // 2),
     )
+    fade_in_us = min(
+        seconds_to_microseconds(fade_in_sec),
+        max(seconds_to_microseconds(0.2), timeline_duration_us // 2),
+    )
     fade_id = _new_id("fade")
     materials["audio_fades"].append(
-        _audio_fade_material(fade_id=fade_id, fade_out_us=fade_out_us)
+        _audio_fade_material(
+            fade_id=fade_id,
+            fade_out_us=fade_out_us,
+            fade_in_us=fade_in_us,
+        )
     )
     return [*companion_refs, fade_id]
+
+
+def _keyframe_list(property_type: str, points: list[tuple[int, float]]) -> dict[str, Any]:
+    return {
+        "id": _new_id("keyframe-list"),
+        "keyframe_list": [
+            {
+                "curveType": "Line",
+                "graphID": "",
+                "left_control": {"x": 0.0, "y": 0.0},
+                "right_control": {"x": 0.0, "y": 0.0},
+                "id": _new_id("keyframe"),
+                "time_offset": offset_us,
+                "values": [value],
+            }
+            for offset_us, value in points
+        ],
+        "material_id": "",
+        "property_type": property_type,
+    }
+
+
+def _motion_keyframes(
+    *,
+    motion_policy: str,
+    media_type: str,
+    duration_us: int,
+) -> list[dict[str, Any]]:
+    if duration_us <= 0 or media_type.lower() not in {"image", "photo"}:
+        return []
+    if motion_policy == "slow_push":
+        start_scale, end_scale = 1.0, 1.12
+    elif motion_policy == "gentle_zoom":
+        start_scale, end_scale = 1.02, 1.08
+    else:
+        return []
+    return [
+        _keyframe_list(
+            "UNIFORM_SCALE",
+            [(0, start_scale), (duration_us, end_scale)],
+        )
+    ]
+
+
+def _transition_material(*, transition_id: str, duration_us: int) -> dict[str, Any]:
+    return {
+        "category_id": "",
+        "category_name": "",
+        "duration": duration_us,
+        "effect_id": JIANYING_DISSOLVE_TRANSITION["effect_id"],
+        "id": transition_id,
+        "is_overlap": JIANYING_DISSOLVE_TRANSITION["is_overlap"],
+        "name": JIANYING_DISSOLVE_TRANSITION["name"],
+        "platform": "all",
+        "resource_id": JIANYING_DISSOLVE_TRANSITION["resource_id"],
+        "type": "transition",
+    }
+
+
+def _attach_transition(
+    materials: dict[str, list[Any]],
+    companion_refs: list[str],
+    *,
+    transition_policy: str,
+    duration_us: int,
+    next_duration_us: int,
+) -> list[str]:
+    if transition_policy != "fade_or_match_cut" or duration_us <= 0 or next_duration_us <= 0:
+        return companion_refs
+    transition_duration_us = min(
+        seconds_to_microseconds(0.5),
+        duration_us // 3,
+        next_duration_us // 3,
+    )
+    if transition_duration_us < seconds_to_microseconds(0.2):
+        return companion_refs
+    transition_id = _new_id("transition")
+    materials["transitions"].append(
+        _transition_material(
+            transition_id=transition_id,
+            duration_us=transition_duration_us,
+        )
+    )
+    return [*companion_refs, transition_id]
+
+
+def _subtitle_presentation(segment: Any) -> tuple[float, bool, float]:
+    policy = (getattr(segment, "subtitlePolicy", "") or "").strip()
+    if policy == "emphasis":
+        return CAPTION_FONT_SIZE * 1.2, True, 1.0
+    if policy == "info":
+        return CAPTION_FONT_SIZE, False, 1.0
+    if policy == "minimal":
+        return CAPTION_FONT_SIZE * 0.88, False, 0.78
+    if policy == "standard":
+        return CAPTION_FONT_SIZE, False, 1.0
+
+    role = (segment.attentionRole or segment.function or "").strip()
+    if role in {
+        "hook",
+        "opening_hook",
+        "turning_point",
+        "turn_1",
+        "turn_2",
+        "climax",
+        "main_climax",
+        "emotional_climax",
+        "payoff",
+    }:
+        return CAPTION_FONT_SIZE * 1.2, True, 1.0
+    if role in {"buffer", "afterglow", "aftertaste", "transition_buffer"}:
+        return CAPTION_FONT_SIZE * 0.88, False, 0.78
+    if role in {"ending", "closing", "final"}:
+        return CAPTION_FONT_SIZE * 1.08, True, 1.0
+    return CAPTION_FONT_SIZE, False, 1.0
 
 
 def _empty_materials() -> dict[str, list[Any]]:
@@ -397,6 +552,413 @@ def resolve_bgm_path(workspace: WorkspaceDataRead) -> str:
     return ""
 
 
+def resolve_voiceover_path(workspace: WorkspaceDataRead) -> str:
+    candidate = workspace.exportPlan.voiceoverAudioPath.strip()
+    if candidate and Path(candidate).is_file():
+        return str(Path(candidate).resolve()).replace("\\", "/")
+    return ""
+
+
+VOICEOVER_DENSITY_CONFIG = {
+    "light": {
+        "chars_per_sec": 3.2,
+        "min_duration": 4.5,
+        "max_duration": 8.0,
+        "include_supporting": False,
+    },
+    "standard": {
+        "chars_per_sec": 4.2,
+        "min_duration": 3.2,
+        "max_duration": 7.0,
+        "include_supporting": True,
+    },
+    "info": {
+        "chars_per_sec": 5.0,
+        "min_duration": 2.4,
+        "max_duration": 6.0,
+        "include_supporting": True,
+    },
+}
+
+VOICEOVER_KEY_FUNCTIONS = {
+    "opening_hook",
+    "hook",
+    "turning_point",
+    "climax",
+    "main_climax",
+    "memory_recall",
+    "ending",
+    "closing",
+    "final",
+    "route_info",
+    "info_point",
+}
+
+
+@dataclass(frozen=True)
+class VoiceoverBlock:
+    start_sec: float
+    end_sec: float
+    text: str
+    segment_ids: list[str]
+
+
+def _normalize_voiceover_density(value: str) -> str:
+    normalized = (value or "").strip().lower()
+    return normalized if normalized in VOICEOVER_DENSITY_CONFIG else "standard"
+
+
+def _voiceover_source_text(segment: Any) -> str:
+    return " ".join((segment.voiceoverText.strip() or segment.subtitle.strip()).split())
+
+
+def _is_key_voiceover_segment(segment: Any) -> bool:
+    values = {
+        (segment.function or "").strip(),
+        (segment.attentionRole or "").strip(),
+    }
+    return any(value in VOICEOVER_KEY_FUNCTIONS for value in values if value)
+
+
+def _split_voiceover_clauses(text: str) -> list[str]:
+    normalized = re.sub(r"\s+", "", text.strip())
+    normalized = re.sub(r"^(开头|正文|收束|补充提示)[:：]", "", normalized)
+    return [
+        part.strip(" ，,。.!！？、/|")
+        for part in re.split(r"[。！？!?；;\n]+", normalized)
+        if part.strip(" ，,。.!！？、/|")
+    ]
+
+
+def _shorten_voiceover_clause(clause: str, max_chars: int) -> str:
+    if len(clause) <= max_chars:
+        return clause
+
+    phrases = [part for part in re.split(r"[，、,:：]+", clause) if part]
+    selected: list[str] = []
+    used = 0
+    for phrase in phrases:
+        extra = len(phrase) + (1 if selected else 0)
+        if used + extra > max_chars:
+            break
+        selected.append(phrase)
+        used += extra
+    if selected:
+        return "，".join(selected)
+
+    # An unpunctuated sentence cannot be shortened safely without changing meaning.
+    # Keep it complete and let the timing pass borrow idle time from the timeline.
+    return clause
+
+
+def _compact_voiceover_text(texts: list[str], max_chars: int) -> str:
+    unique_clauses: list[str] = []
+    seen: set[str] = set()
+    for text in texts:
+        for clause in _split_voiceover_clauses(text):
+            fingerprint = re.sub(r"[，、,:：]", "", clause)
+            if not fingerprint or fingerprint in seen:
+                continue
+            seen.add(fingerprint)
+            unique_clauses.append(clause)
+
+    if not unique_clauses:
+        return ""
+
+    selected: list[str] = []
+    used = 0
+    for clause in unique_clauses:
+        extra = len(clause) + (1 if selected else 0)
+        if used + extra > max_chars:
+            continue
+        selected.append(clause)
+        used += extra
+
+    if not selected:
+        selected.append(_shorten_voiceover_clause(unique_clauses[0], max_chars))
+
+    return f"{'，'.join(selected)}。"
+
+
+def _voiceover_spoken_char_count(text: str) -> int:
+    return len(re.sub(r"[\s，,。.!！？、/|…；;：:]", "", text))
+
+
+def _estimate_voiceover_reading_duration(
+    text: str,
+    *,
+    chars_per_sec: float,
+    speed: float,
+) -> float:
+    effective_speed = max(0.7, min(1.3, speed or 1.0))
+    spoken_chars = _voiceover_spoken_char_count(text)
+    comma_pauses = len(re.findall(r"[，,、：:]", text)) * 0.12
+    sentence_pauses = len(re.findall(r"[。.!！？；;]", text)) * 0.22
+    # Jianying voices need a small lead-out margin or the final syllable is clipped.
+    lead_out = 0.45
+    return round(
+        max(1.0, spoken_chars / max(1.0, chars_per_sec * effective_speed)
+            + comma_pauses + sentence_pauses + lead_out),
+        2,
+    )
+
+
+def _recommended_voiceover_speed(
+    text: str,
+    *,
+    available_duration: float,
+    chars_per_sec: float,
+) -> float:
+    spoken_chars = _voiceover_spoken_char_count(text)
+    comma_pauses = len(re.findall(r"[，,、：:]", text)) * 0.12
+    sentence_pauses = len(re.findall(r"[。.!！？；;]", text)) * 0.22
+    speaking_window = available_duration - comma_pauses - sentence_pauses - 0.45
+    if speaking_window <= 0:
+        return 9.99
+    return round(max(0.7, spoken_chars / max(0.1, chars_per_sec * speaking_window)), 2)
+
+
+def _fit_voiceover_block_timings(
+    blocks: list[VoiceoverBlock],
+    *,
+    timeline_duration: float,
+    chars_per_sec: float,
+    speed: float,
+) -> list[VoiceoverBlock]:
+    if not blocks or timeline_duration <= 0:
+        return blocks
+
+    fitted: list[VoiceoverBlock] = []
+    previous_end = 0.0
+    for block in blocks:
+        required_duration = _estimate_voiceover_reading_duration(
+            block.text,
+            chars_per_sec=chars_per_sec,
+            speed=speed,
+        )
+        source_end = min(timeline_duration, max(block.end_sec, block.start_sec))
+        latest_start = max(0.0, source_end - required_duration)
+        start = max(previous_end, min(block.start_sec, latest_start))
+        end = min(timeline_duration, start + required_duration)
+
+        # If the end of the timeline is close, borrow as much earlier idle time as possible.
+        if end - start + 0.01 < required_duration:
+            start = max(previous_end, timeline_duration - required_duration)
+            end = timeline_duration
+
+        fitted.append(
+            VoiceoverBlock(
+                start_sec=round(start, 2),
+                end_sec=round(end, 2),
+                text=block.text,
+                segment_ids=block.segment_ids,
+            )
+        )
+        previous_end = end
+
+    return fitted
+
+
+def build_native_voiceover_preview(workspace: WorkspaceDataRead) -> dict[str, Any]:
+    density = _normalize_voiceover_density(workspace.exportPlan.voiceoverDensity)
+    blocks = build_native_voiceover_blocks(workspace)
+    source_texts = [
+        _voiceover_source_text(segment)
+        for segment in workspace.storyboard
+        if _voiceover_source_text(segment)
+    ]
+    if not source_texts and workspace.exportPlan.voiceoverScript.strip():
+        source_texts = [workspace.exportPlan.voiceoverScript.strip()]
+
+    source_chars = sum(len(re.sub(r"[\s，,。.!！？、/|]", "", text)) for text in source_texts)
+    output_chars = sum(len(re.sub(r"[\s，,。.!！？、/|…]", "", block.text)) for block in blocks)
+    total_block_duration = round(sum(block.end_sec - block.start_sec for block in blocks), 2)
+    chars_per_sec = float(VOICEOVER_DENSITY_CONFIG[density]["chars_per_sec"])
+    speed = workspace.exportPlan.voiceoverSpeed
+    estimated_reading_sec = round(
+        sum(
+            _estimate_voiceover_reading_duration(
+                block.text,
+                chars_per_sec=chars_per_sec,
+                speed=speed,
+            )
+            for block in blocks
+        ),
+        2,
+    )
+    timing_risk_count = sum(
+        1
+        for block in blocks
+        if _estimate_voiceover_reading_duration(
+            block.text,
+            chars_per_sec=chars_per_sec,
+            speed=speed,
+        )
+        > block.end_sec - block.start_sec + 0.05
+    )
+    segment_map = {segment.id: segment for segment in workspace.storyboard}
+    block_previews: list[dict[str, Any]] = []
+    recommended_speeds: list[float] = []
+    alignment_risk_count = 0
+    for block in blocks:
+        source_segments = [
+            segment_map[segment_id]
+            for segment_id in block.segment_ids
+            if segment_id in segment_map
+        ]
+        source_start = min(
+            (segment.startTime for segment in source_segments),
+            default=block.start_sec,
+        )
+        source_end = max(
+            (segment.endTime for segment in source_segments),
+            default=block.end_sec,
+        )
+        source_duration = max(0.1, source_end - source_start)
+        recommended_speed = _recommended_voiceover_speed(
+            block.text,
+            available_duration=source_duration,
+            chars_per_sec=chars_per_sec,
+        )
+        recommended_speeds.append(recommended_speed)
+        alignment_shift = round(max(0.0, source_start - block.start_sec), 2)
+        if alignment_shift <= 0.05:
+            alignment_status = "aligned"
+        elif recommended_speed <= 1.3:
+            alignment_status = "speed_recommended"
+            alignment_risk_count += 1
+        else:
+            alignment_status = "needs_trim_or_extend"
+            alignment_risk_count += 1
+
+        block_previews.append(
+            {
+                "startTime": block.start_sec,
+                "endTime": block.end_sec,
+                "sourceStartTime": round(source_start, 2),
+                "sourceEndTime": round(source_end, 2),
+                "text": block.text,
+                "segmentIds": block.segment_ids,
+                "estimatedReadingSec": _estimate_voiceover_reading_duration(
+                    block.text,
+                    chars_per_sec=chars_per_sec,
+                    speed=speed,
+                ),
+                "recommendedSpeed": recommended_speed,
+                "alignmentShiftSec": alignment_shift,
+                "alignmentStatus": alignment_status,
+            }
+        )
+
+    overall_recommended_speed = round(
+        min(1.3, max([1.0, *recommended_speeds])),
+        2,
+    )
+
+    return {
+        "density": density,
+        "sourceChars": source_chars,
+        "outputChars": output_chars,
+        "compressionRatio": round(output_chars / source_chars, 3) if source_chars else 0.0,
+        "blockCount": len(blocks),
+        "timelineCoverageSec": total_block_duration,
+        "estimatedReadingSec": estimated_reading_sec,
+        "timingRiskCount": timing_risk_count,
+        "alignmentRiskCount": alignment_risk_count,
+        "recommendedSpeed": overall_recommended_speed,
+        "blocks": block_previews,
+    }
+
+
+def build_native_voiceover_blocks(workspace: WorkspaceDataRead) -> list[VoiceoverBlock]:
+    density = _normalize_voiceover_density(workspace.exportPlan.voiceoverDensity)
+    config = VOICEOVER_DENSITY_CONFIG[density]
+    chars_per_sec = float(config["chars_per_sec"])
+    min_duration = float(config["min_duration"])
+    max_duration = float(config["max_duration"])
+    include_supporting = bool(config["include_supporting"])
+
+    blocks: list[VoiceoverBlock] = []
+    current_start: float | None = None
+    current_end = 0.0
+    current_texts: list[str] = []
+    current_ids: list[str] = []
+
+    def flush() -> None:
+        nonlocal current_start, current_end, current_texts, current_ids
+        if current_start is None or current_end <= current_start:
+            current_start = None
+            current_end = 0.0
+            current_texts = []
+            current_ids = []
+            return
+
+        duration = max(0.1, current_end - current_start)
+        max_chars = max(4, int(duration * chars_per_sec))
+        text = _compact_voiceover_text(current_texts, max_chars)
+        if text:
+            blocks.append(
+                VoiceoverBlock(
+                    start_sec=current_start,
+                    end_sec=current_end,
+                    text=text,
+                    segment_ids=[*current_ids],
+                )
+            )
+        current_start = None
+        current_end = 0.0
+        current_texts = []
+        current_ids = []
+
+    for index, segment in enumerate(sorted(workspace.storyboard, key=lambda item: item.startTime)):
+        text_value = _voiceover_source_text(segment)
+        if not text_value:
+            continue
+
+        is_key = _is_key_voiceover_segment(segment)
+        should_include = include_supporting or is_key or index == 0 or index == len(workspace.storyboard) - 1
+        if not should_include:
+            if current_start is not None and segment.endTime - current_start >= min_duration:
+                flush()
+            continue
+
+        if current_start is None:
+            current_start = segment.startTime
+
+        current_end = max(current_end, segment.endTime)
+        current_texts.append(text_value)
+        current_ids.append(segment.id)
+
+        duration = current_end - current_start
+        if duration >= max_duration or (duration >= min_duration and is_key and len(current_texts) > 1):
+            flush()
+
+    flush()
+
+    if not blocks and workspace.exportPlan.voiceoverScript.strip():
+        timeline_duration = max((segment.endTime for segment in workspace.storyboard), default=0.0)
+        if timeline_duration > 0:
+            max_chars = max(4, int(timeline_duration * chars_per_sec))
+            text = _compact_voiceover_text([workspace.exportPlan.voiceoverScript.strip()], max_chars)
+            if text:
+                blocks.append(
+                    VoiceoverBlock(
+                        start_sec=0.0,
+                        end_sec=timeline_duration,
+                        text=text,
+                        segment_ids=[],
+                    )
+                )
+
+    timeline_duration = max((segment.endTime for segment in workspace.storyboard), default=0.0)
+    return _fit_voiceover_block_timings(
+        blocks,
+        timeline_duration=timeline_duration,
+        chars_per_sec=chars_per_sec,
+        speed=workspace.exportPlan.voiceoverSpeed,
+    )
+
+
 def build_capcut_draft(workspace: WorkspaceDataRead, *, bgm_path: str = "") -> dict[str, Any]:
     asset_map: dict[str, AssetRead] = {asset.assetId: asset for asset in workspace.assets}
     draft_id = _new_id("draft")
@@ -405,16 +967,36 @@ def build_capcut_draft(workspace: WorkspaceDataRead, *, bgm_path: str = "") -> d
     materials = _empty_materials()
     video_track_id = _new_id("track-video")
     audio_track_id = _new_id("track-audio")
+    voiceover_track_id = _new_id("track-voiceover")
     text_track_id = _new_id("track-text")
     video_segments: list[dict[str, Any]] = []
     audio_segments: list[dict[str, Any]] = []
+    voiceover_segments: list[dict[str, Any]] = []
     text_segments: list[dict[str, Any]] = []
     video_material_ids_by_path: dict[str, str] = {}
+    use_native_voiceover_text = workspace.exportPlan.voiceoverProvider == "jianying_native_tts"
+    native_voiceover_blocks = (
+        build_native_voiceover_blocks(workspace) if use_native_voiceover_text else []
+    )
+    storyboard_by_id = {segment.id: segment for segment in workspace.storyboard}
     total_duration_us = 0
+    transition_count = 0
+    motion_keyframe_segment_count = 0
+    emphasized_subtitle_count = 0
 
     for index, segment in enumerate(workspace.storyboard):
         duration_us = seconds_to_microseconds(segment.endTime - segment.startTime)
         start_us = seconds_to_microseconds(segment.startTime)
+        next_segment = (
+            workspace.storyboard[index + 1]
+            if index + 1 < len(workspace.storyboard)
+            else None
+        )
+        next_duration_us = (
+            seconds_to_microseconds(next_segment.endTime - next_segment.startTime)
+            if next_segment
+            else 0
+        )
         total_duration_us = max(total_duration_us, start_us + duration_us)
 
         asset = asset_map.get(segment.assetId)
@@ -438,6 +1020,23 @@ def build_capcut_draft(workspace: WorkspaceDataRead, *, bgm_path: str = "") -> d
 
             companion_refs, companion_materials = _create_companion_materials("video")
             _merge_materials(materials, companion_materials)
+            refs_before_transition = len(companion_refs)
+            companion_refs = _attach_transition(
+                materials,
+                companion_refs,
+                transition_policy=segment.transitionPolicy,
+                duration_us=duration_us,
+                next_duration_us=next_duration_us,
+            )
+            if len(companion_refs) > refs_before_transition:
+                transition_count += 1
+            motion_keyframes = _motion_keyframes(
+                motion_policy=segment.motionPolicy,
+                media_type=asset.mediaType if asset else "video",
+                duration_us=duration_us,
+            )
+            if motion_keyframes:
+                motion_keyframe_segment_count += 1
             video_segments.append(
                 _base_segment(
                     segment_id=_new_id("seg-video"),
@@ -447,13 +1046,25 @@ def build_capcut_draft(workspace: WorkspaceDataRead, *, bgm_path: str = "") -> d
                     duration_us=duration_us,
                     companion_refs=companion_refs,
                     render_index=14000 + index,
+                    common_keyframes=motion_keyframes,
                 )
             )
 
         subtitle = segment.subtitle.strip()
-        if subtitle:
+        if subtitle and not use_native_voiceover_text:
+            subtitle_font_size, subtitle_bold, subtitle_alpha = _subtitle_presentation(segment)
+            if subtitle_bold:
+                emphasized_subtitle_count += 1
             text_material_id = _new_id("mat-text")
-            materials["texts"].append(_text_material(material_id=text_material_id, text=subtitle))
+            materials["texts"].append(
+                _text_material(
+                    material_id=text_material_id,
+                    text=subtitle,
+                    font_size=subtitle_font_size,
+                    bold=subtitle_bold,
+                    alpha=subtitle_alpha,
+                )
+            )
             companion_refs, companion_materials = _create_companion_materials("text")
             _merge_materials(materials, companion_materials)
             text_segments.append(
@@ -469,8 +1080,55 @@ def build_capcut_draft(workspace: WorkspaceDataRead, *, bgm_path: str = "") -> d
                 )
             )
 
+    if use_native_voiceover_text:
+        for index, block in enumerate(native_voiceover_blocks):
+            duration_us = seconds_to_microseconds(block.end_sec - block.start_sec)
+            if duration_us <= 0:
+                continue
+            source_segments = [
+                storyboard_by_id[segment_id]
+                for segment_id in block.segment_ids
+                if segment_id in storyboard_by_id
+            ]
+            subtitle_font_size = CAPTION_FONT_SIZE
+            subtitle_bold = False
+            subtitle_alpha = 1.0
+            if source_segments:
+                presentations = [_subtitle_presentation(segment) for segment in source_segments]
+                subtitle_font_size = max(item[0] for item in presentations)
+                subtitle_bold = any(item[1] for item in presentations)
+                subtitle_alpha = max(item[2] for item in presentations)
+            if subtitle_bold:
+                emphasized_subtitle_count += 1
+            native_text_material_id = _new_id("mat-final-subtitle")
+            materials["texts"].append(
+                _text_material(
+                    material_id=native_text_material_id,
+                    text=block.text,
+                    font_size=subtitle_font_size,
+                    bold=subtitle_bold,
+                    alpha=subtitle_alpha,
+                )
+            )
+            companion_refs, companion_materials = _create_companion_materials("text")
+            _merge_materials(materials, companion_materials)
+            text_segments.append(
+                _base_segment(
+                    segment_id=_new_id("seg-final-subtitle"),
+                    material_id=native_text_material_id,
+                    track_id=text_track_id,
+                    start_us=seconds_to_microseconds(block.start_sec),
+                    duration_us=duration_us,
+                    companion_refs=companion_refs,
+                    render_index=15000 + index,
+                    clip=_caption_clip(),
+                )
+            )
+
     effective_bgm_path = bgm_path.strip() or resolve_bgm_path(workspace)
+    effective_voiceover_path = resolve_voiceover_path(workspace)
     bgm_included = False
+    voiceover_included = False
     if effective_bgm_path and total_duration_us > 0:
         bgm_name = workspace.rhythmPlan.audioFileName.strip() or Path(effective_bgm_path).name
         source_duration_us = seconds_to_microseconds(workspace.rhythmPlan.audioDurationSec)
@@ -504,10 +1162,42 @@ def build_capcut_draft(workspace: WorkspaceDataRead, *, bgm_path: str = "") -> d
                 duration_us=timeline_duration_us,
                 companion_refs=companion_refs,
                 render_index=0,
-                volume=0.8,
+                volume=DUCKED_BGM_VOLUME if effective_voiceover_path else DEFAULT_BGM_VOLUME,
             )
         )
         bgm_included = True
+
+    if effective_voiceover_path and total_duration_us > 0:
+        voiceover_duration_us = seconds_to_microseconds(workspace.exportPlan.voiceoverDurationSec)
+        if voiceover_duration_us <= 0:
+            voiceover_duration_us = total_duration_us
+        timeline_duration_us = min(voiceover_duration_us, total_duration_us)
+        material_duration_us = max(voiceover_duration_us, timeline_duration_us)
+
+        voiceover_material_id = _new_id("mat-voiceover")
+        materials["audios"].append(
+            _audio_material(
+                material_id=voiceover_material_id,
+                path=effective_voiceover_path,
+                name=Path(effective_voiceover_path).name,
+                duration_us=material_duration_us,
+            )
+        )
+        companion_refs, companion_materials = _create_companion_materials("audio")
+        _merge_materials(materials, companion_materials)
+        voiceover_segments.append(
+            _base_segment(
+                segment_id=_new_id("seg-voiceover"),
+                material_id=voiceover_material_id,
+                track_id=voiceover_track_id,
+                start_us=0,
+                duration_us=timeline_duration_us,
+                companion_refs=companion_refs,
+                render_index=1000,
+                volume=1.0,
+            )
+        )
+        voiceover_included = True
 
     tracks: list[dict[str, Any]] = []
     if video_segments:
@@ -534,12 +1224,30 @@ def build_capcut_draft(workspace: WorkspaceDataRead, *, bgm_path: str = "") -> d
                 "segments": audio_segments,
             }
         )
+    if voiceover_segments:
+        tracks.append(
+            {
+                "id": voiceover_track_id,
+                "type": "audio",
+                "name": "口播",
+                "is_default_name": False,
+                "attribute": 0,
+                "flag": 0,
+                "segments": voiceover_segments,
+            }
+        )
     if text_segments:
+        text_track_name = "字幕"
+        if use_native_voiceover_text:
+            voiceover_speed = max(0.7, min(1.3, workspace.exportPlan.voiceoverSpeed or 1.0))
+            text_track_name = "最终字幕（剪映朗读源）"
+            if abs(voiceover_speed - 1.0) >= 0.01:
+                text_track_name += f"（按{voiceover_speed:g}x校准）"
         tracks.append(
             {
                 "id": text_track_id,
                 "type": "text",
-                "name": "字幕",
+                "name": text_track_name,
                 "is_default_name": False,
                 "attribute": 0,
                 "flag": 0,
@@ -561,6 +1269,22 @@ def build_capcut_draft(workspace: WorkspaceDataRead, *, bgm_path: str = "") -> d
             "project_id": workspace.project.id,
             "segment_count": len(workspace.storyboard),
             "bgm_included": bgm_included,
+            "voiceover_included": voiceover_included,
+            "jianying_native_tts_text_track_included": bool(
+                use_native_voiceover_text and text_segments
+            ),
+            "jianying_native_tts_block_count": len(native_voiceover_blocks),
+            "final_subtitles_use_compressed_voiceover": bool(
+                use_native_voiceover_text and text_segments
+            ),
+            "voiceover_density": _normalize_voiceover_density(
+                workspace.exportPlan.voiceoverDensity
+            ),
+            "voiceover_speed": workspace.exportPlan.voiceoverSpeed,
+            "transition_count": transition_count,
+            "motion_keyframe_segment_count": motion_keyframe_segment_count,
+            "emphasized_subtitle_count": emphasized_subtitle_count,
+            "bgm_ducking_applied": bool(bgm_included and voiceover_included),
         },
     }
 
@@ -600,6 +1324,7 @@ class CapcutDraftDeployResult:
     draft_folder_path: str
     files: list[str]
     bgm_included: bool
+    voiceover_included: bool
 
 
 class CapcutDraftFolderExistsError(ValueError):
@@ -667,4 +1392,5 @@ def deploy_capcut_draft(
         draft_folder_path=str(folder_path).replace("\\", "/"),
         files=written_files,
         bgm_included=bool(draft.get("extra_info", {}).get("bgm_included")),
+        voiceover_included=bool(draft.get("extra_info", {}).get("voiceover_included")),
     )

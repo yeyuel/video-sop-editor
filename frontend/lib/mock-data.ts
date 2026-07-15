@@ -15,12 +15,13 @@ export const fallbackProjects: Project[] = [
     videoType: "travel_montage",
     stylePreference: "旅行攻略片",
     styleNotes: "绿色调，无旁边，空境为主",
-    routeText: "国清寺-天台山-神仙居",
+    routeText: "国清寺-石梁飞瀑-神仙居-回程",
     mediaRoot: "E:\\自媒体\\2025-台州-p3",
     status: "draft",
     selectedThemeId: "theme_5ddee337",
     validateLocationOrder: false,
-    allowAssetReuse: false
+    allowAssetReuse: false,
+    durationFillMaxConsecutiveRoute: 2
   }
 ];
 
@@ -50,14 +51,29 @@ const fallbackExportValidation = {
   issues: [] as string[]
 };
 
-const fallbackExportPlan: ExportPlan = {
+const fallbackExportPlanBase = {
   title: "五月台州绿到失语",
   shortTitle: "台州绿意路线",
   description:
-    "五月去台州，这条线真的很治愈。\n国清寺先静下来，天台山看飞瀑，神仙居走进云雾里。\n路线：国清寺-天台山-神仙居。\n喜欢这种清幽空镜旅行吗？",
+    "五月去台州，这条线真的很治愈。\n国清寺先静下来，石梁飞瀑看飞瀑，神仙居走进云雾里，最后用回程晚霞收束。\n路线：国清寺-石梁飞瀑-神仙居-回程。\n喜欢这种清幽空镜旅行吗？",
   tags: ["台州旅行", "五月出游", "治愈系风景", "旅行攻略"],
   coverSuggestion:
     "选国清寺石牌坊或神仙居云雾红桥作封面，主体居中；封面字用“五月台州绿到失语”，白字加深绿描边，突出清幽绿色调，避免遮挡牌坊和桥体。"
+};
+
+const fallbackExportPlan: ExportPlan = {
+  ...fallbackExportPlanBase,
+  voiceoverScript: "",
+  voiceoverProvider: "",
+  voiceoverStyle: "natural",
+  voiceoverSpeed: 1,
+  voiceoverEmotion: "calm",
+  voiceoverDensity: "standard",
+  voiceoverGenerationStatus: "not_generated",
+  voiceoverAudioPath: "",
+  voiceoverDurationSec: 0,
+  voiceoverProviderMeta: {},
+  voiceoverGeneratedAt: ""
 };
 
 export const fallbackWorkspace: WorkspaceData = {
@@ -99,7 +115,7 @@ export const fallbackWorkspace: WorkspaceData = {
       coreEmotion: "清幽",
       rhythmProfile: "前3秒用国清寺_006仰拍牌坊做钩子；中段以寺墙屋檐作慢节奏铺陈。",
       platformReason: "抖音旅行攻略片需要快速建立目的地识别，国清寺牌坊和橙墙辨识度强。",
-      usedLocations: ["国清寺", "output"],
+      usedLocations: ["国清寺"],
       usedAssetIds: ["国清寺_006", "OUTPUT_001"],
       isSelected: true
     }
@@ -119,7 +135,11 @@ export const fallbackWorkspace: WorkspaceData = {
       attentionRole: "hook",
       visualStrength: "strong",
       motionPolicy: "hold_or_speed_ramp",
-      transitionPolicy: "hard_cut"
+      transitionPolicy: "hard_cut",
+      subtitlePolicy: "",
+      voiceoverText: "五月台州，先在国清寺安静下来。",
+      voiceoverRole: "narration",
+      voiceoverTiming: "follow_segment"
     },
     {
       id: "seg_0f0e0b0d",
@@ -135,7 +155,11 @@ export const fallbackWorkspace: WorkspaceData = {
       attentionRole: "buffer",
       visualStrength: "medium",
       motionPolicy: "natural_cut",
-      transitionPolicy: "fade_or_match_cut"
+      transitionPolicy: "fade_or_match_cut",
+      subtitlePolicy: "",
+      voiceoverText: "橙墙灰瓦，五月绿到失语。",
+      voiceoverRole: "emotion",
+      voiceoverTiming: "follow_segment"
     }
   ],
   storyboardValidation: fallbackValidation,
@@ -167,10 +191,10 @@ export const fallbackWorkspace: WorkspaceData = {
     },
     attentionBeats: [
       { time: 0, role: "hook", label: "开头钩子" },
-      { time: 10, role: "push", label: "推进" },
-      { time: 20, role: "turn", label: "反转" },
+      { time: 10, role: "turn_1", label: "第一次反转" },
+      { time: 20, role: "turn_2", label: "第二次反转" },
       { time: 30, role: "climax", label: "高潮" },
-      { time: 40, role: "ending", label: "收尾" }
+      { time: 40, role: "payoff", label: "记忆点回收" }
     ],
     beatCalibration: {
       source: "audio_upload",

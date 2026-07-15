@@ -1,7 +1,9 @@
 import json
 import os
 import re
+import wave
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
@@ -48,9 +50,12 @@ from app.models.schemas import (
     StoryboardSaveRequest,
     StoryboardSegmentRead,
     StoryboardSegmentWrite,
+    StoryboardVoiceoverFillRequest,
     ThemeSelectRequest,
+    VoiceoverGenerateRequest,
     WorkspaceDataRead,
 )
+from app.core.config import settings
 from app.services.audio_analysis import AudioAnalysisError, audio_beat_analyzer
 from app.services.bgm_recommendation import (
     build_llm_bgm_recommendations,
@@ -84,9 +89,11 @@ from app.services.rhythm_generation import (
 )
 from app.services.rhythm_profile import build_attention_beats, build_rhythm_profile
 from app.services.beat_grid import (
-    apply_beat_offset,
+    apply_beat_calibration,
+    estimate_beat_calibration_from_reference,
     filter_beats_for_capcut_mode,
     normalize_beat_times,
+    recommend_capcut_density_mode_from_reference,
 )
 from app.services.serialization import dumps_list, loads_float_list, loads_str_list
 from app.services.storyboard_generation import (
@@ -96,10 +103,12 @@ from app.services.storyboard_generation import (
     generate_storyboard_segments,
     generate_storyboard_segments_from_plan,
     normalize_storyboard_segments,
+    parse_route_locations,
     resolve_storyboard_beat_points,
     segment_read_to_write,
 )
 from app.services.theme_generation import build_llm_theme_candidates, build_rule_theme_candidates
+from app.services.voiceover_provider import get_voiceover_provider, is_voiceover_provider_enabled
 from app.services.llm.progress import ProgressReporter, emit_progress
 from app.services.session_service import delete_user_sessions, revoke_user_sessions
 
@@ -258,6 +267,7 @@ class SqlRepository:
             selected_theme_id="",
             validate_location_order=payload.validateLocationOrder,
             allow_asset_reuse=payload.allowAssetReuse,
+            duration_fill_max_consecutive_route=payload.durationFillMaxConsecutiveRoute,
         )
         session.add(project)
         session.commit()
@@ -293,6 +303,7 @@ class SqlRepository:
         project.status = payload.status
         project.validate_location_order = payload.validateLocationOrder
         project.allow_asset_reuse = payload.allowAssetReuse
+        project.duration_fill_max_consecutive_route = payload.durationFillMaxConsecutiveRoute
 
         session.add(project)
         session.commit()
@@ -669,6 +680,7 @@ class SqlRepository:
         project_id: str,
         audio_file_name: str,
         audio_file_path: str,
+        audio_file_fingerprint: str = "",
         on_progress: ProgressReporter | None = None,
     ) -> tuple[RhythmPlanRead, dict[str, str]] | None:
         project = self.get_project_entity(session, project_id)
@@ -706,7 +718,12 @@ class SqlRepository:
                 theme,
                 audio_file_name,
                 analysis,
+                audio_file_fingerprint=audio_file_fingerprint,
                 on_progress=on_progress,
+            )
+            rhythm_payload = self._reuse_calibration_for_same_audio(
+                rhythm_payload,
+                existing_rhythm,
             )
             if previous_audio_path and previous_audio_path != audio_file_path:
                 self._remove_stored_audio(previous_audio_path)
@@ -865,24 +882,43 @@ class SqlRepository:
                 coarse_beats = []
 
             if raw_beats and payload.beatMode != "none":
+                reference_points = self._reference_beats_from_payload(payload.beatCalibration)
+                if reference_points:
+                    payload.beatMode = recommend_capcut_density_mode_from_reference(
+                        raw_beats,
+                        reference_points,
+                        float(project.target_duration_sec),
+                        coarse_beats=coarse_beats or None,
+                        current_mode=payload.beatMode,
+                    )
                 beat_points = filter_beats_for_capcut_mode(
                     raw_beats,
                     payload.beatMode,
                     float(project.target_duration_sec),
                     coarse_beats=coarse_beats or None,
                 )
-                beat_points = apply_beat_offset(
+                beat_calibration = self._calibrate_beat_payload(
+                    payload.beatCalibration,
+                    beat_points,
+                )
+                beat_points = apply_beat_calibration(
                     beat_points,
                     float(project.target_duration_sec),
-                    self._beat_offset_from_payload(payload.beatCalibration),
+                    offset_sec=self._beat_offset_from_payload(beat_calibration),
+                    scale=self._beat_scale_from_payload(beat_calibration),
                 )
                 rhythm.raw_beat_points = dumps_list(raw_beats)
                 rhythm.coarse_beat_points = dumps_list(coarse_beats)
             else:
-                beat_points = apply_beat_offset(
+                beat_calibration = self._calibrate_beat_payload(
+                    payload.beatCalibration,
+                    payload.beatPoints,
+                )
+                beat_points = apply_beat_calibration(
                     payload.beatPoints,
                     float(project.target_duration_sec),
-                    self._beat_offset_from_payload(payload.beatCalibration),
+                    offset_sec=self._beat_offset_from_payload(beat_calibration),
+                    scale=self._beat_scale_from_payload(beat_calibration),
                 )
                 if payload.rawBeatPoints:
                     rhythm.raw_beat_points = dumps_list(raw_beats)
@@ -899,6 +935,7 @@ class SqlRepository:
 
             rhythm.beat_mode = payload.beatMode
             rhythm.beat_points = dumps_list(beat_points)
+            payload.beatCalibration = beat_calibration
 
         rhythm.rhythm_notes = dumps_list(payload.rhythmNotes)
         rhythm.dark_cut_suggestions = dumps_list(payload.darkCutSuggestions)
@@ -1000,6 +1037,12 @@ class SqlRepository:
             beat_mode=beat_mode,
             beat_points=beat_points,
             allow_asset_reuse=bool(project.allow_asset_reuse),
+            attention_beats=rhythm.attentionBeats if rhythm else [],
+            rhythm_profile=rhythm.rhythmProfile if rhythm else {},
+            route_locations=parse_route_locations(project.route_text),
+            duration_fill_max_consecutive_route=int(
+                getattr(project, "duration_fill_max_consecutive_route", 2) or 2
+            ),
         )
         self._replace_storyboard_segments(session, project_id, theme.id, segments)
         return self.get_storyboard_bundle(session, project_id)
@@ -1060,6 +1103,9 @@ class SqlRepository:
                 beat_points=beat_points,
                 llm_plan=llm_plan,
                 allow_asset_reuse=bool(project.allow_asset_reuse),
+                attention_beats=rhythm.attentionBeats if rhythm else [],
+                rhythm_profile=rhythm.rhythmProfile if rhythm else {},
+                route_locations=parse_route_locations(project.route_text),
             )
         else:
             segments = generate_storyboard_segments(
@@ -1069,6 +1115,12 @@ class SqlRepository:
                 beat_mode=beat_mode,
                 beat_points=beat_points,
                 allow_asset_reuse=bool(project.allow_asset_reuse),
+                attention_beats=rhythm.attentionBeats if rhythm else [],
+                rhythm_profile=rhythm.rhythmProfile if rhythm else {},
+                route_locations=parse_route_locations(project.route_text),
+                duration_fill_max_consecutive_route=int(
+                    getattr(project, "duration_fill_max_consecutive_route", 2) or 2
+                ),
             )
 
         emit_progress(on_progress, "saving", "正在保存分镜时间线…", progress=95)
@@ -1147,6 +1199,35 @@ class SqlRepository:
         self._replace_storyboard_segments(session, project_id, theme_id, normalized_segments)
         return self.get_storyboard_bundle(session, project_id)
 
+    def fill_storyboard_voiceover_from_subtitles(
+        self,
+        session: Session,
+        project_id: str,
+        payload: StoryboardVoiceoverFillRequest,
+    ) -> StoryboardBundleRead | None:
+        project = self.get_project_entity(session, project_id)
+        if not project:
+            return None
+
+        segments = session.exec(
+            select(StoryboardSegmentEntity)
+            .where(StoryboardSegmentEntity.project_id == project_id)
+            .order_by(StoryboardSegmentEntity.start_time)
+        ).all()
+        for segment in segments:
+            if segment.voiceover_text.strip() and not payload.overwriteExisting:
+                continue
+            voiceover_text = self._voiceover_text_from_subtitle(segment.subtitle)
+            if not voiceover_text:
+                continue
+            segment.voiceover_text = voiceover_text
+            segment.voiceover_role = payload.role or segment.voiceover_role or "narration"
+            segment.voiceover_timing = payload.timing or segment.voiceover_timing or "follow_segment"
+            session.add(segment)
+
+        session.commit()
+        return self.get_storyboard_bundle(session, project_id)
+
     def update_storyboard_segment(
         self,
         session: Session,
@@ -1175,6 +1256,11 @@ class SqlRepository:
         segment.visual_strength = payload.visualStrength
         segment.motion_policy = payload.motionPolicy
         segment.transition_policy = payload.transitionPolicy
+        segment.subtitle_policy = payload.subtitlePolicy
+        segment.selection_trace = payload.selectionTrace
+        segment.voiceover_text = payload.voiceoverText
+        segment.voiceover_role = payload.voiceoverRole
+        segment.voiceover_timing = payload.voiceoverTiming
 
         session.add(segment)
         session.commit()
@@ -1223,6 +1309,12 @@ class SqlRepository:
                 description="",
                 tags="[]",
                 cover_suggestion="",
+                voiceover_script="",
+                voiceover_provider="",
+                voiceover_style="natural",
+                voiceover_speed=1.0,
+                voiceover_emotion="calm",
+                voiceover_density="standard",
             )
 
         publish.title = payload.title
@@ -1230,6 +1322,12 @@ class SqlRepository:
         publish.description = payload.description
         publish.tags = dumps_list(payload.tags)
         publish.cover_suggestion = payload.coverSuggestion
+        publish.voiceover_script = payload.voiceoverScript
+        publish.voiceover_provider = payload.voiceoverProvider
+        publish.voiceover_style = payload.voiceoverStyle
+        publish.voiceover_speed = payload.voiceoverSpeed
+        publish.voiceover_emotion = payload.voiceoverEmotion
+        publish.voiceover_density = self._normalize_voiceover_density(payload.voiceoverDensity)
 
         session.add(publish)
         session.commit()
@@ -1269,6 +1367,12 @@ class SqlRepository:
             description=str(suggestion.get("description", "")).strip(),
             tags=self._normalize_tag_list(suggestion.get("tags")),
             coverSuggestion=str(suggestion.get("coverSuggestion", "")).strip(),
+            voiceoverScript=current_plan.voiceoverScript if current_plan else "",
+            voiceoverProvider=current_plan.voiceoverProvider if current_plan else "",
+            voiceoverStyle=current_plan.voiceoverStyle if current_plan else "natural",
+            voiceoverSpeed=current_plan.voiceoverSpeed if current_plan else 1.0,
+            voiceoverEmotion=current_plan.voiceoverEmotion if current_plan else "calm",
+            voiceoverDensity=current_plan.voiceoverDensity if current_plan else "standard",
         )
         emit_progress(on_progress, "saving", "正在保存导出文案…", progress=94)
         plan = self.upsert_export_plan(session, project_id, payload)
@@ -1300,6 +1404,7 @@ class SqlRepository:
             "csv": "csv",
             "capcut": "capcut-draft.json",
             "edl": "edl",
+            "voiceover": "voiceover.txt",
         }.get(fmt, fmt)
         return ExportDocumentRead(
             projectId=project_id,
@@ -1307,6 +1412,137 @@ class SqlRepository:
             fileName=f"{project_id}-timeline.{extension}",
             content=content,
         )
+
+    def prepare_export_voiceover_generation(
+        self,
+        session: Session,
+        project_id: str,
+        payload: VoiceoverGenerateRequest,
+    ) -> ExportPlanRead | None:
+        project = self.get_project_entity(session, project_id)
+        if not project:
+            return None
+
+        publish = session.exec(
+            select(PublishPlanEntity).where(PublishPlanEntity.project_id == project_id)
+        ).first()
+        if not publish:
+            publish = PublishPlanEntity(
+                id=f"publish_{uuid4().hex[:8]}",
+                project_id=project_id,
+                title="",
+                short_title="",
+                description="",
+                tags="[]",
+                cover_suggestion="",
+            )
+
+        script = publish.voiceover_script.strip()
+        if not script and payload.useSegmentFallback:
+            storyboard_bundle = self.get_storyboard_bundle(session, project_id)
+            script = "\n".join(
+                segment.voiceoverText.strip() or segment.subtitle.strip()
+                for segment in storyboard_bundle.segments
+                if segment.voiceoverText.strip() or segment.subtitle.strip()
+            ).strip()
+
+        provider = (publish.voiceover_provider or "").strip()
+        provider_config = get_voiceover_provider(provider)
+        duration_sec = self._estimate_voiceover_duration_sec(
+            script,
+            speed=getattr(publish, "voiceover_speed", 1.0) or 1.0,
+        )
+        timeline_duration_sec = self._storyboard_timeline_duration_sec(session, project_id)
+        status = "ready" if script and provider else "provider_required"
+        if not script:
+            status = "script_required"
+        if script and provider and not is_voiceover_provider_enabled(provider):
+            status = "provider_not_supported"
+
+        provider_meta = {
+            "dryRun": payload.dryRun,
+            "provider": provider,
+            "style": publish.voiceover_style or "natural",
+            "speed": getattr(publish, "voiceover_speed", 1.0) or 1.0,
+            "emotion": publish.voiceover_emotion or "calm",
+            "density": self._normalize_voiceover_density(
+                getattr(publish, "voiceover_density", "standard") or "standard"
+            ),
+            "scriptChars": len(script),
+            "estimatedSpeechDurationSec": duration_sec,
+            "timelineDurationSec": timeline_duration_sec,
+            "providerLabel": provider_config.label if provider_config else "",
+            "providerDescription": provider_config.description if provider_config else "",
+            "providerEnabled": bool(provider_config and provider_config.is_enabled),
+            "realTts": bool(provider_config and provider_config.is_real_tts),
+            "source": "export_script" if publish.voiceover_script.strip() else "segment_fallback",
+            "message": self._voiceover_generation_message(status),
+        }
+
+        if status == "ready" and not payload.dryRun and provider == "mock_silence":
+            # mock_silence is a timeline placeholder, not real TTS. Keep it full-length
+            # so JianYing/CapCut can validate the complete voiceover track.
+            duration_sec = max(duration_sec, timeline_duration_sec)
+            audio_path = self._write_mock_voiceover_audio(
+                project_id=project_id,
+                publish_id=publish.id,
+                duration_sec=duration_sec,
+            )
+            status = "generated"
+            provider_meta["message"] = self._voiceover_generation_message(status)
+            provider_meta["audioKind"] = "silent_wav_placeholder"
+            provider_meta["placeholderDurationPolicy"] = "match_timeline"
+            publish.voiceover_audio_path = audio_path
+        elif status == "ready" and not payload.dryRun and provider == "jianying_native_tts":
+            status = "manual_required"
+            provider_meta["message"] = self._voiceover_generation_message(status)
+            provider_meta["handoff"] = "capcut_native_text_to_speech"
+            provider_meta["audioKind"] = "jianying_native_tts_pending"
+
+        publish.voiceover_generation_status = status
+        publish.voiceover_duration_sec = duration_sec
+        publish.voiceover_provider_meta = json.dumps(provider_meta, ensure_ascii=False)
+        publish.voiceover_generated_at = datetime.now(timezone.utc).isoformat()
+        if status not in {"ready", "generated"}:
+            publish.voiceover_audio_path = ""
+
+        session.add(publish)
+        session.commit()
+        session.refresh(publish)
+        return self._map_export_plan(publish)
+
+    def clear_export_voiceover_audio(
+        self,
+        session: Session,
+        project_id: str,
+    ) -> ExportPlanRead | None:
+        publish = session.exec(
+            select(PublishPlanEntity).where(PublishPlanEntity.project_id == project_id)
+        ).first()
+        if not publish:
+            return None
+
+        self._remove_stored_audio(getattr(publish, "voiceover_audio_path", "") or "")
+        publish.voiceover_generation_status = "not_generated"
+        publish.voiceover_audio_path = ""
+        publish.voiceover_duration_sec = 0.0
+        publish.voiceover_provider_meta = "{}"
+        publish.voiceover_generated_at = ""
+        session.add(publish)
+        session.commit()
+        session.refresh(publish)
+        return self._map_export_plan(publish)
+
+    def get_export_voiceover_audio_path(self, session: Session, project_id: str) -> str | None:
+        publish = session.exec(
+            select(PublishPlanEntity).where(PublishPlanEntity.project_id == project_id)
+        ).first()
+        if not publish or not publish.voiceover_audio_path:
+            return None
+        path = Path(publish.voiceover_audio_path)
+        if not path.is_file():
+            return None
+        return str(path)
 
     def get_capcut_export_defaults(
         self, session: Session, project_id: str
@@ -1360,7 +1596,14 @@ class SqlRepository:
         except ValueError as exc:
             raise ValueError(str(exc)) from exc
 
-        bgm_hint = "，已包含 BGM 音频轨" if result.bgm_included else ""
+        audio_hints: list[str] = []
+        if result.bgm_included:
+            audio_hints.append("已包含 BGM 音频轨")
+        if result.voiceover_included:
+            audio_hints.append("已包含口播音轨")
+        if result.bgm_included and result.voiceover_included:
+            audio_hints.append("BGM 已自动降低音量")
+        audio_hint = f"，{'，'.join(audio_hints)}" if audio_hints else ""
         return CapcutDraftDeployRead(
             projectId=project_id,
             draftRoot=result.draft_root,
@@ -1368,9 +1611,10 @@ class SqlRepository:
             draftFolderPath=result.draft_folder_path,
             files=result.files,
             bgmIncluded=result.bgm_included,
+            voiceoverIncluded=result.voiceover_included,
             message=(
                 f"已写入剪映草稿目录：{result.draft_folder_path}（"
-                f"{', '.join(result.files)}）{bgm_hint}。请重启剪映或刷新草稿列表后打开。"
+                f"{', '.join(result.files)}）{audio_hint}。请重启剪映或刷新草稿列表后打开。"
             ),
         )
 
@@ -1481,6 +1725,12 @@ class SqlRepository:
             description="",
             tags=[],
             coverSuggestion="",
+            voiceoverScript="",
+            voiceoverProvider="",
+            voiceoverStyle="natural",
+            voiceoverSpeed=1.0,
+            voiceoverEmotion="calm",
+            voiceoverDensity="standard",
         )
         selected_theme = next((theme for theme in themes if theme.isSelected), None)
         return WorkspaceDataRead(
@@ -1543,6 +1793,9 @@ class SqlRepository:
             selectedThemeId=item.selected_theme_id,
             validateLocationOrder=bool(getattr(item, "validate_location_order", False)),
             allowAssetReuse=bool(getattr(item, "allow_asset_reuse", False)),
+            durationFillMaxConsecutiveRoute=int(
+                getattr(item, "duration_fill_max_consecutive_route", 2) or 2
+            ),
         )
 
     @staticmethod
@@ -1619,6 +1872,11 @@ class SqlRepository:
             visualStrength=getattr(item, "visual_strength", "") or "",
             motionPolicy=getattr(item, "motion_policy", "") or "",
             transitionPolicy=getattr(item, "transition_policy", "") or "",
+            subtitlePolicy=getattr(item, "subtitle_policy", "") or "",
+            selectionTrace=getattr(item, "selection_trace", "") or "",
+            voiceoverText=getattr(item, "voiceover_text", "") or "",
+            voiceoverRole=getattr(item, "voiceover_role", "") or "",
+            voiceoverTiming=getattr(item, "voiceover_timing", "") or "",
         )
 
     @staticmethod
@@ -1685,6 +1943,100 @@ class SqlRepository:
             return 0.0
 
     @staticmethod
+    def _beat_scale_from_payload(payload: dict[str, Any]) -> float:
+        try:
+            scale = float(payload.get("beatScale", 1) or 1)
+        except (TypeError, ValueError):
+            return 1.0
+        return min(1.05, max(0.95, scale))
+
+    @staticmethod
+    def _voiceover_text_from_subtitle(subtitle: str) -> str:
+        text_value = " ".join((subtitle or "").split()).strip(" /｜|")
+        if not text_value:
+            return ""
+        if text_value[-1] not in "。！？!?…":
+            text_value = f"{text_value}。"
+        return text_value
+
+    @staticmethod
+    def _reference_beats_from_payload(payload: dict[str, Any]) -> list[float]:
+        raw_reference = payload.get("referenceBeatPoints", [])
+        if not isinstance(raw_reference, list):
+            return []
+        reference_points: list[float] = []
+        for item in raw_reference:
+            try:
+                reference_points.append(float(item))
+            except (TypeError, ValueError):
+                continue
+        return reference_points
+
+    @classmethod
+    def _calibrate_beat_payload(
+        cls,
+        payload: dict[str, Any],
+        base_beat_points: list[float],
+    ) -> dict[str, Any]:
+        beat_calibration = dict(payload or {})
+        reference_points = cls._reference_beats_from_payload(beat_calibration)
+        if not reference_points:
+            return beat_calibration
+
+        estimated_offset, estimated_scale = estimate_beat_calibration_from_reference(
+            base_beat_points,
+            reference_points,
+        )
+        beat_calibration["source"] = "capcut_reference"
+        beat_calibration["beatOffsetSec"] = estimated_offset
+        beat_calibration["beatScale"] = estimated_scale
+        beat_calibration["referenceBeatPoints"] = reference_points
+        beat_calibration["confidence"] = "reference"
+        return beat_calibration
+
+    @classmethod
+    def _reuse_calibration_for_same_audio(
+        cls,
+        payload: RhythmPlanWriteRequest,
+        existing_rhythm: RhythmPlanEntity | None,
+    ) -> RhythmPlanWriteRequest:
+        if not existing_rhythm:
+            return payload
+        if not payload.audioFingerprint:
+            return payload
+        if payload.audioFingerprint != (getattr(existing_rhythm, "audio_fingerprint", "") or ""):
+            return payload
+
+        previous_calibration = cls._load_json_object(
+            getattr(existing_rhythm, "beat_calibration_json", "{}") or "{}"
+        )
+        previous_offset = cls._beat_offset_from_payload(previous_calibration)
+        previous_scale = cls._beat_scale_from_payload(previous_calibration)
+        previous_reference = cls._reference_beats_from_payload(previous_calibration)
+        if abs(previous_offset) < 0.001 and abs(previous_scale - 1.0) < 0.0001 and not previous_reference:
+            return payload
+
+        reused_calibration = {
+            **payload.beatCalibration,
+            "source": previous_calibration.get("source", "manual"),
+            "beatOffsetSec": previous_offset,
+            "beatScale": previous_scale,
+            "densityMode": payload.beatMode,
+            "referenceBeatPoints": previous_reference,
+            "confidence": "reused_same_audio",
+        }
+        analysis_notes = [
+            *payload.analysisNotes,
+            "检测到同一音频，已复用上次保存的剪映节拍校准参数。",
+        ]
+        return payload.model_copy(
+            update={
+                "beatCalibration": reused_calibration,
+                "analysisNotes": analysis_notes,
+            }
+        )
+
+    @staticmethod
     def _load_bgm_recommendations(raw_value: str) -> list[BgmRecommendationRead]:
         if not raw_value:
             return []
@@ -1715,7 +2067,95 @@ class SqlRepository:
             description=item.description,
             tags=loads_str_list(item.tags),
             coverSuggestion=item.cover_suggestion,
+            voiceoverScript=getattr(item, "voiceover_script", "") or "",
+            voiceoverProvider=getattr(item, "voiceover_provider", "") or "",
+            voiceoverStyle=getattr(item, "voiceover_style", "") or "natural",
+            voiceoverSpeed=float(getattr(item, "voiceover_speed", 1.0) or 1.0),
+            voiceoverEmotion=getattr(item, "voiceover_emotion", "") or "calm",
+            voiceoverDensity=SqlRepository._normalize_voiceover_density(
+                getattr(item, "voiceover_density", "") or "standard"
+            ),
+            voiceoverGenerationStatus=getattr(
+                item, "voiceover_generation_status", ""
+            ) or "not_generated",
+            voiceoverAudioPath=getattr(item, "voiceover_audio_path", "") or "",
+            voiceoverDurationSec=float(getattr(item, "voiceover_duration_sec", 0.0) or 0.0),
+            voiceoverProviderMeta=SqlRepository._loads_json_dict(
+                getattr(item, "voiceover_provider_meta", "{}") or "{}"
+            ),
+            voiceoverGeneratedAt=getattr(item, "voiceover_generated_at", "") or "",
         )
+
+    @staticmethod
+    def _estimate_voiceover_duration_sec(script: str, speed: float = 1.0) -> float:
+        cleaned = re.sub(r"\s+", "", script)
+        if not cleaned:
+            return 0.0
+        safe_speed = max(0.5, min(speed or 1.0, 2.0))
+        # 中文普通旁白约 4.2 字/秒，先用于 TTS 接入前的时长预估。
+        return round(len(cleaned) / (4.2 * safe_speed), 2)
+
+    @staticmethod
+    def _normalize_voiceover_density(value: str) -> str:
+        normalized = (value or "").strip().lower()
+        return normalized if normalized in {"light", "standard", "info"} else "standard"
+
+    def _storyboard_timeline_duration_sec(self, session: Session, project_id: str) -> float:
+        project = self.get_project_entity(session, project_id)
+        segments = session.exec(
+            select(StoryboardSegmentEntity).where(StoryboardSegmentEntity.project_id == project_id)
+        ).all()
+        if segments:
+            return round(max(float(segment.end_time or 0.0) for segment in segments), 2)
+        if project:
+            return float(project.target_duration_sec or 0)
+        return 0.0
+
+    @staticmethod
+    def _voiceover_generation_message(status: str) -> str:
+        if status == "generated":
+            return "已生成本地占位静音 WAV，可用于验证音频链路；这还不是真实 AI 口播。"
+        if status == "manual_required":
+            return "已准备剪映原生朗读方案：写入剪映草稿后，选择口播稿文本轨并点击剪映「开始朗读」。"
+        if status == "ready":
+            return "口播文本和 Provider 已就绪，后续可接入 TTS 生成音频。"
+        if status == "script_required":
+            return "请先填写整段口播稿，或在分镜中补充逐镜头口播。"
+        if status == "provider_not_supported":
+            return "当前 Provider 还没有接入真实 TTS，请先使用本地占位静音或等待后续接入。"
+        return "请先选择口播 Provider，再生成口播音频。"
+
+    @staticmethod
+    def _write_mock_voiceover_audio(
+        *,
+        project_id: str,
+        publish_id: str,
+        duration_sec: float,
+    ) -> str:
+        output_dir = Path(settings.storage_dir) / "voiceover" / project_id
+        output_dir.mkdir(parents=True, exist_ok=True)
+        output_path = output_dir / f"{publish_id}-mock-silence.wav"
+
+        sample_rate = 16000
+        channels = 1
+        sample_width = 2
+        safe_duration = max(0.2, min(duration_sec or 1.0, 300.0))
+        frame_count = int(sample_rate * safe_duration)
+        silence = b"\x00\x00" * frame_count
+        with wave.open(str(output_path), "wb") as wav_file:
+            wav_file.setnchannels(channels)
+            wav_file.setsampwidth(sample_width)
+            wav_file.setframerate(sample_rate)
+            wav_file.writeframes(silence)
+        return str(output_path)
+
+    @staticmethod
+    def _loads_json_dict(value: str) -> dict[str, Any]:
+        try:
+            parsed = json.loads(value)
+        except json.JSONDecodeError:
+            return {}
+        return parsed if isinstance(parsed, dict) else {}
 
     @staticmethod
     def _generate_asset_id(session: Session, project_id: str, location: str) -> str:
@@ -1817,6 +2257,11 @@ class SqlRepository:
                     visual_strength=segment.visualStrength,
                     motion_policy=segment.motionPolicy,
                     transition_policy=segment.transitionPolicy,
+                    subtitle_policy=segment.subtitlePolicy,
+                    selection_trace=segment.selectionTrace,
+                    voiceover_text=segment.voiceoverText,
+                    voiceover_role=segment.voiceoverRole,
+                    voiceover_timing=segment.voiceoverTiming,
                 )
             )
         session.commit()

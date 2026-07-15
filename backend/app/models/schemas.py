@@ -77,6 +77,7 @@ class ProjectRead(BaseModel):
     selectedThemeId: str = ""
     validateLocationOrder: bool = False
     allowAssetReuse: bool = False
+    durationFillMaxConsecutiveRoute: int = 2
 
 
 class ProjectWriteRequest(BaseModel):
@@ -93,6 +94,7 @@ class ProjectWriteRequest(BaseModel):
     status: str = "draft"
     validateLocationOrder: bool = False
     allowAssetReuse: bool = False
+    durationFillMaxConsecutiveRoute: int = 2
 
 
 class ProjectCreateRequest(ProjectWriteRequest):
@@ -207,6 +209,11 @@ class StoryboardSegmentRead(BaseModel):
     visualStrength: str = ""
     motionPolicy: str = ""
     transitionPolicy: str = ""
+    subtitlePolicy: str = ""
+    selectionTrace: str = ""
+    voiceoverText: str = ""
+    voiceoverRole: str = ""
+    voiceoverTiming: str = ""
 
 
 class StoryboardSegmentWrite(BaseModel):
@@ -224,6 +231,11 @@ class StoryboardSegmentWrite(BaseModel):
     visualStrength: str = ""
     motionPolicy: str = ""
     transitionPolicy: str = ""
+    subtitlePolicy: str = ""
+    selectionTrace: str = ""
+    voiceoverText: str = ""
+    voiceoverRole: str = ""
+    voiceoverTiming: str = ""
 
 
 class StoryboardGenerateRequest(BaseModel):
@@ -247,6 +259,12 @@ class StoryboardInsertRequest(BaseModel):
 
 class StoryboardReorderRequest(BaseModel):
     orderedSegmentIds: list[str]
+
+
+class StoryboardVoiceoverFillRequest(BaseModel):
+    overwriteExisting: bool = False
+    role: str = "narration"
+    timing: str = "follow_segment"
 
 
 class StoryboardValidationRead(BaseModel):
@@ -355,6 +373,17 @@ class ExportPlanRead(BaseModel):
     description: str
     tags: list[str]
     coverSuggestion: str
+    voiceoverScript: str = ""
+    voiceoverProvider: str = ""
+    voiceoverStyle: str = "natural"
+    voiceoverSpeed: float = 1.0
+    voiceoverEmotion: str = "calm"
+    voiceoverDensity: str = "standard"
+    voiceoverGenerationStatus: str = "not_generated"
+    voiceoverAudioPath: str = ""
+    voiceoverDurationSec: float = 0.0
+    voiceoverProviderMeta: dict[str, Any] = Field(default_factory=dict)
+    voiceoverGeneratedAt: str = ""
 
 
 class ExportPlanWriteRequest(BaseModel):
@@ -363,6 +392,60 @@ class ExportPlanWriteRequest(BaseModel):
     description: str
     tags: list[str] = Field(default_factory=list)
     coverSuggestion: str = ""
+    voiceoverScript: str = ""
+    voiceoverProvider: str = ""
+    voiceoverStyle: str = "natural"
+    voiceoverSpeed: float = 1.0
+    voiceoverEmotion: str = "calm"
+    voiceoverDensity: str = "standard"
+
+
+class VoiceoverGenerateRequest(BaseModel):
+    dryRun: bool = True
+    useSegmentFallback: bool = True
+
+
+class VoiceoverProviderRead(BaseModel):
+    id: str
+    label: str
+    description: str
+    isEnabled: bool
+    isRealTts: bool
+    outputFormat: str
+    recommendedFor: str
+
+
+class VoiceoverPreviewRequest(BaseModel):
+    voiceoverDensity: str = "standard"
+    voiceoverScript: str = ""
+    voiceoverSpeed: float = 1.0
+
+
+class VoiceoverBlockRead(BaseModel):
+    startTime: float
+    endTime: float
+    sourceStartTime: float = 0.0
+    sourceEndTime: float = 0.0
+    text: str
+    segmentIds: list[str] = Field(default_factory=list)
+    estimatedReadingSec: float = 0.0
+    recommendedSpeed: float = 1.0
+    alignmentShiftSec: float = 0.0
+    alignmentStatus: str = "aligned"
+
+
+class VoiceoverPreviewRead(BaseModel):
+    density: str
+    sourceChars: int
+    outputChars: int
+    compressionRatio: float
+    blockCount: int
+    timelineCoverageSec: float
+    estimatedReadingSec: float
+    timingRiskCount: int = 0
+    alignmentRiskCount: int = 0
+    recommendedSpeed: float = 1.0
+    blocks: list[VoiceoverBlockRead] = Field(default_factory=list)
 
 
 class ExportDocumentRead(BaseModel):
@@ -385,6 +468,7 @@ class CapcutDraftDeployRead(BaseModel):
     draftFolderPath: str
     files: list[str]
     bgmIncluded: bool
+    voiceoverIncluded: bool = False
     message: str
 
 

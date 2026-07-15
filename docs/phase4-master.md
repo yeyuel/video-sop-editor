@@ -185,6 +185,8 @@ P4-C 只做评估和必要基础设施准备，不在 P4-A 阶段提前引入重
 
 目标：从“素材排序生成分镜”升级为“内容节点驱动分镜”。
 
+详细技术方案见 [`narrative-storyboard-planning.md`](narrative-storyboard-planning.md)。后续实现应以“路线主轴 + 叙事骨架 + 素材评分 + 约束搜索”为主，不再继续强化最近 `attentionBeat` 贴标签的粗粒度方案。
+
 交付：
 
 - 分镜增加 `attentionRole`：钩子、铺垫、推进、反转、高潮、缓冲、收尾。

@@ -94,3 +94,23 @@ export function applyBeatOffset(
     .filter((point) => point >= 0 && point <= targetDurationSec);
   return normalizeBeatTimes(shifted, targetDurationSec);
 }
+
+export function applyBeatCalibration(
+  beatPoints: number[],
+  targetDurationSec: number,
+  offsetSec: number,
+  scale = 1
+): number[] {
+  if (beatPoints.length === 0) {
+    return [];
+  }
+  if (Math.abs(offsetSec) < 0.001 && Math.abs(scale - 1) < 0.0001) {
+    return normalizeBeatTimes(beatPoints, targetDurationSec);
+  }
+
+  const safeScale = Math.min(1.05, Math.max(0.95, scale));
+  const transformed = beatPoints
+    .map((point) => Number(((point * safeScale) + offsetSec).toFixed(2)))
+    .filter((point) => point >= 0 && point <= targetDurationSec);
+  return normalizeBeatTimes(transformed, targetDurationSec);
+}

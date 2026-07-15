@@ -14,6 +14,7 @@ export type Project = {
   selectedThemeId: string;
   validateLocationOrder: boolean;
   allowAssetReuse: boolean;
+  durationFillMaxConsecutiveRoute: number;
 };
 
 export type Asset = {
@@ -82,6 +83,11 @@ export type StoryboardSegment = {
   visualStrength: string;
   motionPolicy: string;
   transitionPolicy: string;
+  subtitlePolicy: string;
+  selectionTrace?: string;
+  voiceoverText: string;
+  voiceoverRole: string;
+  voiceoverTiming: string;
 };
 
 export type StoryboardValidation = {
@@ -165,6 +171,7 @@ export type RhythmPlan = {
   beatCalibration: {
     source?: string;
     beatOffsetSec?: number;
+    beatScale?: number;
     densityMode?: string;
     referenceBeatPoints?: number[];
     confidence?: string;
@@ -180,6 +187,17 @@ export type ExportPlan = {
   description: string;
   tags: string[];
   coverSuggestion: string;
+  voiceoverScript: string;
+  voiceoverProvider: string;
+  voiceoverStyle: string;
+  voiceoverSpeed: number;
+  voiceoverEmotion: string;
+  voiceoverDensity: string;
+  voiceoverGenerationStatus: string;
+  voiceoverAudioPath: string;
+  voiceoverDurationSec: number;
+  voiceoverProviderMeta: Record<string, unknown>;
+  voiceoverGeneratedAt: string;
 };
 
 export type ExportDocument = {

@@ -1,6 +1,9 @@
 import type { RhythmPlan } from "@/types/domain";
 
-export function isRhythmAnalyzed(plan: RhythmPlan): boolean {
+export function isRhythmAnalyzed(plan: RhythmPlan | null | undefined): boolean {
+  if (!plan) {
+    return false;
+  }
   return (
     plan.bgmPhase === "analyzed" &&
     plan.analysisSource === "audio_upload" &&

@@ -19,14 +19,19 @@ import {
   AiSuggestHint,
   clearSuggestedField
 } from "@/lib/ai-field-ui";
-import { BGM_RECOMMEND_LLM_STAGES, RHYTHM_LLM_STAGES } from "@/lib/llm-progress-stages";
+import {
+  BGM_RECOMMEND_LLM_STAGES,
+  RHYTHM_LLM_STAGES,
+  type LlmProgressViewState
+} from "@/lib/llm-progress-stages";
 import { getBgmPhaseLabel, isRhythmAnalyzed } from "@/lib/rhythm-workflow";
 import { useLlmProgress } from "@/lib/use-llm-progress";
 import {
-  applyBeatOffset,
+  applyBeatCalibration,
   capcutBeatModeOptions,
   filterBeatsForCapcutMode,
-  getCapcutBeatModeDescription
+  getCapcutBeatModeDescription,
+  getCapcutBeatModeLabel
 } from "@/lib/capcut-beat";
 import type { BgmRecommendation, RhythmPlan } from "@/types/domain";
 
@@ -70,6 +75,142 @@ function clampBeatOffset(value: number) {
 function formatBeatOffset(value: number) {
   const rounded = Math.round(value * 100) / 100;
   return Object.is(rounded, -0) ? "0" : String(rounded);
+}
+
+function formatBeatScale(value: number) {
+  const rounded = Math.round(value * 10000) / 10000;
+  return Object.is(rounded, -0) ? "1" : String(rounded || 1);
+}
+
+function shortFingerprint(value: string) {
+  if (!value) {
+    return "暂无";
+  }
+  return value.length > 18 ? `${value.slice(0, 10)}...${value.slice(-6)}` : value;
+}
+
+function summarizeBeatPoints(points: number[], limit = 18) {
+  if (!points.length) {
+    return "暂无";
+  }
+  const visible = points.slice(0, limit).map((point) => Number(point.toFixed(2)));
+  const suffix = points.length > limit ? ` ... 共 ${points.length} 个` : ` 共 ${points.length} 个`;
+  return `${visible.join(", ")}${suffix}`;
+}
+
+function estimateBeatOffsetFromReference(systemBeatPoints: number[], referenceBeatPoints: number[]) {
+  if (!systemBeatPoints.length || !referenceBeatPoints.length) {
+    return 0;
+  }
+  const offsets = referenceBeatPoints.map((reference) => {
+    const nearest = systemBeatPoints.reduce((best, current) =>
+      Math.abs(current - reference) < Math.abs(best - reference) ? current : best
+    );
+    return reference - nearest;
+  });
+  const sorted = [...offsets].sort((a, b) => a - b);
+  const middle = Math.floor(sorted.length / 2);
+  const median =
+    sorted.length % 2 === 0 ? (sorted[middle - 1] + sorted[middle]) / 2 : sorted[middle];
+  return clampBeatOffset(Math.round(median * 100) / 100);
+}
+
+function estimateBeatCalibrationFromReference(
+  systemBeatPoints: number[],
+  referenceBeatPoints: number[]
+) {
+  const offset = estimateBeatOffsetFromReference(systemBeatPoints, referenceBeatPoints);
+  if (systemBeatPoints.length < 2 || referenceBeatPoints.length < 2) {
+    return { offset, scale: 1 };
+  }
+
+  const pairs: Array<[number, number]> = [];
+  const used = new Set<number>();
+  for (const reference of [...referenceBeatPoints].sort((a, b) => a - b)) {
+    const nearest = systemBeatPoints.reduce((best, current) =>
+      Math.abs(current - reference) < Math.abs(best - reference) ? current : best
+    );
+    if (used.has(nearest)) {
+      continue;
+    }
+    used.add(nearest);
+    pairs.push([nearest, reference]);
+  }
+  if (pairs.length < 2) {
+    return { offset, scale: 1 };
+  }
+
+  const meanSystem = pairs.reduce((sum, pair) => sum + pair[0], 0) / pairs.length;
+  const meanReference = pairs.reduce((sum, pair) => sum + pair[1], 0) / pairs.length;
+  const denominator = pairs.reduce((sum, pair) => sum + (pair[0] - meanSystem) ** 2, 0);
+  if (denominator <= 0) {
+    return { offset, scale: 1 };
+  }
+
+  const rawScale =
+    pairs.reduce(
+      (sum, pair) => sum + (pair[0] - meanSystem) * (pair[1] - meanReference),
+      0
+    ) / denominator;
+  const scale = Math.min(1.05, Math.max(0.95, rawScale));
+  const scaledOffset = clampBeatOffset(meanReference - scale * meanSystem);
+  return {
+    offset: Math.round(scaledOffset * 100) / 100,
+    scale: Math.round(scale * 10000) / 10000
+  };
+}
+
+function beatReferenceMatchError(systemBeatPoints: number[], referenceBeatPoints: number[]) {
+  if (!systemBeatPoints.length || !referenceBeatPoints.length) {
+    return Number.POSITIVE_INFINITY;
+  }
+  const distances = referenceBeatPoints
+    .map((reference) =>
+      Math.min(...systemBeatPoints.map((system) => Math.abs(system - reference)))
+    )
+    .sort((a, b) => a - b);
+  const middle = Math.floor(distances.length / 2);
+  return distances.length % 2 === 0
+    ? (distances[middle - 1] + distances[middle]) / 2
+    : distances[middle];
+}
+
+function recommendBeatModeFromReference(
+  rawBeatPoints: number[],
+  coarseBeatPoints: number[],
+  referenceBeatPoints: number[],
+  targetDurationSec: number,
+  currentMode: string
+) {
+  if (!rawBeatPoints.length || referenceBeatPoints.length < 2) {
+    return currentMode;
+  }
+  let bestMode = currentMode && currentMode !== "none" ? currentMode : "beat_1";
+  let bestScore = Number.POSITIVE_INFINITY;
+  for (const mode of ["beat_1", "beat_2", "strong_weak"]) {
+    const candidate = filterBeatsForCapcutMode(
+      rawBeatPoints,
+      mode,
+      targetDurationSec,
+      coarseBeatPoints
+    );
+    const calibration = estimateBeatCalibrationFromReference(candidate, referenceBeatPoints);
+    const calibrated = applyBeatCalibration(
+      candidate,
+      targetDurationSec,
+      calibration.offset,
+      calibration.scale
+    );
+    const densityGap =
+      Math.abs(calibrated.length - referenceBeatPoints.length) /
+      Math.max(referenceBeatPoints.length, 1);
+    const score = beatReferenceMatchError(calibrated, referenceBeatPoints) + densityGap * 0.03;
+    if (score < bestScore) {
+      bestScore = score;
+      bestMode = mode;
+    }
+  }
+  return bestMode;
 }
 
 function getAnalysisSourceLabel(source: string) {
@@ -230,9 +371,20 @@ function asObjectRecord(value: unknown) {
   return value && typeof value === "object" && !Array.isArray(value) ? value : {};
 }
 
+const idleLlmProgressState: LlmProgressViewState = {
+  title: "",
+  stages: BGM_RECOMMEND_LLM_STAGES,
+  currentStage: "preparing",
+  message: "",
+  detail: "",
+  progress: 0,
+  startedAt: 0
+};
+
 function normalizeRhythmPlan(plan: RhythmPlan | null | undefined): RhythmPlan {
   const source = plan ?? emptyRhythmPlan();
   return {
+    ...emptyRhythmPlan(),
     ...source,
     analysisNotes: asStringList(source.analysisNotes),
     attentionBeats: Array.isArray(source.attentionBeats) ? source.attentionBeats : [],
@@ -269,6 +421,12 @@ export function RhythmPlanClient({
   const [beatOffsetText, setBeatOffsetText] = useState(
     String(normalizedInitialPlan.beatCalibration?.beatOffsetSec ?? 0)
   );
+  const [beatScaleText, setBeatScaleText] = useState(
+    String(normalizedInitialPlan.beatCalibration?.beatScale ?? 1)
+  );
+  const [referenceBeatPointsText, setReferenceBeatPointsText] = useState(
+    numberListToText(normalizedInitialPlan.beatCalibration?.referenceBeatPoints ?? [])
+  );
   const [rhythmNotesText, setRhythmNotesText] = useState(
     listToText(normalizedInitialPlan.rhythmNotes)
   );
@@ -292,6 +450,35 @@ export function RhythmPlanClient({
   const rhythmAnalyzed = isRhythmAnalyzed(plan);
   const canUploadAudio = Boolean(plan.selectedBgmId);
   const canEditBeats = rhythmAnalyzed;
+  const referenceBeatPoints = parseNumberList(referenceBeatPointsText);
+  const currentOutputBeatPoints = parseNumberList(beatPointsText);
+  const baseModeBeatPoints = useMemo(() => {
+    if (plan.rawBeatPoints.length > 0 && plan.beatMode !== "none") {
+      return filterBeatsForCapcutMode(
+        plan.rawBeatPoints,
+        plan.beatMode,
+        targetDurationSec,
+        plan.coarseBeatPoints
+      );
+    }
+    return currentOutputBeatPoints;
+  }, [
+    currentOutputBeatPoints,
+    plan.beatMode,
+    plan.coarseBeatPoints,
+    plan.rawBeatPoints,
+    targetDurationSec
+  ]);
+  const calibratedPreviewBeatPoints = useMemo(
+    () =>
+      applyBeatCalibration(
+        baseModeBeatPoints,
+        targetDurationSec,
+        parseOptionalNumber(beatOffsetText),
+        parseOptionalNumber(beatScaleText) || 1
+      ),
+    [baseModeBeatPoints, beatOffsetText, beatScaleText, targetDurationSec]
+  );
 
   const selectedRecommendation = useMemo(
     () => plan.recommendedBgm.find((item) => item.id === plan.selectedBgmId) ?? null,
@@ -317,6 +504,10 @@ export function RhythmPlanClient({
     setPlan(normalizedPlan);
     setBeatPointsText(numberListToText(normalizedPlan.beatPoints));
     setBeatOffsetText(String(normalizedPlan.beatCalibration?.beatOffsetSec ?? 0));
+    setBeatScaleText(String(normalizedPlan.beatCalibration?.beatScale ?? 1));
+    setReferenceBeatPointsText(
+      numberListToText(normalizedPlan.beatCalibration?.referenceBeatPoints ?? [])
+    );
     setRhythmNotesText(listToText(normalizedPlan.rhythmNotes));
     setDarkCutsText(numberListToText(normalizedPlan.darkCutSuggestions));
     setPhotoText(listToText(normalizedPlan.photoMotionSuggestions));
@@ -426,7 +617,12 @@ export function RhythmPlanClient({
         );
         setBeatPointsText(
           numberListToText(
-            applyBeatOffset(filtered, targetDurationSec, parseOptionalNumber(beatOffsetText))
+            applyBeatCalibration(
+              filtered,
+              targetDurationSec,
+              parseOptionalNumber(beatOffsetText),
+              parseOptionalNumber(beatScaleText) || 1
+            )
           )
         );
       }
@@ -436,16 +632,16 @@ export function RhythmPlanClient({
 
   function handleBeatOffsetChange(nextValue: string) {
     setBeatOffsetText(nextValue);
-    applyBeatOffsetPreview(parseOptionalNumber(nextValue));
+    applyBeatCalibrationPreview(parseOptionalNumber(nextValue), parseOptionalNumber(beatScaleText) || 1);
   }
 
   function handleBeatOffsetSliderChange(nextValue: string) {
     const offset = clampBeatOffset(Number(nextValue));
     setBeatOffsetText(formatBeatOffset(offset));
-    applyBeatOffsetPreview(offset);
+    applyBeatCalibrationPreview(offset, parseOptionalNumber(beatScaleText) || 1);
   }
 
-  function applyBeatOffsetPreview(offset: number) {
+  function applyBeatCalibrationPreview(offset: number, scale: number) {
     if (plan.rawBeatPoints.length > 0 && plan.beatMode !== "none") {
       const filtered = filterBeatsForCapcutMode(
         plan.rawBeatPoints,
@@ -453,14 +649,70 @@ export function RhythmPlanClient({
         targetDurationSec,
         plan.coarseBeatPoints
       );
-      setBeatPointsText(numberListToText(applyBeatOffset(filtered, targetDurationSec, offset)));
+      setBeatPointsText(
+        numberListToText(applyBeatCalibration(filtered, targetDurationSec, offset, scale))
+      );
     } else {
       setBeatPointsText(
         numberListToText(
-          applyBeatOffset(parseNumberList(beatPointsText), targetDurationSec, offset)
+          applyBeatCalibration(parseNumberList(beatPointsText), targetDurationSec, offset, scale)
         )
       );
     }
+  }
+
+  function getBaseBeatPointsForCalibration() {
+    if (plan.rawBeatPoints.length > 0 && plan.beatMode !== "none") {
+      return filterBeatsForCapcutMode(
+        plan.rawBeatPoints,
+        plan.beatMode,
+        targetDurationSec,
+        plan.coarseBeatPoints
+      );
+    }
+    return parseNumberList(beatPointsText);
+  }
+
+  function handleEstimateBeatOffsetFromReference() {
+    if (!canEditBeats) {
+      return;
+    }
+    const referencePoints = parseNumberList(referenceBeatPointsText);
+    if (!referencePoints.length) {
+      showError("请先填写剪映参考节拍点，例如：0.12, 0.62, 1.12。");
+      return;
+    }
+    const recommendedMode = recommendBeatModeFromReference(
+      plan.rawBeatPoints,
+      plan.coarseBeatPoints,
+      referencePoints,
+      targetDurationSec,
+      plan.beatMode
+    );
+    const baseBeatPoints =
+      recommendedMode !== plan.beatMode && plan.rawBeatPoints.length > 0
+        ? filterBeatsForCapcutMode(
+            plan.rawBeatPoints,
+            recommendedMode,
+            targetDurationSec,
+            plan.coarseBeatPoints
+          )
+        : getBaseBeatPointsForCalibration();
+    const estimated = estimateBeatCalibrationFromReference(baseBeatPoints, referencePoints);
+    if (recommendedMode !== plan.beatMode) {
+      setPlan((current) => ({ ...current, beatMode: recommendedMode }));
+    }
+    setBeatOffsetText(formatBeatOffset(estimated.offset));
+    setBeatScaleText(String(estimated.scale));
+    setBeatPointsText(
+      numberListToText(
+        applyBeatCalibration(baseBeatPoints, targetDurationSec, estimated.offset, estimated.scale)
+      )
+    );
+    setNotice({
+      title: "已估算节拍校准",
+      message: `推荐模式 ${recommendedMode}，偏移 ${formatBeatOffset(estimated.offset)}s，比例 ${estimated.scale}。保存后会用于分镜切点。`
+    });
   }
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -479,8 +731,9 @@ export function RhythmPlanClient({
             ...plan.beatCalibration,
             source: plan.analysisSource === "audio_upload" ? "manual" : plan.beatCalibration?.source,
             beatOffsetSec: parseOptionalNumber(beatOffsetText),
+            beatScale: parseOptionalNumber(beatScaleText) || 1,
             densityMode: plan.beatMode,
-            referenceBeatPoints: plan.beatCalibration?.referenceBeatPoints ?? []
+            referenceBeatPoints: parseNumberList(referenceBeatPointsText)
           },
           rhythmNotes: parseTextList(rhythmNotesText),
           darkCutSuggestions: parseNumberList(darkCutsText),
@@ -596,17 +849,7 @@ export function RhythmPlanClient({
         visible={isPending && !isLlmRunning}
       />
       <LlmProgressOverlay
-        state={
-          llmProgress ?? {
-            title: "",
-            stages: BGM_RECOMMEND_LLM_STAGES,
-            currentStage: "preparing",
-            message: "",
-            detail: "",
-            progress: 0,
-            startedAt: Date.now()
-          }
-        }
+        state={llmProgress ?? idleLlmProgressState}
         visible={isLlmRunning}
       />
       <ToastNotice
@@ -929,7 +1172,11 @@ export function RhythmPlanClient({
               <button
                 type="button"
                 disabled={!canEditBeats}
-                onClick={() => handleBeatOffsetSliderChange("0")}
+                onClick={() => {
+                  setBeatOffsetText("0");
+                  setBeatScaleText("1");
+                  applyBeatCalibrationPreview(0, 1);
+                }}
                 className="rounded-full border border-pine/20 bg-white px-3 py-2 text-xs font-medium text-pine transition hover:bg-mist disabled:cursor-not-allowed disabled:opacity-50"
               >
                 归零
@@ -940,6 +1187,110 @@ export function RhythmPlanClient({
             当系统节拍整体比剪映靠前或靠后时，在这里微调整体偏移；保存后分镜会使用校准后的节拍点。
           </p>
         </label>
+
+        <label className="block">
+          <span className="mb-2 block text-sm text-ink/75">剪映参考节拍点（可选）</span>
+          <textarea
+            readOnly={!canEditBeats}
+            value={referenceBeatPointsText}
+            onChange={(event) => setReferenceBeatPointsText(event.target.value)}
+            placeholder="从剪映抄少量明显卡点，例如：0.12, 0.62, 1.12, 1.62"
+            rows={4}
+            className="w-full rounded-2xl border border-pine/30 bg-white px-4 py-3 outline-none transition focus:border-pine disabled:bg-sand/40"
+          />
+          <div className="mt-3 flex flex-wrap items-center gap-3">
+            <button
+              type="button"
+              disabled={!canEditBeats}
+              onClick={handleEstimateBeatOffsetFromReference}
+              className="rounded-full border border-pine/20 bg-white px-4 py-2 text-sm font-medium text-pine transition hover:bg-mist disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              根据参考点估算校准
+            </button>
+            <span className="text-xs text-ink/55">
+              会估算节拍模式、整体偏移和轻微比例差，适合系统节拍与剪映密度或位置不一致的情况。
+            </span>
+          </div>
+        </label>
+
+        <div className="rounded-3xl border border-pine/15 bg-sand/25 p-4 md:col-span-2">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h3 className="text-base font-semibold text-ink">节拍校准追踪</h3>
+              <p className="mt-1 text-xs leading-5 text-ink/55">
+                用来对照“音频原始识别 → 当前剪映模式筛选 → 整体偏移校准 → 分镜实际使用”的变化。
+              </p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <span className="rounded-full bg-white px-3 py-1 text-xs text-ink/55">
+                偏移 {formatBeatOffset(clampBeatOffset(parseOptionalNumber(beatOffsetText)))}s
+              </span>
+              <span className="rounded-full bg-white px-3 py-1 text-xs text-ink/55">
+                比例 {formatBeatScale(parseOptionalNumber(beatScaleText) || 1)}
+              </span>
+            </div>
+          </div>
+          <div className="mt-4 grid gap-2 md:grid-cols-3">
+            <div className="rounded-2xl bg-white/70 px-3 py-2 text-xs leading-5 text-ink/65">
+              <span className="block font-medium text-ink">节拍模式</span>
+              {getCapcutBeatModeLabel(plan.beatMode)}
+              {plan.beatCalibration?.densityMode ? ` / 推荐 ${getCapcutBeatModeLabel(plan.beatCalibration.densityMode)}` : ""}
+            </div>
+            <div className="rounded-2xl bg-white/70 px-3 py-2 text-xs leading-5 text-ink/65">
+              <span className="block font-medium text-ink">校准来源</span>
+              {getCalibrationLabel(plan.beatCalibration?.source)}
+              {plan.beatCalibration?.confidence ? ` / 可信度 ${plan.beatCalibration.confidence}` : ""}
+            </div>
+            <div className="rounded-2xl bg-white/70 px-3 py-2 text-xs leading-5 text-ink/65">
+              <span className="block font-medium text-ink">音频分析</span>
+              {plan.audioAnalysisVersion || "未记录"} / {shortFingerprint(plan.audioFingerprint)}
+            </div>
+            <div className="rounded-2xl bg-white/70 px-3 py-2 text-xs leading-5 text-ink/65">
+              <span className="block font-medium text-ink">点位数量</span>
+              原始 {plan.rawBeatPoints.length} / 粗拍 {plan.coarseBeatPoints.length} / 输出{" "}
+              {currentOutputBeatPoints.length}
+            </div>
+            <div className="rounded-2xl bg-white/70 px-3 py-2 text-xs leading-5 text-ink/65">
+              <span className="block font-medium text-ink">模式筛选</span>
+              筛选后 {baseModeBeatPoints.length} / 参考 {referenceBeatPoints.length} / 预览{" "}
+              {calibratedPreviewBeatPoints.length}
+            </div>
+            <div className="rounded-2xl bg-white/70 px-3 py-2 text-xs leading-5 text-ink/65">
+              <span className="block font-medium text-ink">计算公式</span>
+              筛选点 × {formatBeatScale(parseOptionalNumber(beatScaleText) || 1)} +{" "}
+              {formatBeatOffset(clampBeatOffset(parseOptionalNumber(beatOffsetText)))}s
+            </div>
+          </div>
+          <div className="mt-4 grid gap-3 md:grid-cols-2">
+            <div className="rounded-2xl bg-white/80 p-3">
+              <div className="text-xs font-medium text-ink/55">原始识别点</div>
+              <p className="mt-2 text-sm leading-6 text-ink/75">
+                {summarizeBeatPoints(plan.rawBeatPoints)}
+              </p>
+            </div>
+            <div className="rounded-2xl bg-white/80 p-3">
+              <div className="text-xs font-medium text-ink/55">当前模式筛选点</div>
+              <p className="mt-2 text-sm leading-6 text-ink/75">
+                {summarizeBeatPoints(baseModeBeatPoints)}
+              </p>
+            </div>
+            <div className="rounded-2xl bg-white/80 p-3">
+              <div className="text-xs font-medium text-ink/55">剪映参考点</div>
+              <p className="mt-2 text-sm leading-6 text-ink/75">
+                {summarizeBeatPoints(referenceBeatPoints)}
+              </p>
+            </div>
+            <div className="rounded-2xl bg-white/80 p-3">
+              <div className="text-xs font-medium text-ink/55">校准后预览点</div>
+              <p className="mt-2 text-sm leading-6 text-ink/75">
+                {summarizeBeatPoints(calibratedPreviewBeatPoints)}
+              </p>
+            </div>
+          </div>
+          <p className="mt-3 text-xs leading-5 text-ink/55">
+            下方“节拍点（秒）”是当前会保存并给分镜使用的结果；如果预览点和下方不一致，点击保存后会以服务端重新计算结果为准。
+          </p>
+        </div>
 
         <label className="block md:col-span-2">
           <AiFieldLabel suggested={llmSuggestedFields.includes("beatPoints")}>

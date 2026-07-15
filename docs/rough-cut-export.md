@@ -26,13 +26,14 @@
 1. 在 `jianyingDraftRoot` 下新建 `{projectId}-{导出标题}` 文件夹
 2. 写入 **`draft_content.json`** 与 **`draft_meta_info.json`**（内容相同）
 3. 若节奏页已上传 BGM 且文件仍存在，自动添加 **audio 轨**；无 BGM 不阻断流程
-4. 重启剪映或刷新草稿列表后打开
+4. 根据分镜策略写入基础叠化、照片缩放关键帧和重点字幕样式
+5. 重启剪映或刷新草稿列表后打开
 
 ### 2.3 BGM 音频轨
 
 | 条件 | 行为 |
 |------|------|
-| `rhythmPlan.audioFilePath` 指向有效文件 | 添加 BGM 轨，覆盖整段时间线，默认 1s 淡出 |
+| `rhythmPlan.audioFilePath` 指向有效文件 | 添加 BGM 轨，覆盖整段时间线，默认 0.4s 淡入、1s 淡出 |
 | 未上传 / 文件不存在 | 跳过音频轨，仅导出视频 + 字幕 |
 
 ## 3. 字段映射
@@ -44,7 +45,12 @@
 | `startTime` / `endTime` | `segments[].target_timerange` | 秒 → 微秒 |
 | `asset.relativePath` + `project.mediaRoot` | `materials.videos[].path` | 素材绝对路径 |
 | `subtitle` | `materials.texts[]` + 文本轨 | UTF-16 字节 range；默认 **悠然体**、字号 15 的 50%（7.5） |
-| BGM 上传文件 | `materials.audios[]` + audio 轨 | 可选；默认 **1s 淡出**（`materials.audio_fades`，剪映内可再调） |
+| 压缩口播块（`jianying_native_tts`） | “最终字幕（剪映朗读源）”文本轨 | 替代逐镜头原字幕，同一份文本同时用于画面显示和剪映朗读 |
+| `transitionPolicy=fade_or_match_cut` | `materials.transitions[]` | 写入剪映内置“叠化”，时长按相邻镜头长度限制在 0.2-0.5s |
+| `motionPolicy=slow_push/gentle_zoom` | `segments[].common_keyframes` | 仅对照片写入等比缩放关键帧；视频素材保持原始运动 |
+| `attentionRole/function` | 字幕文字样式 | 钩子、反转、高潮、收尾字幕适度放大并加粗 |
+| `subtitlePolicy` | 字幕字号、粗体与透明度 | 支持 `standard`、`emphasis`、`info`、`minimal`；留空时按叙事角色自动推断 |
+| BGM 上传文件 | `materials.audios[]` + audio 轨 | 可选；默认 **0.4s 淡入 + 1s 淡出**（`materials.audio_fades`，剪映内可再调） |
 
 ### 3.2 字幕与 BGM 默认样式
 
@@ -52,7 +58,9 @@
 |----|------|-----------|
 | 字幕字体 | 悠然体（内置 resource_id `349311`） | 是 |
 | 字幕字号 | 7.5（原导出默认 15 的 50%） | 是 |
-| BGM 结束 | 1s 淡出（`audio_fades.fade_out_duration`） | 是 |
+| BGM 开始/结束 | 0.4s 淡入、1s 淡出（`materials.audio_fades`） | 是 |
+| 缓冲转场 | 叠化；硬切和干净切不添加转场材料 | 是 |
+| 照片动效 | 慢推 1.00→1.12，轻缩放 1.02→1.08 | 是 |
 
 字体 ID 参考 pyJianYingDraft `FontType.悠然体`；若剪映版本未内置该字体，会回退为默认字体，可在剪映中批量替换。
 

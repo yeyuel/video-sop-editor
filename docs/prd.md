@@ -194,12 +194,13 @@
 - 所有分镜必须绑定真实素材 ID
 - 一期默认不自动重复使用同一素材（项目开启 `allowAssetReuse` 后，生成逻辑可轮用素材以贴近目标时长）
 - 分镜生成顺序必须在节奏规划之后
-- 分镜生成时，素材采用两层排序：
-- 第一层按主叙事阶段排序：`opening_hook` → `supporting` → `slow_climax` → `main_climax` → `ending`
-- 第二层按段内修饰排序：普通镜头优先，其次是 `rhythm_hit`，最后是 `transition_buffer`
-- 同一层级内，按素材录入顺序排列
-- 未设置主叙事标签的素材，默认归入 `supporting` 段
-- `rhythm_hit` 和 `transition_buffer` 不再作为全局章节标签使用，而是附着在当前叙事段内参与微调
+- 分镜生成时，素材采用“路线主轴 + 叙事槽位”的两层编排：
+- 第一层按项目路线约束素材顺序，优先保证旅行和攻略内容的地点连续性
+- 第二层按平台节奏画像生成叙事槽位，例如 `hook`、`turn_1`、`turn_2`、`climax`、`payoff`、`chapter`、`proof`、`summary`
+- 反转和高潮是关键点，不是整段标签；系统需要在关键点之间自动插入 `setup`、`develop_1`、`develop_2`、`detail`、`experience` 等中间状态
+- 每个槽位根据素材的 `shotType`、`informationDensity`、`functionTags`、`emotionTags`、`visualTags` 进行评分选材
+- 开头钩子允许使用后段强视觉素材做预告，但正文需要回到路线起点
+- `rhythm_hit` 和 `transition_buffer` 不再作为全局章节标签使用，而是作为槽位内选材评分信号参与微调
 - 若开启“适配节拍”，镜头时长优先贴合节拍点
 - 若关闭“适配节拍”，镜头按素材建议时长顺排
 - 当素材全部使用完仍不足目标时长时，系统停止生成，并以当前可生成的最大时长为准
@@ -246,12 +247,30 @@
 - 标签
 - 文案
 - 封面建议
+- 整段口播稿 `voiceoverScript`：可手动输入，也可先基于标题、标签和文案生成草稿；当前只作为导出内容和后续 TTS 输入，不自动生成音频
+- 口播生成参数：`voiceoverProvider`、`voiceoverStyle`、`voiceoverSpeed`、`voiceoverEmotion`；当前只保存配置并进入导出追溯，后续 TTS 接入时复用
+- 口播密度 `voiceoverDensity`：支持 `light`（轻口播）、`standard`（标准口播）、`info`（信息口播）。剪映原生朗读轨会基于该配置把逐镜头字幕压缩为跨多个镜头的口播块，避免一倍速朗读跟不上快切画面
+- 口播生成状态：`voiceoverGenerationStatus`、`voiceoverDurationSec`、`voiceoverAudioPath`、`voiceoverProviderMeta`、`voiceoverGeneratedAt`；当前用于检查口播文本与 Provider 是否就绪，并估算旁白时长
+- `mock_silence` Provider：生成本地占位静音 WAV，用于验证口播音频链路、下载、试听和剪映草稿口播音轨接入；不代表真实 AI 口播。占位 WAV 按分镜时间线总时长生成，避免导入剪映后口播占位轨比视频/BGM 更短
+- `jianying_native_tts` Provider：导出剪映草稿时生成“最终字幕（剪映朗读源）”文本轨，用户打开剪映专业版后可选择该文本轨并使用剪映内置“开始朗读”生成口播；系统不直接模拟点击剪映 UI，也不额外产生云端 TTS 成本
+- Provider 能力表由后端统一提供：当前 `mock_silence` 与 `jianying_native_tts` 可用，`openai`、`edge`、`custom` 作为真实 TTS 接入预留；未启用 Provider 不会触发真实音频生成
+- 剪映草稿导出：若存在口播音频，导出时新增独立口播音轨；若同时存在 BGM，BGM 默认降低音量，避免盖住人声
+- 剪映草稿导出：若选择 `jianying_native_tts`，导出时只生成一条“最终字幕（剪映朗读源）”文本轨；优先使用逐镜头口播文案，没有逐镜头口播时使用字幕，若逐镜头均为空则使用整段口播稿
+- 最终字幕按口播密度合并和压缩，时间范围与朗读块完全一致；同一份文本同时用于屏幕字幕和剪映朗读，避免口播与字幕不一致
+- 选择“剪映原生朗读”后，页面实时展示压缩前后字数、压缩比例、口播块数量、预计朗读时长，并可展开检查每个口播块的时间范围和文本，便于在导出前判断一倍速是否可读完
+- 口播压缩优先保留完整短句并去重，避免按字符硬截断产生半句话；后续接入 LLM 时可在同一预览链路中增加语义改写
+- 剪映朗读轨按字数、语速和标点停顿估算真实朗读时长，并预留结尾发音余量；末尾分镜时间不足时优先向前借用无口播区间，不得使用省略号硬截断或直接切断尾音
+- 口播预览需要分别显示“朗读是否完整”和“是否与原画面对齐”。轻微偏差可应用系统建议倍速；超过 `1.30x` 仍无法对齐时，应提示精简文案或延长对应画面，不应继续机械提速
+- 剪映原生朗读暂不能由草稿文件直接控制生成音色的真实语速，系统会将校准倍速写入口播轨名称，用户在剪映执行朗读后按该值人工调整；后续真实 TTS Provider 可直接消费同一参数
+- 剪映草稿根据分镜策略自动落地基础粗剪效果：缓冲位使用内置叠化，照片慢推/轻缩放使用等比缩放关键帧，钩子、反转、高潮和收尾字幕适度强化，BGM 默认使用 0.4 秒淡入和 1 秒淡出
+- 硬切与干净切不写入额外转场材料；视频素材不自动套用照片缩放动效，避免为了“有效果”而破坏原始运动
 
 预览格式：
 
 - Markdown
 - JSON
 - YAML
+- 口播稿 TXT
 
 规则：
 
@@ -351,6 +370,7 @@
 - `beatPoints`：音频上传时由 librosa / 能量检测识别；规则生成时由目标时长 + 剪映踩点语义估算；识别失败回退规则生成。
 - `beatMode`：音频上传时按 BPM 与节拍间隔推荐；语义对齐剪映（踩节拍1 粗 / 踩节拍2 细 / 强弱拍）。
 - `rawBeatPoints` / `coarseBeatPoints`：分别缓存细粒度起音与粗粒度强拍序列；切换 `beatMode` 时不需重新上传音频。
+- `audioFingerprint` / `audioAnalysisVersion`：音频上传后保存内容指纹和识别引擎版本；同一音频重复上传时可复用上次保存的剪映参考点和整体偏移。
 - `selectedTrackName`：优先使用上传音频文件名；否则保留用户填写值；规则生成时使用「主题名-参考曲」。
 - `darkCutSuggestions`：音频上传时基于能量局部低谷推断；无音频时回退 25%/50%/75% 结构点。
 - `bgmStyle` 和 `rhythmNotes`：配置 LLM 时优先生成；失败回退模板/规则文案。
@@ -358,9 +378,12 @@
 四期 P4-A 已开始新增：
 
 - `rhythmProfile`：按平台、视频类型和目标时长生成平台节奏画像，区分抖音/快手、小红书、B 站攻略、B 站 Vlog、视频号和 YouTube 等节奏生态。
-- `attentionBeats`：内容注意力点，承接“时钟法则”和“射门集锦法则”，用于标记钩子、推进、反转、高潮和收尾。
-- `beatCalibration`：节拍校准参数，当前支持整体偏移 `beatOffsetSec` 和密度模式保存；保存后分镜生成与前端节拍吸附会使用校准后的节拍点。参考节拍点和 scale 校准后续继续增强。
-- 分镜段新增 `attentionRole`、`visualStrength`、`motionPolicy`、`transitionPolicy`，当前先由规则推断，后续可接入视觉模型和 LLM 编排。
+- `attentionBeats`：内容注意力点，承接“时钟法则”和“射门集锦法则”，用于标记钩子、推进、反转、高潮和收尾。不同平台使用不同角色模板：抖音/快手强调钩子、两次反转、高潮和记忆点回收；小红书强调视觉种草、信息价值、决策推动和收藏提示；B 站攻略强调章节节点、信息证明和总结回收；B 站 Vlog 强调沉浸、情绪转折和留白回味。
+- `beatCalibration`：节拍校准参数，当前支持整体偏移 `beatOffsetSec`、轻微比例校准 `beatScale`、剪映参考节拍点 `referenceBeatPoints` 和密度模式 `densityMode`；保存后分镜生成与前端节拍吸附会使用校准后的节拍点。若用户填写少量剪映参考点，系统会估算整体 offset、小范围 scale，并在 `beat_1 / beat_2 / strong_weak` 中推荐更接近剪映的密度模式。
+- 节奏页增加节拍校准追踪面板，展示原始识别点、当前模式筛选点、剪映参考点和校准后预览点，方便定位与剪映踩点不一致的问题。
+- 分镜段新增 `attentionRole`、`visualStrength`、`motionPolicy`、`transitionPolicy`、`subtitlePolicy`。字幕策略支持按叙事角色自动推断，也允许单镜头覆盖为常规、重点、信息或弱化字幕；后续可接入视觉模型和 LLM 编排。
+- 分镜段预留 `voiceoverText`、`voiceoverRole`、`voiceoverTiming`，当前用于手工录入口播文案和导出追溯；P4-B 自动口播会基于这些字段生成旁白音轨。
+- 分镜规则生成已开始接入路线主轴和叙事槽位：短视频允许开头强素材预告，正文回到路线顺序；B 站攻略类优先章节化和地点连续性。后续继续补 `narrativeSlotId`、`routeIndex`、`selectionReason` 和 Beam Search 多候选编排。
 
 二期升级优先级（剩余）：
 

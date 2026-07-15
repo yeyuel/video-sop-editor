@@ -19,6 +19,12 @@ from app.models.entities import (
     UserEntity,
 )
 from app.services.auth import hash_password
+from app.services.repository import repository
+from app.services.rhythm_profile import (
+    build_attention_beats,
+    build_rhythm_profile,
+    resolve_rhythm_mode,
+)
 
 SEED_PROJECT_ID = "proj_001"
 SOURCE_PROJECT_ID = "proj_6241f409"
@@ -144,6 +150,9 @@ def _ensure_taizhou_project(session: Session) -> None:
         selected_theme_id=project_data.get("selected_theme_id", ""),
         validate_location_order=bool(project_data.get("validate_location_order", 0)),
         allow_asset_reuse=bool(project_data.get("allow_asset_reuse", 0)),
+        duration_fill_max_consecutive_route=int(
+            project_data.get("duration_fill_max_consecutive_route", 2) or 2
+        ),
     )
     session.add(project)
 
@@ -206,6 +215,34 @@ def _ensure_taizhou_project(session: Session) -> None:
         )
 
     rhythm = snapshot["rhythm"]
+    selected_theme = session.get(ThemeEntity, project.selected_theme_id)
+    seeded_assets = session.exec(
+        select(AssetEntity).where(AssetEntity.project_id == SEED_PROJECT_ID)
+    ).all()
+    asset_reads = [repository._map_asset(item) for item in seeded_assets]
+    theme_read = (
+        repository._map_theme(selected_theme, project.selected_theme_id)
+        if selected_theme
+        else None
+    )
+    rhythm_mode = resolve_rhythm_mode(project.platform, project.video_type)
+    rhythm_profile_json = json.dumps(
+        build_rhythm_profile(project, asset_reads, theme_read),
+        ensure_ascii=False,
+    )
+    attention_beats_json = json.dumps(
+        build_attention_beats(project, rhythm_mode),
+        ensure_ascii=False,
+    )
+    beat_calibration_json = json.dumps(
+        {
+            "source": "audio_upload",
+            "beatOffsetSec": 0,
+            "densityMode": rhythm["beat_mode"],
+            "referenceBeatPoints": [],
+        },
+        ensure_ascii=False,
+    )
     _upsert_rhythm(
         session,
         RhythmPlanEntity(
@@ -229,6 +266,11 @@ def _ensure_taizhou_project(session: Session) -> None:
             recommended_bgm=rhythm.get("recommended_bgm", "[]"),
             selected_bgm_id=rhythm.get("selected_bgm_id", ""),
             bgm_phase=rhythm.get("bgm_phase", "empty"),
+            rhythm_profile_json=rhythm_profile_json,
+            attention_beats_json=attention_beats_json,
+            beat_calibration_json=beat_calibration_json,
+            audio_fingerprint=f"{rhythm.get('audio_file_name', '')}:{rhythm.get('audio_duration_sec', 0)}:{rhythm.get('detected_bpm', 0)}",
+            audio_analysis_version="seed",
         ),
     )
 
@@ -243,6 +285,16 @@ def _ensure_taizhou_project(session: Session) -> None:
             description=publish["description"],
             tags=publish["tags"],
             cover_suggestion=publish["cover_suggestion"],
+            voiceover_script=publish.get("voiceover_script", ""),
+            voiceover_provider=publish.get("voiceover_provider", ""),
+            voiceover_style=publish.get("voiceover_style", "natural"),
+            voiceover_speed=publish.get("voiceover_speed", 1.0),
+            voiceover_emotion=publish.get("voiceover_emotion", "calm"),
+            voiceover_generation_status=publish.get("voiceover_generation_status", "not_generated"),
+            voiceover_audio_path=publish.get("voiceover_audio_path", ""),
+            voiceover_duration_sec=publish.get("voiceover_duration_sec", 0.0),
+            voiceover_provider_meta=publish.get("voiceover_provider_meta", "{}"),
+            voiceover_generated_at=publish.get("voiceover_generated_at", ""),
         ),
     )
 
@@ -336,6 +388,11 @@ def _upsert_rhythm(session: Session, payload: RhythmPlanEntity) -> None:
         current.recommended_bgm = getattr(payload, "recommended_bgm", "[]") or "[]"
         current.selected_bgm_id = getattr(payload, "selected_bgm_id", "") or ""
         current.bgm_phase = getattr(payload, "bgm_phase", "empty") or "empty"
+        current.rhythm_profile_json = getattr(payload, "rhythm_profile_json", "{}") or "{}"
+        current.attention_beats_json = getattr(payload, "attention_beats_json", "[]") or "[]"
+        current.beat_calibration_json = getattr(payload, "beat_calibration_json", "{}") or "{}"
+        current.audio_fingerprint = getattr(payload, "audio_fingerprint", "") or ""
+        current.audio_analysis_version = getattr(payload, "audio_analysis_version", "") or ""
         session.add(current)
         return
     session.add(payload)
@@ -350,6 +407,18 @@ def _upsert_publish_plan(session: Session, payload: PublishPlanEntity) -> None:
         current.description = payload.description
         current.tags = payload.tags
         current.cover_suggestion = payload.cover_suggestion
+        current.voiceover_script = getattr(payload, "voiceover_script", "") or ""
+        current.voiceover_provider = getattr(payload, "voiceover_provider", "") or ""
+        current.voiceover_style = getattr(payload, "voiceover_style", "natural") or "natural"
+        current.voiceover_speed = getattr(payload, "voiceover_speed", 1.0) or 1.0
+        current.voiceover_emotion = getattr(payload, "voiceover_emotion", "calm") or "calm"
+        current.voiceover_generation_status = (
+            getattr(payload, "voiceover_generation_status", "not_generated") or "not_generated"
+        )
+        current.voiceover_audio_path = getattr(payload, "voiceover_audio_path", "") or ""
+        current.voiceover_duration_sec = getattr(payload, "voiceover_duration_sec", 0.0) or 0.0
+        current.voiceover_provider_meta = getattr(payload, "voiceover_provider_meta", "{}") or "{}"
+        current.voiceover_generated_at = getattr(payload, "voiceover_generated_at", "") or ""
         session.add(current)
         return
     session.add(payload)

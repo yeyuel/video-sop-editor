@@ -231,6 +231,8 @@ def render_export_content(workspace: WorkspaceDataRead, fmt: str) -> str:
         return to_yaml(export_payload)
     if fmt == "csv":
         return to_csv(workspace)
+    if fmt == "voiceover":
+        return to_voiceover_script(workspace)
     if fmt == "capcut":
         from app.services.capcut_draft_export import render_capcut_draft
 
@@ -242,7 +244,7 @@ def render_export_content(workspace: WorkspaceDataRead, fmt: str) -> str:
     return to_markdown(workspace)
 
 
-def to_markdown(workspace: WorkspaceDataRead) -> str:
+def _legacy_to_markdown_unused(workspace: WorkspaceDataRead) -> str:
     storyboard_validation = workspace.storyboardValidation
     export_validation = workspace.exportValidation
     lines = [
@@ -271,13 +273,14 @@ def to_markdown(workspace: WorkspaceDataRead) -> str:
         "",
         "## 分镜时间线",
         "",
-        "| 开始 | 结束 | 素材 ID | 功能标签 | 节奏 | 字幕 |",
-        "| --- | --- | --- | --- | --- | --- |",
+        "| 开始 | 结束 | 素材 ID | 功能标签 | 节奏 | 字幕 | 口播 |",
+        "| --- | --- | --- | --- | --- | --- | --- |",
     ]
     for segment in workspace.storyboard:
         lines.append(
             f"| {segment.startTime:.2f} | {segment.endTime:.2f} | {segment.assetId} | "
-            f"{segment.function} | {segment.rhythm} | {segment.subtitle} |"
+            f"{segment.function} | {segment.rhythm} | {segment.subtitle} | "
+            f"{segment.voiceoverText or '未填写'} |"
         )
 
     if storyboard_validation.issues or export_validation.issues:
@@ -303,6 +306,9 @@ def to_csv(workspace: WorkspaceDataRead) -> str:
             "rhythm",
             "beatMode",
             "subtitle",
+            "voiceoverText",
+            "voiceoverRole",
+            "voiceoverTiming",
         ]
     )
     for segment in workspace.storyboard:
@@ -316,9 +322,138 @@ def to_csv(workspace: WorkspaceDataRead) -> str:
                 segment.rhythm,
                 segment.beatMode,
                 segment.subtitle,
+                segment.voiceoverText,
+                segment.voiceoverRole,
+                segment.voiceoverTiming,
             ]
         )
     return buffer.getvalue()
+
+
+def _legacy_to_voiceover_script_unused(workspace: WorkspaceDataRead) -> str:
+    lines = [
+        f"# {workspace.project.name} 口播稿",
+        "",
+        f"- 项目：{workspace.project.name}",
+        f"- 目的地：{workspace.project.destination}",
+        f"- 路线：{workspace.project.routeText}",
+        "",
+        "## 逐镜头口播",
+        "",
+    ]
+    has_voiceover = False
+    for index, segment in enumerate(workspace.storyboard, start=1):
+        text_value = segment.voiceoverText.strip() or segment.subtitle.strip()
+        if not text_value:
+            continue
+        has_voiceover = True
+        lines.extend(
+            [
+                f"### {index:02d}. {segment.startTime:.2f}s - {segment.endTime:.2f}s",
+                f"- 素材：{segment.assetId}",
+                f"- 口播角色：{segment.voiceoverRole or '未设置'}",
+                f"- 时间策略：{segment.voiceoverTiming or '未设置'}",
+                f"- 文案：{text_value}",
+                "",
+            ]
+        )
+    if not has_voiceover:
+        lines.append("当前分镜还没有口播文案。可先在分镜页点击“从字幕生成口播稿”。")
+    return "\n".join(lines).strip() + "\n"
+
+
+def to_markdown(workspace: WorkspaceDataRead) -> str:
+    storyboard_validation = workspace.storyboardValidation
+    export_validation = workspace.exportValidation
+    lines = [
+        f"# {workspace.project.name} 导出脚本",
+        "",
+        "## 导出信息",
+        f"- 标题：{workspace.exportPlan.title}",
+        f"- 短标题：{workspace.exportPlan.shortTitle or '未填写'}",
+        f"- 标签：{', '.join(workspace.exportPlan.tags) if workspace.exportPlan.tags else '未填写'}",
+        f"- 描述：{workspace.exportPlan.description}",
+        f"- 封面建议：{workspace.exportPlan.coverSuggestion or '未填写'}",
+        f"- 整段口播：{workspace.exportPlan.voiceoverScript or '未填写'}",
+        f"- 口播配置：provider={workspace.exportPlan.voiceoverProvider or '未配置'}，"
+        f"style={workspace.exportPlan.voiceoverStyle}，"
+        f"speed={workspace.exportPlan.voiceoverSpeed:g}，"
+        f"emotion={workspace.exportPlan.voiceoverEmotion}",
+        f"- 口播生成状态：{workspace.exportPlan.voiceoverGenerationStatus}",
+        f"- 口播预计时长：{workspace.exportPlan.voiceoverDurationSec:g}s",
+        "",
+        "## 校验摘要",
+        f"- 分镜绑定：{'通过' if storyboard_validation.allSegmentsBoundToAsset else '未通过'}",
+        f"- 地点连续性：{'通过' if storyboard_validation.locationContinuityPassed else '未通过'}",
+        f"- 时长：{storyboard_validation.totalDurationSec}s / 目标 {storyboard_validation.targetDurationSec}s"
+        f"（偏差 {storyboard_validation.durationDeltaSec:+.2f}s）",
+        f"- 导出目的地提及：{'是' if export_validation.destinationMentioned else '否'}",
+        f"- 导出主题一致：{'通过' if export_validation.themeConsistencyPassed else '未通过'}",
+        "",
+        "## 节奏信息",
+        f"- BGM 风格：{workspace.rhythmPlan.bgmStyle}",
+        f"- 参考曲目：{workspace.rhythmPlan.selectedTrackName}",
+        f"- 节拍模式：{workspace.rhythmPlan.beatMode}",
+        f"- 节拍点：{', '.join(str(point) for point in workspace.rhythmPlan.beatPoints)}",
+        "",
+        "## 分镜时间线",
+        "",
+        "| 开始 | 结束 | 素材 ID | 功能标签 | 节奏 | 字幕 | 口播 |",
+        "| --- | --- | --- | --- | --- | --- | --- |",
+    ]
+    for segment in workspace.storyboard:
+        lines.append(
+            f"| {segment.startTime:.2f} | {segment.endTime:.2f} | {segment.assetId} | "
+            f"{segment.function} | {segment.rhythm} | {segment.subtitle} | "
+            f"{segment.voiceoverText or '未填写'} |"
+        )
+
+    if storyboard_validation.issues or export_validation.issues:
+        lines.extend(["", "## 待处理项", ""])
+        for issue in storyboard_validation.issues + export_validation.issues:
+            lines.append(f"- {issue}")
+    return "\n".join(lines)
+
+
+def to_voiceover_script(workspace: WorkspaceDataRead) -> str:
+    lines = [
+        f"# {workspace.project.name} 口播稿",
+        "",
+        f"- 项目：{workspace.project.name}",
+        f"- 目的地：{workspace.project.destination}",
+        f"- 路线：{workspace.project.routeText}",
+        f"- 口播 Provider：{workspace.exportPlan.voiceoverProvider or '未配置'}",
+        f"- 口播风格：{workspace.exportPlan.voiceoverStyle}",
+        f"- 口播语速：{workspace.exportPlan.voiceoverSpeed:g}",
+        f"- 口播情绪：{workspace.exportPlan.voiceoverEmotion}",
+        f"- 口播生成状态：{workspace.exportPlan.voiceoverGenerationStatus}",
+        f"- 口播预计时长：{workspace.exportPlan.voiceoverDurationSec:g}s",
+        "",
+    ]
+    full_script = workspace.exportPlan.voiceoverScript.strip()
+    if full_script:
+        lines.extend(["## 整段口播稿", "", full_script, ""])
+    lines.extend(["## 逐镜头口播", ""])
+
+    has_voiceover = False
+    for index, segment in enumerate(workspace.storyboard, start=1):
+        text_value = segment.voiceoverText.strip() or segment.subtitle.strip()
+        if not text_value:
+            continue
+        has_voiceover = True
+        lines.extend(
+            [
+                f"### {index:02d}. {segment.startTime:.2f}s - {segment.endTime:.2f}s",
+                f"- 素材：{segment.assetId}",
+                f"- 口播角色：{segment.voiceoverRole or '未设置'}",
+                f"- 时间策略：{segment.voiceoverTiming or '未设置'}",
+                f"- 文案：{text_value}",
+                "",
+            ]
+        )
+    if not has_voiceover:
+        lines.append("当前分镜还没有口播文案。可先在分镜页点击“从字幕生成口播稿”。")
+    return "\n".join(lines).strip() + "\n"
 
 
 def to_yaml(value: object, indent: int = 0) -> str:

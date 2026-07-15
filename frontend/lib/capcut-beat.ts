@@ -70,6 +70,26 @@ export function applyBeatOffset(
   return normalizeBeatTimes(shifted, targetDurationSec);
 }
 
+export function applyBeatCalibration(
+  beatPoints: number[],
+  targetDurationSec: number,
+  offsetSec: number,
+  scale = 1
+) {
+  if (!beatPoints.length) {
+    return [];
+  }
+  if (Math.abs(offsetSec) < 0.001 && Math.abs(scale - 1) < 0.0001) {
+    return normalizeBeatTimes(beatPoints, targetDurationSec);
+  }
+
+  const safeScale = Math.min(1.05, Math.max(0.95, scale));
+  const transformed = beatPoints
+    .map((point) => Math.round(((point * safeScale) + offsetSec) * 100) / 100)
+    .filter((point) => point >= 0 && point <= targetDurationSec);
+  return normalizeBeatTimes(transformed, targetDurationSec);
+}
+
 export function filterBeatsForCapcutMode(
   fineBeats: number[],
   beatMode: string,

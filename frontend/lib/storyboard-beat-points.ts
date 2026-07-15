@@ -1,5 +1,5 @@
 import {
-  applyBeatOffset,
+  applyBeatCalibration,
   filterBeatsForCapcutMode,
   normalizeBeatTimes
 } from "@/lib/storyboard-beat-grid";
@@ -24,6 +24,7 @@ export function resolveStoryboardBeatPoints(
   const rawSource =
     rhythmPlan.rawBeatPoints.length > 0 ? rhythmPlan.rawBeatPoints : rhythmPlan.beatPoints;
   const beatOffsetSec = Number(rhythmPlan.beatCalibration?.beatOffsetSec ?? 0);
+  const beatScale = Number(rhythmPlan.beatCalibration?.beatScale ?? 1);
   if (rawSource.length > 0) {
     const resolved = filterBeatsForCapcutMode(
       normalizeBeatTimes(rawSource, targetDurationSec),
@@ -31,10 +32,10 @@ export function resolveStoryboardBeatPoints(
       targetDurationSec,
       rhythmPlan.coarseBeatPoints.length > 0 ? rhythmPlan.coarseBeatPoints : undefined
     );
-    return applyBeatOffset(resolved, targetDurationSec, beatOffsetSec);
+    return applyBeatCalibration(resolved, targetDurationSec, beatOffsetSec, beatScale);
   }
 
-  return applyBeatOffset(rhythmPlan.beatPoints, targetDurationSec, beatOffsetSec);
+  return applyBeatCalibration(rhythmPlan.beatPoints, targetDurationSec, beatOffsetSec, beatScale);
 }
 
 /** 分镜编辑吸附网格 — 与 backend resolve_validation_beat_points / 生成网格一致。 */

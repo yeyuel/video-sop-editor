@@ -103,6 +103,7 @@ export type ProjectPayload = {
   status?: string;
   validateLocationOrder?: boolean;
   allowAssetReuse?: boolean;
+  durationFillMaxConsecutiveRoute?: number;
 };
 
 export type AssetPayload = {
@@ -474,6 +475,20 @@ export function reorderStoryboard(
   });
 }
 
+export function fillStoryboardVoiceoverFromSubtitles(
+  projectId: string,
+  payload: {
+    overwriteExisting?: boolean;
+    role?: string;
+    timing?: string;
+  } = {}
+): Promise<StoryboardBundle> {
+  return request<StoryboardBundle>(`/projects/${projectId}/storyboard/voiceover:fill-from-subtitles`, {
+    method: "POST",
+    body: JSON.stringify(payload)
+  });
+}
+
 export function saveExportPlan(
   projectId: string,
   payload: ExportPlanPayload
@@ -505,6 +520,81 @@ export function suggestExportPlanWithLlm(
   return requestWithMeta<ExportPlan>(`/projects/${projectId}/export-plan:suggest`, {
     method: "POST"
   });
+}
+
+export function prepareExportVoiceover(
+  projectId: string,
+  payload: { dryRun?: boolean; useSegmentFallback?: boolean } = {}
+): Promise<ExportPlan> {
+  return request<ExportPlan>(`/projects/${projectId}/export-plan/voiceover:prepare`, {
+    method: "POST",
+    body: JSON.stringify({
+      dryRun: payload.dryRun ?? true,
+      useSegmentFallback: payload.useSegmentFallback ?? true
+    })
+  });
+}
+
+export type VoiceoverProvider = {
+  id: string;
+  label: string;
+  description: string;
+  isEnabled: boolean;
+  isRealTts: boolean;
+  outputFormat: string;
+  recommendedFor: string;
+};
+
+export function fetchVoiceoverProviders(projectId: string): Promise<VoiceoverProvider[]> {
+  return request<VoiceoverProvider[]>(`/projects/${projectId}/export-plan/voiceover/providers`);
+}
+
+export type VoiceoverDensityPreview = {
+  density: string;
+  sourceChars: number;
+  outputChars: number;
+  compressionRatio: number;
+  blockCount: number;
+  timelineCoverageSec: number;
+  estimatedReadingSec: number;
+  timingRiskCount: number;
+  alignmentRiskCount: number;
+  recommendedSpeed: number;
+  blocks: Array<{
+    startTime: number;
+    endTime: number;
+    sourceStartTime: number;
+    sourceEndTime: number;
+    text: string;
+    segmentIds: string[];
+    estimatedReadingSec: number;
+    recommendedSpeed: number;
+    alignmentShiftSec: number;
+    alignmentStatus: "aligned" | "speed_recommended" | "needs_trim_or_extend" | string;
+  }>;
+};
+
+export function previewVoiceoverDensity(
+  projectId: string,
+  payload: { voiceoverDensity: string; voiceoverScript?: string; voiceoverSpeed?: number }
+): Promise<VoiceoverDensityPreview> {
+  return request<VoiceoverDensityPreview>(
+    `/projects/${projectId}/export-plan/voiceover:preview`,
+    {
+      method: "POST",
+      body: JSON.stringify(payload)
+    }
+  );
+}
+
+export function deleteExportVoiceoverAudio(projectId: string): Promise<ExportPlan> {
+  return request<ExportPlan>(`/projects/${projectId}/export-plan/voiceover/audio`, {
+    method: "DELETE"
+  });
+}
+
+export function getExportVoiceoverAudioUrl(projectId: string) {
+  return `${getBrowserApiBaseUrl()}/projects/${projectId}/export-plan/voiceover/audio`;
 }
 
 export type LlmProviderConfigPayload = {
@@ -681,7 +771,7 @@ export function revokeLlmOAuth(providerId: string): Promise<{ revoked: boolean; 
 
 export function previewExport(
   projectId: string,
-  format: "markdown" | "json" | "yaml" | "csv" | "capcut" | "edl"
+  format: "markdown" | "json" | "yaml" | "csv" | "capcut" | "edl" | "voiceover"
 ): Promise<ExportDocument> {
   return request<ExportDocument>(`/projects/${projectId}/exports/${format}`, {
     method: "POST"
@@ -701,6 +791,7 @@ export type CapcutDraftDeployResult = {
   draftFolderPath: string;
   files: string[];
   bgmIncluded: boolean;
+  voiceoverIncluded: boolean;
   message: string;
 };
 

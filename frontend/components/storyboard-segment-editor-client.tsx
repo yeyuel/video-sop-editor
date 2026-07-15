@@ -10,8 +10,15 @@ import { TimeSecondsInput } from "@/components/time-seconds-input";
 import { InlineErrorBanner } from "@/components/ui-primitives";
 import { insertStoryboardSegment, updateStoryboardSegment } from "@/lib/browser-api";
 import {
+  storyboardAttentionRoleOptions,
   storyboardBeatModeOptions,
-  storyboardFunctionOptions
+  storyboardFunctionOptions,
+  storyboardMotionPolicyOptions,
+  storyboardSubtitlePolicyOptions,
+  storyboardTransitionPolicyOptions,
+  storyboardVoiceoverRoleOptions,
+  storyboardVoiceoverTimingOptions,
+  storyboardVisualStrengthOptions
 } from "@/lib/storyboard-options";
 import { parseTimeSeconds, validateTimeSeconds } from "@/lib/time-input";
 import {
@@ -308,6 +315,24 @@ export function StoryboardSegmentEditorClient({
           </div>
         </label>
 
+        <label className="block">
+          <span className="mb-2 block text-sm text-ink/75">注意力角色</span>
+          <select
+            value={form.attentionRole}
+            onChange={(event) => setForm({ ...form, attentionRole: event.target.value })}
+            className={`input-field ${form.attentionRole ? "text-ink" : "text-ink/45"}`}
+          >
+            {storyboardAttentionRoleOptions.map((option) => (
+              <option key={option.value || "none"} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+          <p className="mt-2 text-xs text-ink/55">
+            用来标记这段在内容节奏中的职责，例如反转、高潮、章节或信息证明。
+          </p>
+        </label>
+
         <label className="block md:col-span-2">
           <span className="mb-2 block text-sm text-ink/75">镜头描述</span>
           <input
@@ -346,6 +371,79 @@ export function StoryboardSegmentEditorClient({
           </div>
         </label>
 
+        {form.selectionTrace ? (
+          <div className="rounded-3xl border border-pine/10 bg-mist/60 px-4 py-3 md:col-span-2">
+            <p className="text-sm font-semibold text-pine">算法追溯</p>
+            <p className="mt-2 text-sm leading-6 text-ink/65">{form.selectionTrace}</p>
+          </div>
+        ) : null}
+
+        <label className="block">
+          <span className="mb-2 block text-sm text-ink/75">视觉强度</span>
+          <select
+            value={form.visualStrength}
+            onChange={(event) => setForm({ ...form, visualStrength: event.target.value })}
+            className={`input-field ${form.visualStrength ? "text-ink" : "text-ink/45"}`}
+          >
+            {storyboardVisualStrengthOptions.map((option) => (
+              <option key={option.value || "none"} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        <label className="block">
+          <span className="mb-2 block text-sm text-ink/75">镜头动效策略</span>
+          <select
+            value={form.motionPolicy}
+            onChange={(event) => setForm({ ...form, motionPolicy: event.target.value })}
+            className={`input-field ${form.motionPolicy ? "text-ink" : "text-ink/45"}`}
+          >
+            {storyboardMotionPolicyOptions.map((option) => (
+              <option key={option.value || "none"} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        <label className="block">
+          <span className="mb-2 block text-sm text-ink/75">转场策略</span>
+          <select
+            value={form.transitionPolicy}
+            onChange={(event) => setForm({ ...form, transitionPolicy: event.target.value })}
+            className={`input-field ${form.transitionPolicy ? "text-ink" : "text-ink/45"}`}
+          >
+            {storyboardTransitionPolicyOptions.map((option) => (
+              <option key={option.value || "none"} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        <label className="block">
+          <span className="mb-2 block text-sm text-ink/75">字幕策略</span>
+          <select
+            value={form.subtitlePolicy}
+            onChange={(event) => setForm({ ...form, subtitlePolicy: event.target.value })}
+            className={`input-field ${form.subtitlePolicy ? "text-ink" : "text-ink/45"}`}
+          >
+            {storyboardSubtitlePolicyOptions.map((option) => (
+              <option key={option.value || "auto"} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        <div className="md:col-span-2">
+          <p className="text-xs text-ink/55">
+            自动模式会按叙事角色突出钩子和高潮、弱化缓冲镜头；也可以为当前镜头单独指定样式。
+          </p>
+        </div>
+
         <label className="block md:col-span-2">
           <span className="mb-2 block text-sm text-ink/75">字幕建议</span>
           <input
@@ -354,6 +452,55 @@ export function StoryboardSegmentEditorClient({
             className="input-field"
           />
         </label>
+
+        <div className="rounded-3xl border border-pine/10 bg-sand/30 p-4 md:col-span-2">
+          <div className="mb-4">
+            <h3 className="text-base font-semibold text-ink">口播预留</h3>
+            <p className="mt-1 text-xs leading-5 text-ink/55">
+              这里先保存口播脚本和时间策略，后续接入 TTS 后可直接生成旁白音轨。
+            </p>
+          </div>
+          <div className="grid gap-4 md:grid-cols-2">
+            <label className="block md:col-span-2">
+              <span className="mb-2 block text-sm text-ink/75">口播文案</span>
+              <textarea
+                rows={3}
+                value={form.voiceoverText}
+                onChange={(event) => setForm({ ...form, voiceoverText: event.target.value })}
+                placeholder="可选，默认可沿用字幕；也可以写更适合朗读的完整句子。"
+                className="input-field"
+              />
+            </label>
+            <label className="block">
+              <span className="mb-2 block text-sm text-ink/75">口播角色</span>
+              <select
+                value={form.voiceoverRole}
+                onChange={(event) => setForm({ ...form, voiceoverRole: event.target.value })}
+                className={`input-field ${form.voiceoverRole ? "text-ink" : "text-ink/45"}`}
+              >
+                {storyboardVoiceoverRoleOptions.map((option) => (
+                  <option key={option.value || "none"} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="block">
+              <span className="mb-2 block text-sm text-ink/75">口播时间策略</span>
+              <select
+                value={form.voiceoverTiming}
+                onChange={(event) => setForm({ ...form, voiceoverTiming: event.target.value })}
+                className={`input-field ${form.voiceoverTiming ? "text-ink" : "text-ink/45"}`}
+              >
+                {storyboardVoiceoverTimingOptions.map((option) => (
+                  <option key={option.value || "none"} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+        </div>
 
         <label className="block md:col-span-2">
           <span className="mb-2 block text-sm text-ink/75">当前镜头节拍点（秒）</span>

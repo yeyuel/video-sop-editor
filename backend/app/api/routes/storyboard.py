@@ -15,6 +15,7 @@ from app.models.schemas import (
     StoryboardReorderRequest,
     StoryboardSaveRequest,
     StoryboardSegmentWrite,
+    StoryboardVoiceoverFillRequest,
 )
 from app.services.llm.audit_log import record_llm_call_from_meta
 from app.services.repository import repository
@@ -151,6 +152,18 @@ def reorder_storyboard(
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
+    if bundle is None:
+        raise HTTPException(status_code=404, detail="Project not found")
+    return ApiResponse(data=bundle)
+
+
+@router.post("/storyboard/voiceover:fill-from-subtitles", response_model=ApiResponse)
+def fill_storyboard_voiceover_from_subtitles(
+    project_id: str,
+    payload: StoryboardVoiceoverFillRequest,
+    session: Session = Depends(get_session),
+) -> ApiResponse:
+    bundle = repository.fill_storyboard_voiceover_from_subtitles(session, project_id, payload)
     if bundle is None:
         raise HTTPException(status_code=404, detail="Project not found")
     return ApiResponse(data=bundle)

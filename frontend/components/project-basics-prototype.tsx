@@ -18,8 +18,12 @@ type ProjectBasicsPrototypeProps = {
   embedded?: boolean;
 };
 
-type ProjectFormState = Omit<ProjectPayload, "targetDurationSec"> & {
+type ProjectFormState = Omit<
+  ProjectPayload,
+  "targetDurationSec" | "durationFillMaxConsecutiveRoute"
+> & {
   targetDurationSec: string;
+  durationFillMaxConsecutiveRoute: string;
 };
 
 const styleOptions = [
@@ -89,7 +93,9 @@ export function ProjectBasicsPrototype({
     jianyingDraftRoot: project?.jianyingDraftRoot ?? "",
     status: project?.status ?? "draft",
     validateLocationOrder: project?.validateLocationOrder ?? false,
-    allowAssetReuse: project?.allowAssetReuse ?? false
+    allowAssetReuse: project?.allowAssetReuse ?? false,
+    durationFillMaxConsecutiveRoute:
+      project?.durationFillMaxConsecutiveRoute?.toString() ?? "2"
   });
 
   useEffect(() => {
@@ -119,10 +125,26 @@ export function ProjectBasicsPrototype({
         if (targetDurationSec < 5) {
           throw new Error("目标时长不能小于 5 秒。");
         }
+        const durationFillMaxConsecutiveRoute = Number(
+          form.durationFillMaxConsecutiveRoute
+        );
+        if (
+          !form.durationFillMaxConsecutiveRoute.trim() ||
+          Number.isNaN(durationFillMaxConsecutiveRoute)
+        ) {
+          throw new Error("请填写有效的同地点连续镜头上限。");
+        }
+        if (
+          durationFillMaxConsecutiveRoute < 1 ||
+          durationFillMaxConsecutiveRoute > 8
+        ) {
+          throw new Error("同地点连续镜头上限建议填写 1-8。");
+        }
 
         const payload: ProjectPayload = {
           ...form,
           targetDurationSec,
+          durationFillMaxConsecutiveRoute,
           styleNotes: form.styleNotes.trim(),
           status: "draft"
         };
@@ -148,7 +170,9 @@ export function ProjectBasicsPrototype({
             jianyingDraftRoot: updated.jianyingDraftRoot ?? "",
             status: updated.status,
             validateLocationOrder: updated.validateLocationOrder,
-            allowAssetReuse: updated.allowAssetReuse
+            allowAssetReuse: updated.allowAssetReuse,
+            durationFillMaxConsecutiveRoute:
+              updated.durationFillMaxConsecutiveRoute.toString()
           });
           setShowSuccess(true);
         }
@@ -312,6 +336,32 @@ export function ProjectBasicsPrototype({
                 开启后，分镜生成可多次使用同一素材以凑足目标时长；关闭时保持「一素材一分镜」规则（默认）。
               </span>
             </span>
+          </label>
+          <label className="block md:col-span-2">
+            <span className="mb-2 block text-sm text-ink/75">
+              同地点连续镜头上限
+            </span>
+            <input
+              required
+              type="text"
+              inputMode="numeric"
+              value={form.durationFillMaxConsecutiveRoute}
+              onChange={(event) => {
+                const nextValue = event.target.value;
+                if (nextValue === "" || /^\d*$/.test(nextValue)) {
+                  setForm({
+                    ...form,
+                    durationFillMaxConsecutiveRoute: nextValue
+                  });
+                }
+              }}
+              placeholder="默认 2"
+              className="input-field"
+            />
+            <p className="mt-2 text-xs leading-5 text-ink/55">
+              默认 2，表示补齐时长时同一地点最多连续插入 2 个镜头。调大后更容易接近目标时长，
+              但同一地点会停留更久，路线推进也会变慢。
+            </p>
           </label>
           <label className="flex items-start gap-3 md:col-span-2">
             <input

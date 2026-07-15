@@ -529,6 +529,150 @@ def _migration_019_phase4_storyboard_segment_roles(session: Session) -> None:
         )
 
 
+def _migration_020_storyboard_selection_trace(session: Session) -> None:
+    inspector = inspect(engine)
+    if "storyboardsegmententity" not in inspector.get_table_names():
+        return
+
+    segment_columns = {
+        column["name"] for column in inspector.get_columns("storyboardsegmententity")
+    }
+    if "selection_trace" not in segment_columns:
+        session.exec(
+            text("ALTER TABLE storyboardsegmententity ADD COLUMN selection_trace TEXT DEFAULT ''")
+        )
+
+
+def _migration_021_project_duration_fill_max_consecutive_route(session: Session) -> None:
+    inspector = inspect(engine)
+    if "projectentity" not in inspector.get_table_names():
+        return
+
+    project_columns = {column["name"] for column in inspector.get_columns("projectentity")}
+    if "duration_fill_max_consecutive_route" not in project_columns:
+        session.exec(
+            text(
+                "ALTER TABLE projectentity "
+                "ADD COLUMN duration_fill_max_consecutive_route INTEGER NOT NULL DEFAULT 2"
+            )
+        )
+
+
+def _migration_022_storyboard_voiceover_fields(session: Session) -> None:
+    inspector = inspect(engine)
+    if "storyboardsegmententity" not in inspector.get_table_names():
+        return
+
+    segment_columns = {
+        column["name"] for column in inspector.get_columns("storyboardsegmententity")
+    }
+    if "voiceover_text" not in segment_columns:
+        session.exec(
+            text("ALTER TABLE storyboardsegmententity ADD COLUMN voiceover_text TEXT DEFAULT ''")
+        )
+    if "voiceover_role" not in segment_columns:
+        session.exec(
+            text("ALTER TABLE storyboardsegmententity ADD COLUMN voiceover_role TEXT DEFAULT ''")
+        )
+    if "voiceover_timing" not in segment_columns:
+        session.exec(
+            text("ALTER TABLE storyboardsegmententity ADD COLUMN voiceover_timing TEXT DEFAULT ''")
+        )
+
+
+def _migration_023_export_voiceover_script(session: Session) -> None:
+    inspector = inspect(engine)
+    if "publishplanentity" not in inspector.get_table_names():
+        return
+
+    publish_columns = {column["name"] for column in inspector.get_columns("publishplanentity")}
+    if "voiceover_script" not in publish_columns:
+        session.exec(
+            text("ALTER TABLE publishplanentity ADD COLUMN voiceover_script TEXT DEFAULT ''")
+        )
+
+
+def _migration_024_export_voiceover_settings(session: Session) -> None:
+    inspector = inspect(engine)
+    if "publishplanentity" not in inspector.get_table_names():
+        return
+
+    publish_columns = {column["name"] for column in inspector.get_columns("publishplanentity")}
+    if "voiceover_provider" not in publish_columns:
+        session.exec(
+            text("ALTER TABLE publishplanentity ADD COLUMN voiceover_provider TEXT DEFAULT ''")
+        )
+    if "voiceover_style" not in publish_columns:
+        session.exec(
+            text("ALTER TABLE publishplanentity ADD COLUMN voiceover_style TEXT DEFAULT 'natural'")
+        )
+    if "voiceover_speed" not in publish_columns:
+        session.exec(
+            text("ALTER TABLE publishplanentity ADD COLUMN voiceover_speed REAL DEFAULT 1.0")
+        )
+    if "voiceover_emotion" not in publish_columns:
+        session.exec(
+            text("ALTER TABLE publishplanentity ADD COLUMN voiceover_emotion TEXT DEFAULT 'calm'")
+        )
+
+
+def _migration_025_export_voiceover_generation_state(session: Session) -> None:
+    inspector = inspect(engine)
+    if "publishplanentity" not in inspector.get_table_names():
+        return
+
+    publish_columns = {column["name"] for column in inspector.get_columns("publishplanentity")}
+    if "voiceover_generation_status" not in publish_columns:
+        session.exec(
+            text(
+                "ALTER TABLE publishplanentity "
+                "ADD COLUMN voiceover_generation_status TEXT DEFAULT 'not_generated'"
+            )
+        )
+    if "voiceover_audio_path" not in publish_columns:
+        session.exec(
+            text("ALTER TABLE publishplanentity ADD COLUMN voiceover_audio_path TEXT DEFAULT ''")
+        )
+    if "voiceover_duration_sec" not in publish_columns:
+        session.exec(
+            text("ALTER TABLE publishplanentity ADD COLUMN voiceover_duration_sec REAL DEFAULT 0.0")
+        )
+    if "voiceover_provider_meta" not in publish_columns:
+        session.exec(
+            text("ALTER TABLE publishplanentity ADD COLUMN voiceover_provider_meta TEXT DEFAULT '{}'")
+        )
+    if "voiceover_generated_at" not in publish_columns:
+        session.exec(
+            text("ALTER TABLE publishplanentity ADD COLUMN voiceover_generated_at TEXT DEFAULT ''")
+        )
+
+
+def _migration_026_export_voiceover_density(session: Session) -> None:
+    inspector = inspect(engine)
+    if "publishplanentity" not in inspector.get_table_names():
+        return
+
+    publish_columns = {column["name"] for column in inspector.get_columns("publishplanentity")}
+    if "voiceover_density" not in publish_columns:
+        session.exec(
+            text("ALTER TABLE publishplanentity ADD COLUMN voiceover_density TEXT DEFAULT 'standard'")
+        )
+
+
+def _migration_027_storyboard_subtitle_policy(session: Session) -> None:
+    inspector = inspect(engine)
+    if "storyboardsegmententity" not in inspector.get_table_names():
+        return
+
+    segment_columns = {
+        column["name"] for column in inspector.get_columns("storyboardsegmententity")
+    }
+    if "subtitle_policy" not in segment_columns:
+        session.exec(
+            text("ALTER TABLE storyboardsegmententity ADD COLUMN subtitle_policy TEXT DEFAULT ''")
+        )
+
+
 MIGRATIONS: list[tuple[int, str, object]] = [
     (1, "001_legacy_columns", _migration_001_legacy_columns),
     (2, "002_rhythm_analysis_metrics", _migration_002_rhythm_analysis_metrics),
@@ -549,6 +693,18 @@ MIGRATIONS: list[tuple[int, str, object]] = [
     (17, "017_project_jianying_draft_root", _migration_017_project_jianying_draft_root),
     (18, "018_phase4_rhythm_profile", _migration_018_phase4_rhythm_profile),
     (19, "019_phase4_storyboard_segment_roles", _migration_019_phase4_storyboard_segment_roles),
+    (20, "020_storyboard_selection_trace", _migration_020_storyboard_selection_trace),
+    (
+        21,
+        "021_project_duration_fill_max_consecutive_route",
+        _migration_021_project_duration_fill_max_consecutive_route,
+    ),
+    (22, "022_storyboard_voiceover_fields", _migration_022_storyboard_voiceover_fields),
+    (23, "023_export_voiceover_script", _migration_023_export_voiceover_script),
+    (24, "024_export_voiceover_settings", _migration_024_export_voiceover_settings),
+    (25, "025_export_voiceover_generation_state", _migration_025_export_voiceover_generation_state),
+    (26, "026_export_voiceover_density", _migration_026_export_voiceover_density),
+    (27, "027_storyboard_subtitle_policy", _migration_027_storyboard_subtitle_policy),
 ]
 
 

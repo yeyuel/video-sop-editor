@@ -49,6 +49,7 @@ class ProjectEntity(SQLModel, table=True):
     selected_theme_id: str = ""
     validate_location_order: bool = False
     allow_asset_reuse: bool = False
+    duration_fill_max_consecutive_route: int = 2
 
 
 class AssetEntity(SQLModel, table=True):
@@ -97,6 +98,11 @@ class StoryboardSegmentEntity(SQLModel, table=True):
     visual_strength: str = ""
     motion_policy: str = ""
     transition_policy: str = ""
+    subtitle_policy: str = ""
+    selection_trace: str = ""
+    voiceover_text: str = ""
+    voiceover_role: str = ""
+    voiceover_timing: str = ""
 
 
 class RhythmPlanEntity(SQLModel, table=True):
@@ -135,6 +141,17 @@ class PublishPlanEntity(SQLModel, table=True):
     description: str
     tags: str
     cover_suggestion: str
+    voiceover_script: str = ""
+    voiceover_provider: str = ""
+    voiceover_style: str = "natural"
+    voiceover_speed: float = 1.0
+    voiceover_emotion: str = "calm"
+    voiceover_density: str = "standard"
+    voiceover_generation_status: str = "not_generated"
+    voiceover_audio_path: str = ""
+    voiceover_duration_sec: float = 0.0
+    voiceover_provider_meta: str = "{}"
+    voiceover_generated_at: str = ""
 
 
 class LlmProviderConfigEntity(SQLModel, table=True):

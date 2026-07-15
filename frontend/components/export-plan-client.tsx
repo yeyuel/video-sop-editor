@@ -8,14 +8,21 @@ import { LlmProgressOverlay } from "@/components/llm-progress-overlay";
 import { ConfirmDialog } from "@/components/ui-primitives";
 import {
   CapcutDraftConflictError,
+  deleteExportVoiceoverAudio,
   deployCapcutDraft,
   fetchCapcutExportDefaults,
+  fetchVoiceoverProviders,
+  getExportVoiceoverAudioUrl,
   importExportCsv,
   importExportJson,
+  prepareExportVoiceover,
+  previewVoiceoverDensity,
   previewExport,
   saveExportPlan,
   suggestExportPlanWithLlm,
-  type ExportImportResult
+  type ExportImportResult,
+  type VoiceoverDensityPreview,
+  type VoiceoverProvider
 } from "@/lib/browser-api";
 import { describeLlmStatus, llmNoticeTone } from "@/lib/llm-status";
 import {
@@ -33,7 +40,7 @@ import type {
   StoryboardValidation
 } from "@/types/domain";
 
-type ExportFormat = "markdown" | "json" | "yaml" | "csv" | "capcut" | "edl";
+type ExportFormat = "markdown" | "json" | "yaml" | "csv" | "capcut" | "edl" | "voiceover";
 type ImportFormat = "json" | "csv";
 type ConflictStrategy = "overwrite" | "skip";
 
@@ -54,6 +61,81 @@ function splitTags(value: string) {
     .split(/[，、,]/)
     .map((item) => item.trim())
     .filter(Boolean);
+}
+
+function normalizeVoiceoverLine(value: string) {
+  return value.replace(/\s+/g, " ").trim();
+}
+
+function buildVoiceoverScriptFromPlan(plan: ExportPlan, tagsText: string) {
+  const title = normalizeVoiceoverLine(plan.title);
+  const description = normalizeVoiceoverLine(plan.description);
+  const shortTitle = normalizeVoiceoverLine(plan.shortTitle);
+  const tags = splitTags(tagsText).slice(0, 3).join("、");
+  const lines = [
+    title ? `开头：${title}。` : "",
+    description ? `正文：${description}` : "",
+    shortTitle ? `收束：这条路线可以记成“${shortTitle}”。` : "",
+    tags ? `补充提示：适合关注${tags}的观众。` : ""
+  ].filter(Boolean);
+  return lines.join("\n");
+}
+
+const voiceoverProviderOptions = [
+  { value: "", label: "暂不配置" },
+  { value: "mock_silence", label: "本地占位静音 WAV" },
+  { value: "jianying_native_tts", label: "剪映原生朗读" },
+  { value: "openai", label: "OpenAI / GPT TTS" },
+  { value: "edge", label: "Edge / 本地试听" },
+  { value: "custom", label: "自定义 Provider" }
+];
+
+const voiceoverStyleOptions = [
+  { value: "natural", label: "自然讲述" },
+  { value: "documentary", label: "纪录片旁白" },
+  { value: "guide", label: "旅行向导" },
+  { value: "energetic", label: "短视频高能" },
+  { value: "soft", label: "治愈轻声" }
+];
+
+const voiceoverEmotionOptions = [
+  { value: "calm", label: "克制平静" },
+  { value: "warm", label: "温暖亲近" },
+  { value: "curious", label: "好奇探索" },
+  { value: "excited", label: "兴奋种草" },
+  { value: "nostalgic", label: "回忆感" }
+];
+
+const voiceoverDensityOptions = [
+  {
+    value: "light",
+    label: "轻口播",
+    help: "只保留关键节点，适合氛围片、快切混剪和情绪向旅行短视频。"
+  },
+  {
+    value: "standard",
+    label: "标准口播",
+    help: "关键节点加必要过渡，适合抖音、小红书常规旅行内容。"
+  },
+  {
+    value: "info",
+    label: "信息口播",
+    help: "尽量保留路线和攻略信息，适合 B 站攻略类或解释型视频。"
+  }
+];
+
+function getVoiceoverStatusLabel(status: string) {
+  const labels: Record<string, string> = {
+    not_generated: "尚未准备",
+    provider_required: "缺少 Provider",
+    script_required: "缺少口播稿",
+    ready: "可生成音频",
+    generated: "已生成占位音频",
+    manual_required: "需在剪映中朗读",
+    provider_not_supported: "Provider 未接入",
+    failed: "生成失败"
+  };
+  return labels[status] ?? status;
 }
 
 function statusTone(passed: boolean) {
@@ -114,9 +196,30 @@ export function ExportPlanClient({
   const [importFields, setImportFields] = useState({ subtitle: true, function: false });
   const [importPreview, setImportPreview] = useState<ExportImportResult | null>(null);
   const [llmSuggestedFields, setLlmSuggestedFields] = useState<ExportSuggestField[]>([]);
+  const [voiceoverProviders, setVoiceoverProviders] = useState<VoiceoverProvider[]>([]);
+  const [voiceoverPreview, setVoiceoverPreview] = useState<VoiceoverDensityPreview | null>(null);
+  const [isVoiceoverPreviewLoading, setIsVoiceoverPreviewLoading] = useState(false);
   const [deployConfirm, setDeployConfirm] = useState<{ draftFolderPath: string; message: string } | null>(
     null
   );
+
+  useEffect(() => {
+    let cancelled = false;
+    fetchVoiceoverProviders(projectId)
+      .then((providers) => {
+        if (!cancelled) {
+          setVoiceoverProviders(providers);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setVoiceoverProviders([]);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [projectId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -139,6 +242,73 @@ export function ExportPlanClient({
       cancelled = true;
     };
   }, [projectId, initialJianyingDraftRoot]);
+
+  useEffect(() => {
+    if (plan.voiceoverProvider !== "jianying_native_tts") {
+      setVoiceoverPreview(null);
+      setIsVoiceoverPreviewLoading(false);
+      return;
+    }
+
+    let cancelled = false;
+    setIsVoiceoverPreviewLoading(true);
+    const timer = window.setTimeout(() => {
+      previewVoiceoverDensity(projectId, {
+        voiceoverDensity: plan.voiceoverDensity ?? "standard",
+        voiceoverScript: plan.voiceoverScript ?? "",
+        voiceoverSpeed: plan.voiceoverSpeed ?? 1
+      })
+        .then((result) => {
+          if (!cancelled) {
+            setVoiceoverPreview(result);
+          }
+        })
+        .catch(() => {
+          if (!cancelled) {
+            setVoiceoverPreview(null);
+          }
+        })
+        .finally(() => {
+          if (!cancelled) {
+            setIsVoiceoverPreviewLoading(false);
+          }
+        });
+    }, 250);
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [
+    plan.voiceoverDensity,
+    plan.voiceoverProvider,
+    plan.voiceoverScript,
+    plan.voiceoverSpeed,
+    projectId
+  ]);
+
+  const providerOptionsForSelect = useMemo(
+    () =>
+      voiceoverProviders.length
+        ? [
+            { value: "", label: "暂不配置" },
+            ...voiceoverProviders.map((provider) => ({
+              value: provider.id,
+              label: provider.isEnabled ? provider.label : `${provider.label}（预留）`
+            }))
+          ]
+        : voiceoverProviderOptions,
+    [voiceoverProviders]
+  );
+  const selectedVoiceoverProvider = useMemo(
+    () => voiceoverProviders.find((provider) => provider.id === (plan.voiceoverProvider ?? "")),
+    [plan.voiceoverProvider, voiceoverProviders]
+  );
+  const voiceoverGenerateButtonLabel =
+    plan.voiceoverProvider === "jianying_native_tts" ? "准备剪映朗读" : "生成占位音频";
+  const selectedVoiceoverDensity = voiceoverDensityOptions.find(
+    (option) => option.value === (plan.voiceoverDensity ?? "standard")
+  );
 
   const validationItems = useMemo(
     () => [
@@ -239,6 +409,13 @@ export function ExportPlanClient({
   }
 
   async function runDeployCapcut(clearExisting: boolean) {
+    const savedPlan = await saveExportPlan(projectId, {
+      ...plan,
+      tags: splitTags(tagsText)
+    });
+    setPlan(savedPlan);
+    setTagsText(joinTags(savedPlan.tags));
+
     const result = await deployCapcutDraft(projectId, {
       jianyingDraftRoot: jianyingDraftRoot.trim(),
       persistConfig: true,
@@ -323,6 +500,106 @@ export function ExportPlanClient({
     });
   }
 
+  function handleBuildVoiceoverScript() {
+    const script = buildVoiceoverScriptFromPlan(plan, tagsText);
+    if (!script) {
+      showError("请先填写标题或文案，再生成整段口播稿。");
+      return;
+    }
+
+    setPlan({ ...plan, voiceoverScript: script });
+    setNotice({
+      title: "口播稿已生成",
+      message: "已根据当前标题、文案和标签生成整段口播稿，可继续手动调整。",
+      tone: "success"
+    });
+  }
+
+  function handlePrepareVoiceover() {
+    setError("");
+    startTransition(async () => {
+      try {
+        const savedPlan = await saveExportPlan(projectId, {
+          ...plan,
+          tags: splitTags(tagsText)
+        });
+        const nextPlan = await prepareExportVoiceover(projectId, {
+          dryRun: true,
+          useSegmentFallback: true
+        });
+        setPlan({ ...savedPlan, ...nextPlan });
+        setTagsText(joinTags(nextPlan.tags));
+        const message =
+          typeof nextPlan.voiceoverProviderMeta?.message === "string"
+            ? nextPlan.voiceoverProviderMeta.message
+            : "已完成口播生成配置检查。";
+        setNotice({
+          title: getVoiceoverStatusLabel(nextPlan.voiceoverGenerationStatus),
+          message,
+          tone: nextPlan.voiceoverGenerationStatus === "ready" ? "success" : "warning"
+        });
+      } catch (submitError) {
+        showError(
+          submitError instanceof Error ? submitError.message : "口播生成配置检查失败，请稍后重试。"
+        );
+      }
+    });
+  }
+
+  function handleGenerateMockVoiceoverAudio() {
+    setError("");
+    startTransition(async () => {
+      try {
+        const savedPlan = await saveExportPlan(projectId, {
+          ...plan,
+          voiceoverProvider: plan.voiceoverProvider || "mock_silence",
+          tags: splitTags(tagsText)
+        });
+        const nextPlan = await prepareExportVoiceover(projectId, {
+          dryRun: false,
+          useSegmentFallback: true
+        });
+        setPlan({ ...savedPlan, ...nextPlan });
+        setTagsText(joinTags(nextPlan.tags));
+        const message =
+          typeof nextPlan.voiceoverProviderMeta?.message === "string"
+            ? nextPlan.voiceoverProviderMeta.message
+            : "已生成本地占位口播音频。";
+        setNotice({
+          title: getVoiceoverStatusLabel(nextPlan.voiceoverGenerationStatus),
+          message,
+          tone: ["generated", "manual_required"].includes(nextPlan.voiceoverGenerationStatus)
+            ? "success"
+            : "warning"
+        });
+      } catch (submitError) {
+        showError(
+          submitError instanceof Error ? submitError.message : "生成占位口播音频失败，请稍后重试。"
+        );
+      }
+    });
+  }
+
+  function handleDeleteVoiceoverAudio() {
+    setError("");
+    startTransition(async () => {
+      try {
+        const nextPlan = await deleteExportVoiceoverAudio(projectId);
+        setPlan(nextPlan);
+        setTagsText(joinTags(nextPlan.tags));
+        setNotice({
+          title: "口播音频已清除",
+          message: "已清除当前项目的口播音频路径和生成状态。",
+          tone: "success"
+        });
+      } catch (submitError) {
+        showError(
+          submitError instanceof Error ? submitError.message : "清除口播音频失败，请稍后重试。"
+        );
+      }
+    });
+  }
+
   function handleDownload() {
     if (!preview) {
       return;
@@ -334,7 +611,8 @@ export function ExportPlanClient({
       yaml: "application/x-yaml;charset=utf-8",
       csv: "text/csv;charset=utf-8",
       capcut: "application/json;charset=utf-8",
-      edl: "text/plain;charset=utf-8"
+      edl: "text/plain;charset=utf-8",
+      voiceover: "text/plain;charset=utf-8"
     };
 
     const blob = new Blob([preview.content], {
@@ -572,6 +850,293 @@ export function ExportPlanClient({
             className={aiInputClassName(llmSuggestedFields.includes("coverSuggestion"))}
           />
         </label>
+        <label className="block md:col-span-2">
+          <span className="mb-2 flex flex-wrap items-center justify-between gap-3 text-sm font-medium text-ink">
+            <span>整段口播稿（可选）</span>
+            <button
+              type="button"
+              onClick={handleBuildVoiceoverScript}
+              disabled={isPending || isLlmRunning}
+              className="rounded-full border border-pine/20 bg-white px-3 py-1 text-xs text-pine transition hover:bg-mist disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              根据文案生成口播稿
+            </button>
+          </span>
+          <textarea
+            rows={5}
+            value={plan.voiceoverScript ?? ""}
+            onChange={(event) => setPlan({ ...plan, voiceoverScript: event.target.value })}
+            placeholder="可手动输入整段旁白，也可以先点击“根据文案生成口播稿”生成草稿。"
+            className="input-field"
+          />
+          <p className="mt-1 text-xs text-ink/55">
+            这里适合放整条视频的连贯旁白；逐镜头口播仍在分镜详情里维护。
+          </p>
+        </label>
+        <div className="grid gap-4 rounded-3xl border border-pine/15 bg-mist/40 p-4 md:col-span-2 md:grid-cols-4">
+          <label className="block">
+            <span className="mb-2 block text-sm text-ink/75">口播 Provider</span>
+            <select
+              value={plan.voiceoverProvider ?? ""}
+              onChange={(event) => setPlan({ ...plan, voiceoverProvider: event.target.value })}
+              className="input-field"
+            >
+              {providerOptionsForSelect.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+            {selectedVoiceoverProvider ? (
+              <p className="mt-2 text-xs leading-5 text-ink/55">
+                {selectedVoiceoverProvider.description}
+                {!selectedVoiceoverProvider.isEnabled ? " 当前仅作为后续接入预留。" : ""}
+              </p>
+            ) : null}
+          </label>
+          <label className="block">
+            <span className="mb-2 block text-sm text-ink/75">口播风格</span>
+            <select
+              value={plan.voiceoverStyle ?? "natural"}
+              onChange={(event) => setPlan({ ...plan, voiceoverStyle: event.target.value })}
+              className="input-field"
+            >
+              {voiceoverStyleOptions.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="block">
+            <span className="mb-2 block text-sm text-ink/75">口播情绪</span>
+            <select
+              value={plan.voiceoverEmotion ?? "calm"}
+              onChange={(event) => setPlan({ ...plan, voiceoverEmotion: event.target.value })}
+              className="input-field"
+            >
+              {voiceoverEmotionOptions.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="block">
+            <span className="mb-2 block text-sm text-ink/75">口播密度</span>
+            <select
+              value={plan.voiceoverDensity ?? "standard"}
+              onChange={(event) => setPlan({ ...plan, voiceoverDensity: event.target.value })}
+              className="input-field"
+            >
+              {voiceoverDensityOptions.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+            {selectedVoiceoverDensity ? (
+              <p className="mt-2 text-xs leading-5 text-ink/55">
+                {selectedVoiceoverDensity.help}
+              </p>
+            ) : null}
+          </label>
+          <label className="block">
+            <span className="mb-2 flex items-center justify-between gap-2 text-sm text-ink/75">
+              <span>语速倍率</span>
+              <strong className="text-pine">{(plan.voiceoverSpeed ?? 1).toFixed(2)}x</strong>
+            </span>
+            <div className="rounded-2xl border border-pine/20 bg-white px-4 py-3">
+              <input
+                type="range"
+                min={0.7}
+                max={1.3}
+                step={0.05}
+                value={plan.voiceoverSpeed ?? 1}
+                onChange={(event) =>
+                  setPlan({ ...plan, voiceoverSpeed: Number(event.target.value) })
+                }
+                className="h-2 w-full cursor-pointer accent-pine"
+              />
+              <div className="mt-1 flex justify-between text-[11px] text-ink/45">
+                <span>0.70x 慢</span>
+                <button
+                  type="button"
+                  onClick={() => setPlan({ ...plan, voiceoverSpeed: 1 })}
+                  className="text-pine hover:underline"
+                >
+                  恢复 1.00x
+                </button>
+                <span>1.30x 快</span>
+              </div>
+            </div>
+          </label>
+          {plan.voiceoverProvider === "jianying_native_tts" ? (
+            <div className="rounded-2xl border border-pine/15 bg-white/65 p-4 md:col-span-4">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <p className="text-sm font-medium text-ink">最终字幕与口播评估</p>
+                  <p className="mt-1 text-xs text-ink/55">
+                    压缩后的文本会同时作为最终字幕和剪映朗读源，实际朗读时长会受剪映音色影响。
+                  </p>
+                </div>
+                {isVoiceoverPreviewLoading ? (
+                  <span className="text-xs text-pine">正在重新计算...</span>
+                ) : voiceoverPreview &&
+                  Math.abs(voiceoverPreview.recommendedSpeed - (plan.voiceoverSpeed ?? 1)) >=
+                    0.04 ? (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setPlan({ ...plan, voiceoverSpeed: voiceoverPreview.recommendedSpeed })
+                    }
+                    className="rounded-full border border-pine/20 bg-white px-3 py-1 text-xs text-pine transition hover:bg-mist"
+                  >
+                    应用建议 {voiceoverPreview.recommendedSpeed.toFixed(2)}x
+                  </button>
+                ) : null}
+              </div>
+              {voiceoverPreview ? (
+                <>
+                  <div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+                    <div className="rounded-xl bg-mist/60 px-3 py-2 text-sm text-ink/70">
+                      朗读字数：<strong className="text-ink">{voiceoverPreview.outputChars}</strong>
+                      <span className="text-ink/45"> / {voiceoverPreview.sourceChars}</span>
+                    </div>
+                    <div className="rounded-xl bg-mist/60 px-3 py-2 text-sm text-ink/70">
+                      压缩比例：
+                      <strong className="text-ink">
+                        {Math.round(voiceoverPreview.compressionRatio * 100)}%
+                      </strong>
+                    </div>
+                    <div className="rounded-xl bg-mist/60 px-3 py-2 text-sm text-ink/70">
+                      口播块：<strong className="text-ink">{voiceoverPreview.blockCount}</strong>
+                    </div>
+                    <div className="rounded-xl bg-mist/60 px-3 py-2 text-sm text-ink/70">
+                      预计朗读：
+                      <strong className="text-ink">{voiceoverPreview.estimatedReadingSec}s</strong>
+                    </div>
+                  </div>
+                  <p
+                    className={`mt-3 text-xs ${
+                      voiceoverPreview.timingRiskCount > 0 ? "text-amber-700" : "text-pine"
+                    }`}
+                  >
+                    {voiceoverPreview.timingRiskCount > 0
+                      ? `${voiceoverPreview.timingRiskCount} 个口播块仍存在读不完风险，建议降低密度或提高语速。`
+                      : "所有口播块均已预留起音、标点停顿和收尾时间。"}
+                  </p>
+                  {voiceoverPreview.alignmentRiskCount > 0 ? (
+                    <p className="mt-1 text-xs text-amber-700">
+                      {voiceoverPreview.alignmentRiskCount} 个口播块为保证读完已提前进入，展开下方片段可查看原画面区间和建议倍速。
+                    </p>
+                  ) : (
+                    <p className="mt-1 text-xs text-pine">口播起止时间与对应画面区间保持一致。</p>
+                  )}
+                  {voiceoverPreview.blocks.length > 0 ? (
+                    <details className="mt-3 rounded-xl bg-mist/35 px-3 py-2">
+                      <summary className="cursor-pointer text-xs font-medium text-pine">
+                        查看最终字幕与口播片段
+                      </summary>
+                      <div className="mt-2 space-y-2">
+                        {voiceoverPreview.blocks.map((block, index) => (
+                          <div
+                            key={`${block.startTime}-${index}`}
+                            className="rounded-lg border border-pine/10 bg-white/70 px-3 py-2 text-xs leading-5 text-ink/65"
+                          >
+                            <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                              <span className="font-medium text-pine">
+                                字幕/口播 {block.startTime}s - {block.endTime}s
+                              </span>
+                              <span>
+                                画面 {block.sourceStartTime}s - {block.sourceEndTime}s
+                              </span>
+                              <span>预计 {block.estimatedReadingSec}s</span>
+                              {block.alignmentStatus === "speed_recommended" ? (
+                                <span className="text-amber-700">
+                                  建议 {Math.min(1.3, block.recommendedSpeed).toFixed(2)}x
+                                </span>
+                              ) : block.alignmentStatus === "needs_trim_or_extend" ? (
+                                <span className="text-clay">建议精简文案或延长画面</span>
+                              ) : (
+                                <span className="text-pine">已对齐</span>
+                              )}
+                            </div>
+                            <p className="mt-1 text-ink/75">{block.text}</p>
+                          </div>
+                        ))}
+                      </div>
+                    </details>
+                  ) : (
+                    <p className="mt-3 text-xs text-amber-700">当前分镜没有可用于朗读的字幕或口播文本。</p>
+                  )}
+                </>
+              ) : !isVoiceoverPreviewLoading ? (
+                <p className="mt-3 text-xs text-amber-700">暂时无法计算口播密度，请确认后端服务已启动。</p>
+              ) : null}
+            </div>
+          ) : null}
+          <p className="text-xs leading-5 text-ink/55 md:col-span-4">
+            当前 `mock_silence` 可生成本地占位音频，`jianying_native_tts`
+            会在剪映草稿中写入统一的“最终字幕（剪映朗读源）”文本轨；真实云端 TTS Provider 后续接入时会复用这些参数。
+          </p>
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl bg-white/70 px-4 py-3 md:col-span-4">
+            <div className="text-sm text-ink/70">
+              <span className="font-medium text-ink">
+                {getVoiceoverStatusLabel(plan.voiceoverGenerationStatus)}
+              </span>
+              <span className="ml-3">
+                预计时长：{plan.voiceoverDurationSec ? `${plan.voiceoverDurationSec}s` : "未计算"}
+              </span>
+              {plan.voiceoverGeneratedAt ? (
+                <span className="ml-3">检查时间：{plan.voiceoverGeneratedAt}</span>
+              ) : null}
+            </div>
+            <button
+              type="button"
+              onClick={handlePrepareVoiceover}
+              disabled={isPending || isLlmRunning}
+              className="btn-secondary px-4 py-2 text-xs"
+            >
+              检查口播生成配置
+            </button>
+            <button
+              type="button"
+              onClick={handleGenerateMockVoiceoverAudio}
+              disabled={isPending || isLlmRunning}
+              className="btn-secondary px-4 py-2 text-xs"
+            >
+              {voiceoverGenerateButtonLabel}
+            </button>
+            {plan.voiceoverAudioPath ? (
+              <button
+                type="button"
+                onClick={handleDeleteVoiceoverAudio}
+                disabled={isPending || isLlmRunning}
+                className="rounded-full border border-clay/20 bg-white px-4 py-2 text-xs text-clay transition hover:bg-[#fff5ef] disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                清除音频
+              </button>
+            ) : null}
+          </div>
+          {plan.voiceoverAudioPath ? (
+            <div className="rounded-2xl bg-white/70 px-4 py-3 md:col-span-4">
+              <p className="mb-2 text-xs text-ink/55">
+                当前音频是本地占位静音 WAV，仅用于验证链路，不代表真实 AI 口播效果。
+              </p>
+              <div className="flex flex-wrap items-center gap-3">
+                <audio controls src={getExportVoiceoverAudioUrl(projectId)} className="h-10 min-w-[280px]" />
+                <a
+                  href={getExportVoiceoverAudioUrl(projectId)}
+                  download
+                  className="btn-secondary px-4 py-2 text-xs"
+                >
+                  下载音频
+                </a>
+              </div>
+            </div>
+          ) : null}
+        </div>
         {error ? (
           <p className="text-sm text-red-600 md:col-span-2">{error}</p>
         ) : null}
@@ -643,6 +1208,14 @@ export function ExportPlanClient({
             className="btn-secondary"
           >
             预览 CSV
+          </button>
+          <button
+            type="button"
+            onClick={() => handlePreview("voiceover")}
+            disabled={isPending || isLlmRunning}
+            className="btn-secondary"
+          >
+            预览口播稿
           </button>
           <button
             type="button"

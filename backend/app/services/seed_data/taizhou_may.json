@@ -7,13 +7,14 @@
     "target_duration_sec": 40,
     "video_type": "travel_montage",
     "style_preference": "旅行攻略片",
-    "route_text": "国清寺-天台山-神仙居",
+    "route_text": "国清寺-石梁飞瀑-神仙居-回程",
     "status": "draft",
     "media_root": "E:\\自媒体\\2025-台州-p3",
     "selected_theme_id": "theme_5ddee337",
     "style_notes": "绿色调，无旁边，空境为主",
     "validate_location_order": 0,
     "allow_asset_reuse": 0,
+    "duration_fill_max_consecutive_route": 2,
     "jianying_draft_root": "C:\\Users\\dx198\\AppData\\Local\\JianyingPro\\User Data\\Projects\\com.lveditor.draft"
   },
   "assets": [
@@ -52,7 +53,7 @@
     {
       "asset_id": "OUTPUT_003",
       "project_id": "proj_6241f409",
-      "location": "output",
+      "location": "国清寺",
       "scene": "茂密绿林中的古寺参道，石灯笼与苔藓石墙沿小径排列，镜头缓慢穿行，树冠光影斑驳，氛围幽静神秘。",
       "media_type": "video",
       "shot_type": "wide",
@@ -84,7 +85,7 @@
     {
       "asset_id": "OUTPUT_005",
       "project_id": "proj_6241f409",
-      "location": "output",
+      "location": "国清寺",
       "scene": "镜头沿斑驳橙色古墙快速移动，墙上有蓝色书法牌匾，周围绿树掩映，石板小径延伸其中。",
       "media_type": "video",
       "shot_type": "wide",
@@ -347,7 +348,7 @@
       "core_emotion": "清幽",
       "rhythm_profile": "前3秒用国清寺_006仰拍牌坊做钩子；中段以OUTPUT_001、OUTPUT_004的寺墙屋檐作慢节奏铺陈；OUTPUT_002香烟与游客穿行作为轻节奏点；结尾用OUTPUT_003林间参道放慢，形成沉浸式过渡。",
       "platform_reason": "抖音旅行攻略片需要快速建立目的地识别，国清寺牌坊和橙墙辨识度强；绿色调、空镜和慢推镜头能形成治愈停留感，适合收藏型路线内容。",
-      "used_locations": "[\"国清寺\", \"output\"]",
+      "used_locations": "[\"国清寺\"]",
       "used_asset_ids": "[\"国清寺_006\", \"OUTPUT_001\", \"OUTPUT_004\", \"OUTPUT_002\", \"OUTPUT_003\"]"
     },
     {
@@ -465,12 +466,12 @@
       "start_time": 10.5,
       "end_time": 11.35,
       "asset_id": "OUTPUT_008",
-      "shot_description": "转场到天台山石梁一带，雨后枝叶遮映黄色墙体与灰瓦飞檐，保持禅意与清新。",
+      "shot_description": "转场到石梁飞瀑一带，雨后枝叶遮映黄色墙体与灰瓦飞檐，保持禅意与清新。",
       "function_name": "transition_buffer",
       "rhythm": "balanced",
       "beat_mode": "strong_weak",
       "beat_points": "[10.5, 11.35]",
-      "subtitle": "下一站：天台山的雨后绿意"
+      "subtitle": "下一站：石梁飞瀑的雨后绿意"
     },
     {
       "id": "seg_6cf05e06",
@@ -507,7 +508,7 @@
       "start_time": 16.1,
       "end_time": 19.1,
       "asset_id": "OUTPUT_010",
-      "shot_description": "收束天台山段落，竹叶与巨石包围多级溪瀑，突出治愈、湿润、清透的五月感。",
+      "shot_description": "收束石梁飞瀑段落，竹叶与巨石包围多级溪瀑，突出治愈、湿润、清透的五月感。",
       "function_name": "main_climax",
       "rhythm": "tight_cut",
       "beat_mode": "strong_weak",
@@ -652,7 +653,7 @@
       "rhythm": "tight_cut",
       "beat_mode": "strong_weak",
       "beat_points": "[33.7, 35.7]",
-      "subtitle": "国清寺—天台山—神仙居，五月刚刚好"
+      "subtitle": "国清寺—石梁飞瀑—神仙居—回程，五月刚刚好"
     }
   ],
   "rhythm": {
@@ -682,7 +683,7 @@
     "project_id": "proj_6241f409",
     "title": "五月台州绿到失语",
     "short_title": "台州绿意路线",
-    "description": "五月去台州，这条线真的很治愈。\n国清寺先静下来，天台山看飞瀑，神仙居走进云雾里。\n路线：国清寺-天台山-神仙居。\n喜欢这种清幽空镜旅行吗？",
+    "description": "五月去台州，这条线真的很治愈。\n国清寺先静下来，石梁飞瀑看飞瀑，神仙居走进云雾里，最后用回程晚霞收束。\n路线：国清寺-石梁飞瀑-神仙居-回程。\n喜欢这种清幽空镜旅行吗？",
     "tags": "[\"台州旅行\", \"五月出游\", \"治愈系风景\", \"旅行攻略\"]",
     "cover_suggestion": "选国清寺石牌坊或神仙居云雾红桥作封面，主体居中；封面字用“五月台州绿到失语”，白字加深绿描边，突出清幽绿色调，避免遮挡牌坊和桥体。"
   }

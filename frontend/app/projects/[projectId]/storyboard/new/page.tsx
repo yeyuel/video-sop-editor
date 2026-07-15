@@ -67,7 +67,12 @@ export default async function ProjectStoryboardNewPage({
     attentionRole: referenceSegment?.attentionRole ?? "",
     visualStrength: referenceSegment?.visualStrength ?? "",
     motionPolicy: referenceSegment?.motionPolicy ?? "",
-    transitionPolicy: referenceSegment?.transitionPolicy ?? ""
+    transitionPolicy: referenceSegment?.transitionPolicy ?? "",
+    subtitlePolicy: referenceSegment?.subtitlePolicy ?? "",
+    selectionTrace: "",
+    voiceoverText: "",
+    voiceoverRole: referenceSegment?.voiceoverRole ?? "",
+    voiceoverTiming: referenceSegment?.voiceoverTiming ?? "follow_segment"
   };
 
   return (

@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import { applyBeatOffset, filterBeatsForCapcutMode } from "@/lib/storyboard-beat-grid";
+import {
+  applyBeatCalibration,
+  applyBeatOffset,
+  filterBeatsForCapcutMode
+} from "@/lib/storyboard-beat-grid";
 
 describe("filterBeatsForCapcutMode", () => {
   it("keeps all fine beats for beat_2", () => {
@@ -12,6 +16,12 @@ describe("filterBeatsForCapcutMode", () => {
 
   it("applies calibration offset within target duration", () => {
     expect(applyBeatOffset([0, 1, 2, 3], 3, 0.2)).toEqual([0, 0.2, 1.2, 2.2, 3]);
+  });
+
+  it("applies calibration scale and offset within target duration", () => {
+    expect(applyBeatCalibration([0, 1, 2, 3], 3.5, 0.1, 1.05)).toEqual([
+      0, 0.1, 1.15, 2.2, 3.25, 3.5
+    ]);
   });
 
   it("uses coarse grid for beat_1 when provided", () => {
@@ -54,20 +64,20 @@ describe("resolveStoryboardBeatPoints parity", () => {
     ).toEqual([0, 0.5, 1, 1.5, 2, 2.5, 3, 3.5, 4]);
   });
 
-  it("applies calibration offset to storyboard snap grid", async () => {
+  it("applies calibration offset and scale to storyboard snap grid", async () => {
     const { resolveStoryboardBeatPoints } = await import("@/lib/storyboard-beat-points");
     const rhythmPlan = {
       beatPoints: [0, 1, 2, 3],
       rawBeatPoints: [0, 1, 2, 3],
       coarseBeatPoints: [],
-      beatCalibration: { beatOffsetSec: 0.2 },
+      beatCalibration: { beatOffsetSec: 0.1, beatScale: 1.05 },
     };
 
     expect(
       resolveStoryboardBeatPoints(rhythmPlan, {
         beatMode: "beat_2",
-        targetDurationSec: 3,
+        targetDurationSec: 3.5,
       })
-    ).toEqual([0, 0.2, 1.2, 2.2, 3]);
+    ).toEqual([0, 0.1, 1.15, 2.2, 3.25, 3.5]);
   });
 });

@@ -316,10 +316,13 @@ Base URL:
 P4-A 新增字段：
 
 - `rhythmProfile`：平台节奏画像，描述平台节奏模式、切镜密度、字幕密度和动效策略。
-- `attentionBeats`：内容注意力点，描述钩子、推进、反转、高潮、收尾等内容节点。
-- `beatCalibration`：节拍校准参数，当前先保存来源、偏移、密度模式和参考点。
-- `audioFingerprint` / `audioAnalysisVersion`：用于后续同音频复用校准和识别版本追踪。
-- `beatCalibration.beatOffsetSec`：整体节拍偏移秒数。保存节奏规划后，服务端会基于原始节拍重新计算 `beatPoints`，分镜生成和前端吸附都会使用校准后的结果。
+- `attentionBeats`：内容注意力点，描述钩子、推进、反转、高潮、收尾等内容节点。P4-A 后不同 `rhythmProfile.mode` 会返回不同 `role`，例如 `highlight_reel` 使用 `hook / turn_1 / turn_2 / climax / payoff`，`seed_and_guide` 使用 `visual_seed / info_value / decision_push / save_cta`，`chapter_explainer` 使用 `chapter / proof / summary`。
+- `beatCalibration`：节拍校准参数，当前保存来源、偏移、轻微比例校准、密度模式和参考点。若 `referenceBeatPoints` 非空，服务端会基于当前模式下的基础节拍点估算整体 `beatOffsetSec` 与 `beatScale`，并将 `source` 标记为 `capcut_reference`。
+- `audioFingerprint` / `audioAnalysisVersion`：用于同音频复用校准和识别版本追踪。上传音频时服务端会基于文件内容 hash、音频时长、BPM 和识别引擎生成 fingerprint，避免仅依赖文件名。
+- `beatCalibration.beatOffsetSec`：整体节拍偏移秒数。
+- `beatCalibration.beatScale`：轻微比例校准，默认 `1`，当前限制在 `0.95-1.05`，用于修正系统节拍和剪映参考点越到后面越偏的情况。
+- `beatCalibration.densityMode`：节拍密度模式。填写剪映参考点后，服务端会比较 `beat_1 / beat_2 / strong_weak` 三种网格与参考点的匹配误差，自动选择更接近剪映的模式。
+- 保存节奏规划后，服务端会基于原始节拍重新计算 `beatPoints`，分镜生成和前端吸附都会使用校准后的结果。
 
 ## 4.5 上传音频并识别节拍
 
@@ -331,6 +334,7 @@ P4-A 新增字段：
 - 非 WAV 格式需服务端安装 `ffmpeg`
 - **必须先** `bgm-selection` 选定推荐曲目
 - 识别成功：`bgmPhase` → `analyzed`，写入节拍点
+- 若重新上传的是同一音频，且上次已保存剪映参考点或整体偏移，服务端会复用上次校准参数。
 - 识别失败：返回 200，`analysisSource` 为 `rule_fallback`，`bgmPhase` 保持 `recommended`，节拍点清空
 
 ## 4.6 移除已绑定音频
@@ -407,7 +411,8 @@ P4-A 新增字段：
       "attentionRole": "hook",
       "visualStrength": "strong",
       "motionPolicy": "hold_or_speed_ramp",
-      "transitionPolicy": "hard_cut"
+      "transitionPolicy": "hard_cut",
+      "subtitlePolicy": "emphasis"
     }
   ]
 }
@@ -439,7 +444,11 @@ P4-A 新增字段：
   "attentionRole": "supporting",
   "visualStrength": "medium",
   "motionPolicy": "natural_cut",
-  "transitionPolicy": "clean_cut"
+  "transitionPolicy": "clean_cut",
+  "subtitlePolicy": "standard",
+  "voiceoverText": "这里先把喀纳斯的湖边情绪接住。",
+  "voiceoverRole": "narration",
+  "voiceoverTiming": "follow_segment"
 }
 ```
 
@@ -447,7 +456,8 @@ P4-A 新增字段：
 
 - 用于单条分镜详细编辑
 - 前端保存成功后可直接返回分镜列表页
-- P4-A 新增 `attentionRole`、`visualStrength`、`motionPolicy`、`transitionPolicy`，用于后续节点驱动分镜和剪映草稿效果增强
+- P4-A 新增 `attentionRole`、`visualStrength`、`motionPolicy`、`transitionPolicy`、`subtitlePolicy`，用于后续节点驱动分镜和剪映草稿效果增强；`subtitlePolicy` 可为 `standard`、`emphasis`、`info`、`minimal`，留空时自动推断
+- P4-A 预留 `voiceoverText`、`voiceoverRole`、`voiceoverTiming`，当前仅保存和导出，不触发 TTS 生成；P4-B 自动口播会复用这三个字段
 
 ## 5.5 删除单条分镜
 
@@ -503,6 +513,26 @@ P4-A 新增字段：
 - 后端按新顺序保留每条分镜原时长，并重算整条时间线
 - 一期暂不要求支持自由拖拽排序
 
+## 5.8 根据字幕生成口播草稿
+
+`POST /projects/{projectId}/storyboard/voiceover:fill-from-subtitles`
+
+请求体：
+
+```json
+{
+  "overwriteExisting": false,
+  "role": "narration",
+  "timing": "follow_segment"
+}
+```
+
+说明：
+
+- 用于 P4-B 自动口播前的草稿生成。
+- 默认只补齐空白口播，不覆盖用户已手工修改的 `voiceoverText`。
+- 当前仅保存口播文案、口播角色和时间策略，不触发 TTS 音频合成。
+
 ## 6. 导出信息
 
 ## 6.1 获取导出信息
@@ -543,7 +573,7 @@ P4-A 新增字段：
 
 `POST /projects/{projectId}/exports/csv`
 
-返回分镜时间线 CSV（`segmentId,startTime,endTime,assetId,function,rhythm,beatMode,subtitle`）。
+返回分镜时间线 CSV（`segmentId,startTime,endTime,assetId,function,rhythm,beatMode,subtitle,voiceoverText,voiceoverRole,voiceoverTiming`）。
 
 ## 7.5 剪映草稿一键写入（Sprint 17，优先）
 
@@ -562,7 +592,7 @@ P4-A 新增字段：
 }
 ```
 
-在剪映草稿根目录下自动新建项目文件夹，并写入 `draft_content.json` 与 `draft_meta_info.json`。若节奏页已上传 BGM，草稿含 audio 轨。
+在剪映草稿根目录下自动新建项目文件夹，并写入 `draft_content.json` 与 `draft_meta_info.json`。若节奏页已上传 BGM，草稿含 BGM 音轨；若已生成口播音频，草稿会额外写入口播音轨。BGM 与口播同时存在时，BGM 音量会自动降低，优先保证人声清晰。
 
 ## 7.6 下载剪映草稿 bundle
 
@@ -583,6 +613,12 @@ P4-A 新增字段：
 可导入 Premiere Pro、DaVinci Resolve 等 NLE 打开粗剪时间线（不渲染成片）。
 
 字段映射详见 `docs/rough-cut-export.md`。
+
+## 7.8 生成口播稿预览
+
+`POST /projects/{projectId}/exports/voiceover`
+
+返回按分镜时间线排列的纯文本口播稿。若单条分镜未填写 `voiceoverText`，会临时回退使用该分镜 `subtitle`，但不会写回数据库。
 
 返回结构：
 
@@ -728,3 +764,26 @@ LLM 业务接口（主题 / 分镜 / 导出 / 节奏文案）在 `ApiResponse.me
 - `expiresAt`
 - `model`
 - `baseUrl`
+## 附录：二期口播导出补充
+
+- `ExportPlanRead` / `ExportPlanWriteRequest` 新增 `voiceoverScript` 字段，用于保存整段口播稿。
+- `ExportPlanRead` / `ExportPlanWriteRequest` 新增 `voiceoverProvider`、`voiceoverStyle`、`voiceoverSpeed`、`voiceoverEmotion`，用于预留 TTS 生成参数。
+- `ExportPlanRead` / `ExportPlanWriteRequest` 新增 `voiceoverDensity`，可选 `light`、`standard`、`info`，用于控制剪映原生朗读文本轨的压缩密度。
+- `ExportPlanRead` 新增 `voiceoverGenerationStatus`、`voiceoverAudioPath`、`voiceoverDurationSec`、`voiceoverProviderMeta`、`voiceoverGeneratedAt`，用于追踪口播生成准备状态。
+- `POST /projects/{projectId}/export-plan/voiceover:prepare` 会检查口播稿和 Provider 是否就绪，并按文本长度估算旁白时长；当前为 dry-run，不生成音频文件。
+- 当 `voiceoverProvider=mock_silence` 且 `dryRun=false` 时，会生成本地占位静音 WAV，用于验证音频链路；这不代表真实 TTS。占位 WAV 使用分镜时间线总时长，而不是口播文本估算时长。
+- 当 `voiceoverProvider=jianying_native_tts` 且 `dryRun=false` 时，接口会返回 `voiceoverGenerationStatus=manual_required`，表示系统已准备剪映原生朗读交接方案；后续写入剪映草稿时会生成“最终字幕（剪映朗读源）”文本轨，需用户在剪映专业版内点击“开始朗读”生成真实音频。
+- 写入剪映草稿时，“最终字幕（剪映朗读源）”会按 `voiceoverDensity` 生成跨镜头文本块：`light` 更稀疏，`standard` 保留关键节点和必要过渡，`info` 更适合攻略类信息口播。该轨同时承担最终画面字幕和朗读输入，不再额外保留内容不同的原字幕轨。
+- `POST /api/v1/projects/{project_id}/export-plan/voiceover:preview`：传入 `voiceoverDensity` 和可选的 `voiceoverScript`，返回压缩前后字数、压缩比例、口播块数量、预计朗读时长和逐块文本。该接口只做预估，不写入项目数据。
+- 口播文本压缩按完整短句取舍并去重，不再默认按字符直接截断；仅当单句自身超过当前时间容量时才做保守缩写。
+- 预览结果新增 `timingRiskCount`。服务端会按 `voiceoverSpeed`、有效字数、标点停顿和收尾余量重新排布口播块；末尾空间不足时可向前借用空闲时间，`timingRiskCount > 0` 表示时间线仍无法完整容纳朗读。
+- 预览结果同时返回整体 `recommendedSpeed`、`alignmentRiskCount`，每个 block 返回 `sourceStartTime`、`sourceEndTime`、`estimatedReadingSec`、`recommendedSpeed`、`alignmentShiftSec` 和 `alignmentStatus`。其中 `needs_trim_or_extend` 表示在允许的最高倍速下仍需精简文案或延长画面。
+- 剪映草稿的 `extra_info` 新增 `transition_count`、`motion_keyframe_segment_count`、`emphasized_subtitle_count`，用于追溯本次自动写入的叠化、照片关键帧和重点字幕数量。
+- `transitionPolicy=fade_or_match_cut` 映射为剪映内置“叠化”；`hard_cut`、`clean_cut` 不创建转场材料。`motionPolicy=slow_push/gentle_zoom` 仅在照片素材上创建 `UNIFORM_SCALE` 关键帧。
+- `subtitlePolicy` 映射字幕样式：`emphasis` 放大并加粗，`minimal` 缩小并降低透明度，`standard/info` 保持清晰常规样式；留空时按 `attentionRole/function` 自动推断。
+- `GET /projects/{projectId}/export-plan/voiceover/audio` 下载当前口播音频文件。
+- `DELETE /projects/{projectId}/export-plan/voiceover/audio` 清除当前口播音频路径和生成状态。
+- 前端可基于标题、标签和文案生成一版口播草稿，用户也可以手动修改。
+- `POST /projects/{projectId}/exports/voiceover` 会优先输出 `voiceoverScript`，再输出逐镜头口播。
+- 当前真实云端 TTS 仍未接入，但 `mock_silence` 已可生成占位 WAV，并可写入剪映草稿的独立口播音轨；`jianying_native_tts` 可写入统一的最终字幕/朗读文本轨，复用本机剪映专业版音色库。
+- `GET /projects/{projectId}/export-plan/voiceover/providers` 返回当前口播 Provider 能力表。当前 `mock_silence`、`jianying_native_tts` 标记为 `isEnabled=true`；`openai`、`edge`、`custom` 为真实 TTS 预留 Provider，接口会明确标记为未启用。

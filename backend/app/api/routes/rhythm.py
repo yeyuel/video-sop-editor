@@ -1,3 +1,4 @@
+import hashlib
 import os
 from uuid import uuid4
 
@@ -136,6 +137,7 @@ async def upload_audio_for_rhythm(
     stored_path = os.path.join(storage_dir, stored_name)
 
     content = await audio.read()
+    audio_fingerprint = hashlib.sha256(content).hexdigest()
     with open(stored_path, "wb") as output_file:
         output_file.write(content)
 
@@ -145,6 +147,7 @@ async def upload_audio_for_rhythm(
             project_id,
             audio.filename,
             stored_path,
+            audio_file_fingerprint=audio_fingerprint,
         )
     except ValueError as exc:
         if os.path.exists(stored_path):
@@ -174,6 +177,7 @@ async def upload_audio_for_rhythm_stream(
     stored_path = os.path.join(storage_dir, stored_name)
 
     content = await audio.read()
+    audio_fingerprint = hashlib.sha256(content).hexdigest()
     with open(stored_path, "wb") as output_file:
         output_file.write(content)
 
@@ -191,6 +195,7 @@ async def upload_audio_for_rhythm_stream(
             project_id,
             audio.filename or stored_name,
             stored_path,
+            audio_file_fingerprint=audio_fingerprint,
             on_progress=report,
         )
 

@@ -133,6 +133,7 @@ def build_audio_rhythm_payload(
     theme: NarrativeThemeRead | None,
     audio_file_name: str,
     analysis: BeatAnalysisResult,
+    audio_file_fingerprint: str = "",
     on_progress: ProgressReporter | None = None,
 ) -> tuple[RhythmPlanWriteRequest, dict[str, str]]:
     bgm_style, rhythm_notes, llm_meta = resolve_rhythm_copy(
@@ -179,7 +180,12 @@ def build_audio_rhythm_payload(
             "referenceBeatPoints": [],
             "confidence": "auto",
         },
-        audioFingerprint=f"{audio_file_name}:{analysis.audio_duration_sec}:{analysis.bpm}",
+        audioFingerprint=(
+            f"{audio_file_fingerprint}:{analysis.audio_duration_sec}:"
+            f"{analysis.bpm}:{analysis.analysis_engine}"
+            if audio_file_fingerprint
+            else f"{audio_file_name}:{analysis.audio_duration_sec}:{analysis.bpm}"
+        ),
         audioAnalysisVersion=analysis.analysis_engine,
     ), llm_meta
 
