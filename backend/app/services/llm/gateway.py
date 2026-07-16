@@ -8,7 +8,7 @@ from urllib import error, request
 
 from sqlmodel import Session
 
-from app.db import engine
+from app import db
 from app.services.llm.auth import enrich_config_with_auth, is_provider_configured, resolve_authorization_header
 from app.services.llm.config_store import resolve_active_config
 from app.services.llm.model_catalog import (
@@ -17,6 +17,11 @@ from app.services.llm.model_catalog import (
     supports_json_response_format,
 )
 from app.services.llm.progress import ProgressReporter, emit_progress
+from app.services.llm.result_cache import (
+    build_llm_input_fingerprint,
+    get_cached_llm_result,
+    store_llm_result,
+)
 from app.services.llm.subscription_oauth.codex_gateway import (
     codex_responses_endpoint,
     generate_codex_json,
@@ -53,7 +58,7 @@ class LlmGateway:
         session: Session | None = None,
         on_progress: ProgressReporter | None = None,
     ) -> LlmCallResult:
-        with Session(engine) as owned_session:
+        with Session(db.engine) as owned_session:
             active_session = session or owned_session
             config = enrich_config_with_auth(
                 active_session,
@@ -65,7 +70,37 @@ class LlmGateway:
                 f"已加载 {config.provider_name} / {config.model}",
                 progress=20,
             )
-            return self.generate_json_with_config(
+            input_fingerprint = build_llm_input_fingerprint(
+                config=config,
+                system_prompt=system_prompt,
+                user_prompt=user_prompt,
+                temperature=temperature,
+                max_tokens=max_tokens,
+            )
+            cache_enabled = isinstance(active_session, Session)
+            cached = (
+                get_cached_llm_result(active_session, input_fingerprint)
+                if cache_enabled
+                else None
+            )
+            if cached is not None:
+                emit_progress(
+                    on_progress,
+                    "cache_hit",
+                    "输入内容未变化，已复用上次生成结果。",
+                    progress=82,
+                    detail=f"缓存指纹 {input_fingerprint[:12]}",
+                )
+                return LlmCallResult.success(
+                    cached,
+                    provider_id=config.provider_id,
+                    model=config.model,
+                    attempts=0,
+                    cached=True,
+                    input_fingerprint=input_fingerprint,
+                )
+
+            result = self.generate_json_with_config(
                 config=config,
                 system_prompt=system_prompt,
                 user_prompt=user_prompt,
@@ -73,6 +108,15 @@ class LlmGateway:
                 max_tokens=max_tokens,
                 on_progress=on_progress,
             )
+            result.input_fingerprint = input_fingerprint
+            if cache_enabled and result.ok and result.data is not None:
+                store_llm_result(
+                    active_session,
+                    input_fingerprint=input_fingerprint,
+                    config=config,
+                    payload=result.data,
+                )
+            return result
 
     def generate_json_with_config(
         self,
@@ -488,7 +532,7 @@ class LlmSuggestionService:
 
     @property
     def enabled(self) -> bool:
-        with Session(engine) as session:
+        with Session(db.engine) as session:
             config = enrich_config_with_auth(session, resolve_active_config(session))
             return is_provider_configured(config)
 

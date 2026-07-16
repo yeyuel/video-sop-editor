@@ -1,3 +1,5 @@
+from pathlib import Path
+
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import FileResponse, StreamingResponse
 from sqlmodel import Session
@@ -8,10 +10,12 @@ from app.api.sse_stream import run_streaming_task
 from app.db import get_session
 from app.models.schemas import (
     ApiResponse,
+    AuthUserRead,
     ExportPlanWriteRequest,
     VoiceoverGenerateRequest,
     VoiceoverPreviewRequest,
     VoiceoverProviderRead,
+    VoiceoverVoiceRead,
 )
 from app.services.capcut_draft_export import build_native_voiceover_preview
 from app.services.repository import repository
@@ -70,6 +74,15 @@ def get_voiceover_providers(project_id: str, session: Session = Depends(get_sess
             isRealTts=provider.is_real_tts,
             outputFormat=provider.output_format,
             recommendedFor=provider.recommended_for,
+            voices=[
+                VoiceoverVoiceRead(
+                    id=voice.id,
+                    label=voice.label,
+                    gender=voice.gender,
+                    description=voice.description,
+                )
+                for voice in provider.voices
+            ],
         )
         for provider in list_voiceover_providers()
     ]
@@ -111,11 +124,16 @@ def download_voiceover_audio(
     audio_path = repository.get_export_voiceover_audio_path(session, project_id)
     if not audio_path:
         raise HTTPException(status_code=404, detail="Voiceover audio not found")
+    suffix = Path(audio_path).suffix.lower()
+    media_type = "audio/mpeg" if suffix == ".mp3" else "audio/wav"
     return FileResponse(
         path=audio_path,
-        media_type="audio/wav",
-        filename=f"{project_id}-voiceover.wav",
-        headers={"Cache-Control": "private, max-age=60"},
+        media_type=media_type,
+        filename=f"{project_id}-voiceover{suffix or '.wav'}",
+        headers={
+            "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+            "Pragma": "no-cache",
+        },
     )
 
 
@@ -129,7 +147,10 @@ def suggest_export_plan(project_id: str, session: Session = Depends(get_session)
 
 
 @router.post("/export-plan/suggest/stream")
-def suggest_export_plan_stream(project_id: str) -> StreamingResponse:
+def suggest_export_plan_stream(
+    project_id: str,
+    current_user: AuthUserRead = Depends(require_project_editor),
+) -> StreamingResponse:
     def serialize_complete(result: object) -> tuple[object, dict[str, str] | None]:
         if result is None:
             raise HTTPException(status_code=404, detail="Project not found")
@@ -142,7 +163,13 @@ def suggest_export_plan_stream(project_id: str) -> StreamingResponse:
         )
 
     return StreamingResponse(
-        run_streaming_task(task, serialize_complete=serialize_complete),
+        run_streaming_task(
+            task,
+            serialize_complete=serialize_complete,
+            user_id=current_user.id,
+            project_id=project_id,
+            operation="export_suggestion",
+        ),
         media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache",

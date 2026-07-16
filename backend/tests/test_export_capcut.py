@@ -21,12 +21,14 @@ from app.services.capcut_draft_export import (
     DEFAULT_BGM_FADE_OUT_SEC,
     CapcutDraftFolderExistsError,
     JIANYING_FONT_YOURAN,
+    MAX_CAPTION_FONT_SIZE,
     build_capcut_draft,
     build_native_voiceover_blocks,
     build_native_voiceover_preview,
     build_text_content,
     clear_draft_folder_contents,
     deploy_capcut_draft,
+    fit_caption_font_size,
     render_capcut_draft,
     seconds_to_microseconds,
 )
@@ -42,6 +44,7 @@ def _workspace(
     voiceover_provider: str = "",
     voiceover_script: str = "",
     voiceover_density: str = "standard",
+    voiceover_provider_meta: dict | None = None,
 ) -> WorkspaceDataRead:
     return WorkspaceDataRead(
         project=ProjectRead(
@@ -152,6 +155,7 @@ def _workspace(
             voiceoverGenerationStatus="generated" if voiceover_audio_path else "not_generated",
             voiceoverAudioPath=voiceover_audio_path,
             voiceoverDurationSec=voiceover_duration_sec,
+            voiceoverProviderMeta=voiceover_provider_meta or {},
         ),
     )
 
@@ -177,6 +181,29 @@ def test_build_text_content_uses_jianying_char_range_and_youran_font() -> None:
     assert chinese_parsed["styles"][0]["range"] == [0, 2]
 
 
+def test_caption_font_size_stays_inside_safe_range_and_shrinks_long_text() -> None:
+    assert fit_caption_font_size("短字幕", 99.0) == MAX_CAPTION_FONT_SIZE
+    long_text = "这是一段需要在剪映画面安全区内完整展示的较长口播同步字幕内容"
+    assert fit_caption_font_size(long_text, MAX_CAPTION_FONT_SIZE) < CAPTION_FONT_SIZE
+
+
+def test_long_emphasis_subtitle_uses_safe_size_and_position() -> None:
+    workspace = _workspace()
+    workspace.storyboard[0].subtitle = "这是一段需要在剪映画面安全区内完整展示的较长重点字幕内容"
+    workspace.storyboard[0].subtitlePolicy = "emphasis"
+
+    draft = build_capcut_draft(workspace)
+
+    text_track = next(track for track in draft["tracks"] if track["type"] == "text")
+    text_segment = text_track["segments"][0]
+    material = next(
+        item for item in draft["materials"]["texts"] if item["id"] == text_segment["material_id"]
+    )
+    content = json.loads(material["content"])
+    assert content["styles"][0]["size"] <= CAPTION_FONT_SIZE
+    assert text_segment["clip"]["transform"] == {"x": 0, "y": -0.68}
+
+
 def test_build_capcut_draft_contains_tracks_and_materials() -> None:
     draft = build_capcut_draft(_workspace())
 
@@ -197,7 +224,7 @@ def test_build_capcut_draft_contains_tracks_and_materials() -> None:
     assert text_material["global_alpha"] == 1.0
     content = json.loads(text_material["content"])
     assert content["styles"][0]["font"]["id"] == JIANYING_FONT_YOURAN["resource_id"]
-    assert content["styles"][0]["size"] == pytest.approx(CAPTION_FONT_SIZE * 1.2)
+    assert content["styles"][0]["size"] == pytest.approx(CAPTION_FONT_SIZE * 1.1)
     assert content["styles"][0]["bold"] is True
 
 
@@ -261,7 +288,7 @@ def test_build_capcut_draft_honors_explicit_minimal_subtitle_policy() -> None:
     text_material = draft["materials"]["texts"][0]
     content = json.loads(text_material["content"])
     assert text_material["global_alpha"] == pytest.approx(0.78)
-    assert content["styles"][0]["size"] == pytest.approx(CAPTION_FONT_SIZE * 0.88)
+    assert content["styles"][0]["size"] == pytest.approx(CAPTION_FONT_SIZE * 0.85)
     assert content["styles"][0]["bold"] is False
 
 
@@ -429,6 +456,52 @@ def test_build_capcut_draft_uses_voiceover_script_when_no_segment_text() -> None
         item for item in draft["materials"]["texts"] if item["id"] == native_material_id
     )
     assert json.loads(native_material["content"])["text"] == "整段口播稿。"
+
+
+def test_edge_tts_draft_uses_generated_speech_boundaries_for_final_subtitles(
+    tmp_path: Path,
+) -> None:
+    audio_path = tmp_path / "voiceover.mp3"
+    audio_path.write_bytes(b"ID3-fake-edge-audio")
+    workspace = _workspace(
+        voiceover_provider="edge",
+        voiceover_audio_path=str(audio_path),
+        voiceover_duration_sec=2.8,
+        voiceover_provider_meta={
+            "captionTimings": [
+                {
+                    "startTime": 0.12,
+                    "endTime": 1.25,
+                    "text": "雪国从这一刻开始。",
+                    "segmentIds": ["seg_001"],
+                },
+                {
+                    "startTime": 1.48,
+                    "endTime": 2.72,
+                    "text": "情绪继续向前推进。",
+                    "segmentIds": ["seg_002"],
+                },
+            ]
+        },
+    )
+
+    draft = build_capcut_draft(workspace)
+
+    text_track = next(track for track in draft["tracks"] if track["type"] == "text")
+    assert text_track["name"] == "最终字幕（口播同步）"
+    assert len(text_track["segments"]) == 2
+    assert text_track["segments"][0]["target_timerange"] == {
+        "start": 120_000,
+        "duration": 1_130_000,
+    }
+    texts_by_id = {item["id"]: item for item in draft["materials"]["texts"]}
+    rendered_texts = [
+        json.loads(texts_by_id[segment["material_id"]]["content"])["text"]
+        for segment in text_track["segments"]
+    ]
+    assert rendered_texts == ["雪国从这一刻开始。", "情绪继续向前推进。"]
+    assert draft["extra_info"]["generated_voiceover_caption_count"] == 2
+    assert draft["extra_info"]["final_subtitles_use_compressed_voiceover"] is True
 
 
 def test_build_capcut_draft_skips_bgm_when_missing_file() -> None:

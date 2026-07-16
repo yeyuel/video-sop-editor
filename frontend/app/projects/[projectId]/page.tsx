@@ -1,4 +1,5 @@
 import { ProjectBasicsPrototype } from "@/components/project-basics-prototype";
+import { RoughCutLauncher } from "@/components/rough-cut-launcher";
 import { ProjectPageLayout } from "@/components/project-page-layout";
 import { SectionCard } from "@/components/section-card";
 import { getWorkspace } from "@/lib/api";
@@ -31,6 +32,7 @@ export default async function ProjectWorkspacePage({ params }: ProjectPageProps)
         </span>
       }
     >
+      <RoughCutLauncher projectId={projectId} assetCount={workspace.assets.length} />
       <div className="grid gap-5 lg:grid-cols-[1.05fr_0.95fr]">
         <SectionCard
           title="项目基本信息"

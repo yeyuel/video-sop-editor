@@ -669,6 +669,45 @@ LLM 业务接口（主题 / 分镜 / 导出 / 节奏文案）在 `ApiResponse.me
 
 ### 9.0 流式 LLM 接口（SSE）
 
+所有文本 LLM 生成请求都会基于 Provider、模型、系统提示词、业务输入、温度和输出上限计算 `llmInputFingerprint`。成功结果写入持久化缓存；相同输入再次生成时不重复请求模型，SSE 会发送 `cache_hit` 阶段，并在响应 `meta` 中返回：
+
+- `llmCacheHit=true`：本次复用历史成功结果
+- `llmInputFingerprint`：本次输入指纹，便于问题追溯
+- `llmModel`：生成或缓存结果对应的模型
+- `llmAttempts=0`：缓存命中，没有发起网络请求
+
+Prompt、模型、Provider、温度、输出上限或项目输入变化后会产生新指纹并重新调用模型。失败、空响应和规则 fallback 不写入成功结果缓存。
+
+### 9.1 LLM 后台任务
+
+主题、节奏、分镜和导出建议的 SSE 接口会先返回 `type=task` 事件，其中包含 `taskId`。任务进度和最终结果会持续写入数据库；SSE 连接异常时，前端使用任务 ID 自动切换为轮询，不会重复调用模型。
+
+- `GET /llm/tasks/{taskId}`：查询任务状态、阶段、进度、结果和错误信息。
+- `POST /llm/tasks/{taskId}/cancel`：请求取消正在执行的任务。
+
+任务状态包括 `queued`、`running`、`completed`、`failed`、`cancelled` 和 `interrupted`。服务重启时，遗留的排队或运行中任务会变为 `interrupted`，用户可明确重新生成。
+
+### 9.2 一键初剪编排
+
+`POST /projects/{projectId}/rough-cut/generate/stream`
+
+请求体：
+
+```json
+{
+  "mode": "fill_missing"
+}
+```
+
+- `fill_missing`：按主题、BGM/节拍、分镜、导出建议顺序补齐项目数据。已有人工分镜和导出文案不会被自动覆盖。
+- `regenerate_creative`：先保存当前结构化方案快照，再重新生成主题、分镜和导出文案。已上传的真实音频、识别节拍和人工校准保持不变，适合切换 LLM 模型后比较结果。
+
+为保证踩点质量，未完成真实音频节拍分析时返回 `status=waiting_audio` 和节奏页 `nextPath`；上传音频后再次调用会从未完成阶段继续。
+
+`GET /projects/{projectId}/rough-cut/versions` 返回该项目的一键生成版本元数据，包括 Provider、模型、生成模式和创建时间；媒体文件不会复制到版本快照中。
+
+分镜生成采用 `structure_only` Prompt，只输出素材顺序、镜头描述和可选结构标签；临时字幕由素材描述兜底。导出建议阶段作为独立 Copywriting Pass，再统一生成标题、标签、文案和逐镜头字幕，降低长 Prompt 的输出长度与职责冲突。
+
 长耗时 LLM 任务优先使用 `text/event-stream`，事件类型：
 
 - `progress`：`stage` / `message` / `progress` / `detail`
@@ -767,12 +806,14 @@ LLM 业务接口（主题 / 分镜 / 导出 / 节奏文案）在 `ApiResponse.me
 ## 附录：二期口播导出补充
 
 - `ExportPlanRead` / `ExportPlanWriteRequest` 新增 `voiceoverScript` 字段，用于保存整段口播稿。
-- `ExportPlanRead` / `ExportPlanWriteRequest` 新增 `voiceoverProvider`、`voiceoverStyle`、`voiceoverSpeed`、`voiceoverEmotion`，用于预留 TTS 生成参数。
+- `ExportPlanRead` / `ExportPlanWriteRequest` 提供 `voiceoverProvider`、`voiceoverVoice`、`voiceoverStyle`、`voiceoverSpeed`、`voiceoverEmotion`。`voiceoverVoice=auto` 表示按风格和情绪智能匹配；指定 Edge 音色后优先使用用户选择。
 - `ExportPlanRead` / `ExportPlanWriteRequest` 新增 `voiceoverDensity`，可选 `light`、`standard`、`info`，用于控制剪映原生朗读文本轨的压缩密度。
 - `ExportPlanRead` 新增 `voiceoverGenerationStatus`、`voiceoverAudioPath`、`voiceoverDurationSec`、`voiceoverProviderMeta`、`voiceoverGeneratedAt`，用于追踪口播生成准备状态。
-- `POST /projects/{projectId}/export-plan/voiceover:prepare` 会检查口播稿和 Provider 是否就绪，并按文本长度估算旁白时长；当前为 dry-run，不生成音频文件。
+- `POST /projects/{projectId}/export-plan/voiceover:prepare` 会检查口播稿和 Provider 是否就绪，并按文本长度估算旁白时长；`dryRun=true` 只检查，`dryRun=false` 按所选 Provider 生成或准备口播。
 - 当 `voiceoverProvider=mock_silence` 且 `dryRun=false` 时，会生成本地占位静音 WAV，用于验证音频链路；这不代表真实 TTS。占位 WAV 使用分镜时间线总时长，而不是口播文本估算时长。
 - 当 `voiceoverProvider=jianying_native_tts` 且 `dryRun=false` 时，接口会返回 `voiceoverGenerationStatus=manual_required`，表示系统已准备剪映原生朗读交接方案；后续写入剪映草稿时会生成“最终字幕（剪映朗读源）”文本轨，需用户在剪映专业版内点击“开始朗读”生成真实音频。
+- 当 `voiceoverProvider=edge` 且 `dryRun=false` 时，后端使用 Edge TTS 在线中文音色生成 MP3，返回 `voiceoverGenerationStatus=generated`，并在 `voiceoverProviderMeta` 中记录实际音色 ID、中文名称、速率、格式和时长。每次生成使用唯一文件名，音频接口禁止缓存，切换音色后无需先删除旧音频。
+- Edge 合成输入使用与最终字幕相同的压缩文本块，`voiceoverProviderMeta.captionTimings` 保存按 `WordBoundary` 计算的 `startTime`、`endTime`、`text` 和关联 `segmentIds`。剪映导出读取该字段生成“最终字幕（口播同步）”轨；旧音频需重新生成后才具备同步元数据。
 - 写入剪映草稿时，“最终字幕（剪映朗读源）”会按 `voiceoverDensity` 生成跨镜头文本块：`light` 更稀疏，`standard` 保留关键节点和必要过渡，`info` 更适合攻略类信息口播。该轨同时承担最终画面字幕和朗读输入，不再额外保留内容不同的原字幕轨。
 - `POST /api/v1/projects/{project_id}/export-plan/voiceover:preview`：传入 `voiceoverDensity` 和可选的 `voiceoverScript`，返回压缩前后字数、压缩比例、口播块数量、预计朗读时长和逐块文本。该接口只做预估，不写入项目数据。
 - 口播文本压缩按完整短句取舍并去重，不再默认按字符直接截断；仅当单句自身超过当前时间容量时才做保守缩写。
@@ -785,5 +826,6 @@ LLM 业务接口（主题 / 分镜 / 导出 / 节奏文案）在 `ApiResponse.me
 - `DELETE /projects/{projectId}/export-plan/voiceover/audio` 清除当前口播音频路径和生成状态。
 - 前端可基于标题、标签和文案生成一版口播草稿，用户也可以手动修改。
 - `POST /projects/{projectId}/exports/voiceover` 会优先输出 `voiceoverScript`，再输出逐镜头口播。
-- 当前真实云端 TTS 仍未接入，但 `mock_silence` 已可生成占位 WAV，并可写入剪映草稿的独立口播音轨；`jianying_native_tts` 可写入统一的最终字幕/朗读文本轨，复用本机剪映专业版音色库。
-- `GET /projects/{projectId}/export-plan/voiceover/providers` 返回当前口播 Provider 能力表。当前 `mock_silence`、`jianying_native_tts` 标记为 `isEnabled=true`；`openai`、`edge`、`custom` 为真实 TTS 预留 Provider，接口会明确标记为未启用。
+- 当前 `edge` 已接入真实在线 TTS；`mock_silence` 用于生成占位 WAV，`jianying_native_tts` 用于复用本机剪映专业版音色库。
+- `GET /projects/{projectId}/export-plan/voiceover/providers` 返回 Provider 能力表及 `voices` 音色数组。Edge 当前提供智能匹配、晓晓、晓伊、云希、云健、云扬；剪映原生朗读的音色仍需进入剪映专业版后选择。
+- `GET /projects/{projectId}/export-plan/voiceover/audio` 会按文件扩展名返回 `audio/wav` 或 `audio/mpeg`，下载文件名同步使用 WAV 或 MP3 后缀。

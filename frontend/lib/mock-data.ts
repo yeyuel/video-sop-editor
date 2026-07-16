@@ -65,6 +65,7 @@ const fallbackExportPlan: ExportPlan = {
   ...fallbackExportPlanBase,
   voiceoverScript: "",
   voiceoverProvider: "",
+  voiceoverVoice: "auto",
   voiceoverStyle: "natural",
   voiceoverSpeed: 1,
   voiceoverEmotion: "calm",

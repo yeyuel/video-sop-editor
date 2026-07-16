@@ -41,9 +41,9 @@ STORYBOARD_MODIFIER_PRIORITY = {
 DURATION_TOLERANCE_RATIO = 0.15
 DURATION_TOLERANCE_MIN_SEC = 3.0
 
-STORYBOARD_LLM_BASE_MAX_TOKENS = 2000
-STORYBOARD_LLM_TOKENS_PER_ASSET = 80
-STORYBOARD_LLM_MAX_TOKENS_CAP = 8000
+STORYBOARD_LLM_BASE_MAX_TOKENS = 1400
+STORYBOARD_LLM_TOKENS_PER_ASSET = 55
+STORYBOARD_LLM_MAX_TOKENS_CAP = 6000
 STORYBOARD_BEAM_WIDTH = 4
 STORYBOARD_SLOT_CANDIDATE_LIMIT = 5
 REUSE_MAX_BRIDGE_PER_GAP = 2
@@ -1264,7 +1264,7 @@ def build_llm_storyboard_plan(
     )
     reuse_instruction = (
         "You may include the same assetId in multiple segments when pacing or narrative "
-        "benefits from reuse. Prefer varied shotDescription/subtitle across reuse instances."
+        "benefits from reuse. Prefer a distinct structural purpose for each reuse instance."
         if allow_asset_reuse
         else "Include every asset exactly once."
     )
@@ -1272,7 +1272,9 @@ def build_llm_storyboard_plan(
         system_prompt=(
             "You are a travel short-form video storyboard director. "
             "Return JSON only with a segments array. "
-            "Each segment must include assetId, shotDescription, subtitle. "
+            "This is the STRUCTURE pass, not the copywriting pass. "
+            "Each segment must include assetId and shotDescription; function and rhythm are optional. "
+            "Do not generate subtitle or release copy. Those are produced by a later copywriting pass. "
             "Use ruleOrderedAssetIds as the baseline order, but you may reorder segments "
             f"when narrative flow improves. {reuse_instruction} "
             "The segments array order is your preferred timeline order. "
@@ -1325,6 +1327,7 @@ def build_llm_storyboard_plan(
     if plan is None:
         emit_progress(on_progress, "fallback", "LLM 分镜无效，准备回退到规则生成…", progress=88)
     meta = build_llm_meta(result, used_fallback=plan is None).as_dict()
+    meta["promptMode"] = "structure_only"
     meta["assetReuseEnabled"] = "true" if allow_asset_reuse else "false"
     if allow_asset_reuse and plan is not None:
         meta["llmMessage"] = f"{meta.get('llmMessage', '')} 项目已启用镜头复用。".strip()

@@ -4,6 +4,14 @@ from dataclasses import dataclass
 
 
 @dataclass(frozen=True)
+class VoiceoverVoice:
+    id: str
+    label: str
+    gender: str
+    description: str
+
+
+@dataclass(frozen=True)
 class VoiceoverProvider:
     id: str
     label: str
@@ -12,6 +20,17 @@ class VoiceoverProvider:
     is_real_tts: bool
     output_format: str
     recommended_for: str
+    voices: tuple[VoiceoverVoice, ...] = ()
+
+
+EDGE_VOICES: tuple[VoiceoverVoice, ...] = (
+    VoiceoverVoice("auto", "智能匹配", "auto", "根据口播风格和情绪自动选择音色。"),
+    VoiceoverVoice("zh-CN-XiaoxiaoNeural", "晓晓（女声）", "female", "自然温暖，适合旅行叙事和治愈内容。"),
+    VoiceoverVoice("zh-CN-XiaoyiNeural", "晓伊（女声）", "female", "明快活泼，适合种草和轻快短视频。"),
+    VoiceoverVoice("zh-CN-YunxiNeural", "云希（男声）", "male", "年轻清晰，适合攻略和旅行向导。"),
+    VoiceoverVoice("zh-CN-YunjianNeural", "云健（男声）", "male", "沉稳有力，适合纪录片和风光旁白。"),
+    VoiceoverVoice("zh-CN-YunyangNeural", "云扬（男声）", "male", "专业清楚，适合信息密集型讲解。"),
+)
 
 
 VOICEOVER_PROVIDERS: tuple[VoiceoverProvider, ...] = (
@@ -44,12 +63,13 @@ VOICEOVER_PROVIDERS: tuple[VoiceoverProvider, ...] = (
     ),
     VoiceoverProvider(
         id="edge",
-        label="Edge / 本地试听",
-        description="预留本地或系统级 TTS Provider。适合低成本试听和离线验证。",
-        is_enabled=False,
+        label="Edge TTS（真实口播）",
+        description="使用微软在线神经网络音色生成中文 MP3，可直接试听、下载并写入剪映草稿。",
+        is_enabled=True,
         is_real_tts=True,
-        output_format="mp3/wav",
-        recommended_for="低成本试听、快速验证口播节奏",
+        output_format="mp3",
+        recommended_for="低成本生成真实口播、快速验证语速与画面对齐",
+        voices=EDGE_VOICES,
     ),
     VoiceoverProvider(
         id="custom",
@@ -77,3 +97,11 @@ def get_voiceover_provider(provider_id: str) -> VoiceoverProvider | None:
 def is_voiceover_provider_enabled(provider_id: str) -> bool:
     provider = get_voiceover_provider(provider_id)
     return bool(provider and provider.is_enabled)
+
+
+def get_voiceover_voice(provider_id: str, voice_id: str) -> VoiceoverVoice | None:
+    provider = get_voiceover_provider(provider_id)
+    normalized = voice_id.strip() or "auto"
+    if not provider:
+        return None
+    return next((voice for voice in provider.voices if voice.id == normalized), None)

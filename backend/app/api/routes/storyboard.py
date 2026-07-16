@@ -103,7 +103,13 @@ def generate_storyboard_with_llm_stream(
         )
 
     return StreamingResponse(
-        run_streaming_task(task, serialize_complete=serialize_complete),
+        run_streaming_task(
+            task,
+            serialize_complete=serialize_complete,
+            user_id=current_user.id,
+            project_id=project_id,
+            operation="storyboard_generation",
+        ),
         media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache",

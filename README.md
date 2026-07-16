@@ -14,7 +14,7 @@
 |----|-----|
 | 前端 | Next.js App Router、React、TypeScript、Tailwind CSS |
 | 后端 | FastAPI、Pydantic、SQLModel、SQLite、Uvicorn |
-| 音频 | ffmpeg（转码）、librosa（节拍识别，可选） |
+| 音频 | ffmpeg（转码）、librosa（节拍识别，可选）、Edge TTS（真实中文口播） |
 | LLM | Provider Registry + API Key / OAuth / ChatGPT (Codex) / Gemini 订阅登录 |
 
 ## 本地开发

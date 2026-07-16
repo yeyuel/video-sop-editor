@@ -673,6 +673,108 @@ def _migration_027_storyboard_subtitle_policy(session: Session) -> None:
         )
 
 
+def _migration_028_export_voiceover_voice(session: Session) -> None:
+    inspector = inspect(engine)
+    if "publishplanentity" not in inspector.get_table_names():
+        return
+
+    publish_columns = {column["name"] for column in inspector.get_columns("publishplanentity")}
+    if "voiceover_voice" not in publish_columns:
+        session.exec(
+            text("ALTER TABLE publishplanentity ADD COLUMN voiceover_voice TEXT DEFAULT 'auto'")
+        )
+
+
+def _migration_029_llm_result_cache(session: Session) -> None:
+    session.exec(
+        text(
+            """
+            CREATE TABLE IF NOT EXISTS llmresultcacheentity (
+                id TEXT PRIMARY KEY,
+                input_fingerprint TEXT NOT NULL UNIQUE,
+                provider_id TEXT DEFAULT '',
+                model TEXT DEFAULT '',
+                response_json TEXT DEFAULT '{}',
+                hit_count INTEGER DEFAULT 0,
+                created_at TEXT DEFAULT '',
+                last_hit_at TEXT DEFAULT ''
+            )
+            """
+        )
+    )
+    session.exec(
+        text(
+            "CREATE INDEX IF NOT EXISTS ix_llmresultcacheentity_input_fingerprint "
+            "ON llmresultcacheentity (input_fingerprint)"
+        )
+    )
+    session.exec(
+        text(
+            "CREATE INDEX IF NOT EXISTS ix_llmresultcacheentity_provider_id "
+            "ON llmresultcacheentity (provider_id)"
+        )
+    )
+
+
+def _migration_030_llm_background_tasks(session: Session) -> None:
+    session.exec(
+        text(
+            """
+            CREATE TABLE IF NOT EXISTS llmtaskentity (
+                id TEXT PRIMARY KEY,
+                user_id TEXT DEFAULT '',
+                project_id TEXT DEFAULT '',
+                operation TEXT DEFAULT '',
+                status TEXT DEFAULT 'queued',
+                stage TEXT DEFAULT 'queued',
+                message TEXT DEFAULT '',
+                detail TEXT DEFAULT '',
+                progress INTEGER DEFAULT 0,
+                result_json TEXT DEFAULT '',
+                meta_json TEXT DEFAULT '',
+                error_message TEXT DEFAULT '',
+                cancel_requested INTEGER DEFAULT 0,
+                created_at TEXT DEFAULT '',
+                updated_at TEXT DEFAULT '',
+                completed_at TEXT DEFAULT ''
+            )
+            """
+        )
+    )
+    for column in ("user_id", "project_id", "operation", "status"):
+        session.exec(
+            text(
+                f"CREATE INDEX IF NOT EXISTS ix_llmtaskentity_{column} "
+                f"ON llmtaskentity ({column})"
+            )
+        )
+
+
+def _migration_031_rough_cut_versions(session: Session) -> None:
+    session.exec(
+        text(
+            """
+            CREATE TABLE IF NOT EXISTS roughcutversionentity (
+                id TEXT PRIMARY KEY,
+                project_id TEXT NOT NULL,
+                label TEXT DEFAULT '',
+                generation_mode TEXT DEFAULT '',
+                provider_id TEXT DEFAULT '',
+                model TEXT DEFAULT '',
+                snapshot_json TEXT DEFAULT '{}',
+                created_at TEXT DEFAULT ''
+            )
+            """
+        )
+    )
+    session.exec(
+        text(
+            "CREATE INDEX IF NOT EXISTS ix_roughcutversionentity_project_id "
+            "ON roughcutversionentity (project_id)"
+        )
+    )
+
+
 MIGRATIONS: list[tuple[int, str, object]] = [
     (1, "001_legacy_columns", _migration_001_legacy_columns),
     (2, "002_rhythm_analysis_metrics", _migration_002_rhythm_analysis_metrics),
@@ -705,6 +807,10 @@ MIGRATIONS: list[tuple[int, str, object]] = [
     (25, "025_export_voiceover_generation_state", _migration_025_export_voiceover_generation_state),
     (26, "026_export_voiceover_density", _migration_026_export_voiceover_density),
     (27, "027_storyboard_subtitle_policy", _migration_027_storyboard_subtitle_policy),
+    (28, "028_export_voiceover_voice", _migration_028_export_voiceover_voice),
+    (29, "029_llm_result_cache", _migration_029_llm_result_cache),
+    (30, "030_llm_background_tasks", _migration_030_llm_background_tasks),
+    (31, "031_rough_cut_versions", _migration_031_rough_cut_versions),
 ]
 
 

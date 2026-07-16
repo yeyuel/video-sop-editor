@@ -51,8 +51,31 @@ from app.services.llm.subscription_oauth.service import (
 from app.services.llm.provider_ids import normalize_provider_id
 from app.services.llm.registry import get_provider, list_models
 from app.services.llm.types import LlmProviderStatus
+from app.services.llm.task_store import get_llm_task, request_task_cancel, task_to_dict
 
 router = APIRouter(prefix="/llm", tags=["llm"])
+
+
+@router.get("/tasks/{task_id}", response_model=ApiResponse)
+def get_llm_background_task(
+    task_id: str,
+    current_user: AuthUserRead = Depends(require_director_user),
+) -> ApiResponse:
+    task = get_llm_task(task_id, user_id=current_user.id)
+    if not task:
+        raise HTTPException(status_code=404, detail="生成任务不存在。")
+    return ApiResponse(data=task_to_dict(task))
+
+
+@router.post("/tasks/{task_id}/cancel", response_model=ApiResponse)
+def cancel_llm_background_task(
+    task_id: str,
+    current_user: AuthUserRead = Depends(require_director_user),
+) -> ApiResponse:
+    task = request_task_cancel(task_id, user_id=current_user.id)
+    if not task:
+        raise HTTPException(status_code=404, detail="生成任务不存在。")
+    return ApiResponse(data=task_to_dict(task))
 
 
 def _parse_bool(value: str) -> bool:

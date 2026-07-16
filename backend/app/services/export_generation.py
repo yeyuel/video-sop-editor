@@ -64,6 +64,7 @@ def build_llm_export_plan(
     result = llm_suggestion_service.generate_json_result(
         system_prompt=(
             "You are a release-copy assistant for travel short videos. "
+            "This is the COPYWRITING pass after storyboard structure has been finalized. "
             "Return JSON only with title, shortTitle, description, tags, coverSuggestion. "
             "Optionally include segmentCaptions: an array of {segmentId, subtitle} to refine "
             "on-screen copy for storyboard segments that match the export description. "
@@ -423,6 +424,7 @@ def to_voiceover_script(workspace: WorkspaceDataRead) -> str:
         f"- 目的地：{workspace.project.destination}",
         f"- 路线：{workspace.project.routeText}",
         f"- 口播 Provider：{workspace.exportPlan.voiceoverProvider or '未配置'}",
+        f"- 口播音色：{workspace.exportPlan.voiceoverVoice or 'auto'}",
         f"- 口播风格：{workspace.exportPlan.voiceoverStyle}",
         f"- 口播语速：{workspace.exportPlan.voiceoverSpeed:g}",
         f"- 口播情绪：{workspace.exportPlan.voiceoverEmotion}",

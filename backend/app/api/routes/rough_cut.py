@@ -1,0 +1,63 @@
+from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import StreamingResponse
+from sqlmodel import Session
+
+from app.api.deps import require_project_editor
+from app.api.sse_stream import run_streaming_task
+from app.db import get_session
+from app.models.schemas import ApiResponse, AuthUserRead, RoughCutGenerateRequest
+from app.services.repository import repository
+from app.services.rough_cut_pipeline import generate_rough_cut_plan, list_rough_cut_versions
+
+router = APIRouter(
+    prefix="/projects/{project_id}/rough-cut",
+    tags=["rough-cut"],
+    dependencies=[Depends(require_project_editor)],
+)
+
+
+@router.post("/generate/stream")
+def generate_rough_cut_stream(
+    project_id: str,
+    payload: RoughCutGenerateRequest | None = None,
+    current_user: AuthUserRead = Depends(require_project_editor),
+) -> StreamingResponse:
+    def task(session: Session, report):
+        return generate_rough_cut_plan(
+            session,
+            project_id,
+            mode=payload.mode if payload else "fill_missing",
+            on_progress=report,
+        )
+
+    def serialize_complete(result: object):
+        if result is None:
+            raise HTTPException(status_code=404, detail="Project not found")
+        data, meta = result  # type: ignore[misc]
+        return data, meta
+
+    return StreamingResponse(
+        run_streaming_task(
+            task,
+            serialize_complete=serialize_complete,
+            user_id=current_user.id,
+            project_id=project_id,
+            operation="rough_cut_generation",
+        ),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
+
+
+@router.get("/versions", response_model=ApiResponse)
+def list_versions(
+    project_id: str,
+    session: Session = Depends(get_session),
+) -> ApiResponse:
+    if not repository.get_project_entity(session, project_id):
+        raise HTTPException(status_code=404, detail="Project not found")
+    return ApiResponse(data=list_rough_cut_versions(session, project_id))

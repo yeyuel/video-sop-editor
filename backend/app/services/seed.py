@@ -287,6 +287,7 @@ def _ensure_taizhou_project(session: Session) -> None:
             cover_suggestion=publish["cover_suggestion"],
             voiceover_script=publish.get("voiceover_script", ""),
             voiceover_provider=publish.get("voiceover_provider", ""),
+            voiceover_voice=publish.get("voiceover_voice", "auto"),
             voiceover_style=publish.get("voiceover_style", "natural"),
             voiceover_speed=publish.get("voiceover_speed", 1.0),
             voiceover_emotion=publish.get("voiceover_emotion", "calm"),
@@ -409,6 +410,7 @@ def _upsert_publish_plan(session: Session, payload: PublishPlanEntity) -> None:
         current.cover_suggestion = payload.cover_suggestion
         current.voiceover_script = getattr(payload, "voiceover_script", "") or ""
         current.voiceover_provider = getattr(payload, "voiceover_provider", "") or ""
+        current.voiceover_voice = getattr(payload, "voiceover_voice", "auto") or "auto"
         current.voiceover_style = getattr(payload, "voiceover_style", "natural") or "natural"
         current.voiceover_speed = getattr(payload, "voiceover_speed", 1.0) or 1.0
         current.voiceover_emotion = getattr(payload, "voiceover_emotion", "calm") or "calm"

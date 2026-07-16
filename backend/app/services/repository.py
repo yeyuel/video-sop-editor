@@ -1,3 +1,4 @@
+import hashlib
 import json
 import os
 import re
@@ -108,7 +109,12 @@ from app.services.storyboard_generation import (
     segment_read_to_write,
 )
 from app.services.theme_generation import build_llm_theme_candidates, build_rule_theme_candidates
-from app.services.voiceover_provider import get_voiceover_provider, is_voiceover_provider_enabled
+from app.services.voiceover_provider import (
+    get_voiceover_provider,
+    get_voiceover_voice,
+    is_voiceover_provider_enabled,
+)
+from app.services.voiceover_synthesis import VoiceoverSynthesisError, synthesize_edge_voiceover
 from app.services.llm.progress import ProgressReporter, emit_progress
 from app.services.session_service import delete_user_sessions, revoke_user_sessions
 
@@ -1311,6 +1317,7 @@ class SqlRepository:
                 cover_suggestion="",
                 voiceover_script="",
                 voiceover_provider="",
+                voiceover_voice="auto",
                 voiceover_style="natural",
                 voiceover_speed=1.0,
                 voiceover_emotion="calm",
@@ -1324,6 +1331,13 @@ class SqlRepository:
         publish.cover_suggestion = payload.coverSuggestion
         publish.voiceover_script = payload.voiceoverScript
         publish.voiceover_provider = payload.voiceoverProvider
+        requested_voice = payload.voiceoverVoice.strip() or "auto"
+        publish.voiceover_voice = (
+            requested_voice
+            if payload.voiceoverProvider == "edge"
+            and get_voiceover_voice("edge", requested_voice)
+            else "auto"
+        )
         publish.voiceover_style = payload.voiceoverStyle
         publish.voiceover_speed = payload.voiceoverSpeed
         publish.voiceover_emotion = payload.voiceoverEmotion
@@ -1369,6 +1383,7 @@ class SqlRepository:
             coverSuggestion=str(suggestion.get("coverSuggestion", "")).strip(),
             voiceoverScript=current_plan.voiceoverScript if current_plan else "",
             voiceoverProvider=current_plan.voiceoverProvider if current_plan else "",
+            voiceoverVoice=current_plan.voiceoverVoice if current_plan else "auto",
             voiceoverStyle=current_plan.voiceoverStyle if current_plan else "natural",
             voiceoverSpeed=current_plan.voiceoverSpeed if current_plan else 1.0,
             voiceoverEmotion=current_plan.voiceoverEmotion if current_plan else "calm",
@@ -1448,6 +1463,20 @@ class SqlRepository:
 
         provider = (publish.voiceover_provider or "").strip()
         provider_config = get_voiceover_provider(provider)
+        caption_blocks: list[str] = []
+        caption_block_segment_ids: list[list[str]] = []
+        if provider == "edge":
+            workspace = self.get_workspace(session, project_id)
+            if workspace:
+                from app.services.capcut_draft_export import build_native_voiceover_blocks
+
+                final_blocks = [
+                    block for block in build_native_voiceover_blocks(workspace) if block.text.strip()
+                ]
+                caption_blocks = [block.text.strip() for block in final_blocks]
+                caption_block_segment_ids = [block.segment_ids for block in final_blocks]
+                if caption_blocks:
+                    script = "\n".join(caption_blocks)
         duration_sec = self._estimate_voiceover_duration_sec(
             script,
             speed=getattr(publish, "voiceover_speed", 1.0) or 1.0,
@@ -1462,6 +1491,7 @@ class SqlRepository:
         provider_meta = {
             "dryRun": payload.dryRun,
             "provider": provider,
+            "voiceSelection": getattr(publish, "voiceover_voice", "auto") or "auto",
             "style": publish.voiceover_style or "natural",
             "speed": getattr(publish, "voiceover_speed", 1.0) or 1.0,
             "emotion": publish.voiceover_emotion or "calm",
@@ -1476,8 +1506,14 @@ class SqlRepository:
             "providerEnabled": bool(provider_config and provider_config.is_enabled),
             "realTts": bool(provider_config and provider_config.is_real_tts),
             "source": "export_script" if publish.voiceover_script.strip() else "segment_fallback",
+            "synthesisTextSource": "final_caption_blocks" if caption_blocks else "raw_script",
+            "captionBlockCount": len(caption_blocks),
+            "synthesisTextFingerprint": hashlib.sha256(script.encode("utf-8")).hexdigest()[:16]
+            if script
+            else "",
             "message": self._voiceover_generation_message(status),
         }
+        previous_audio_path = publish.voiceover_audio_path or ""
 
         if status == "ready" and not payload.dryRun and provider == "mock_silence":
             # mock_silence is a timeline placeholder, not real TTS. Keep it full-length
@@ -1493,11 +1529,43 @@ class SqlRepository:
             provider_meta["audioKind"] = "silent_wav_placeholder"
             provider_meta["placeholderDurationPolicy"] = "match_timeline"
             publish.voiceover_audio_path = audio_path
+            if previous_audio_path and previous_audio_path != audio_path:
+                self._remove_stored_audio(previous_audio_path)
         elif status == "ready" and not payload.dryRun and provider == "jianying_native_tts":
             status = "manual_required"
             provider_meta["message"] = self._voiceover_generation_message(status)
             provider_meta["handoff"] = "capcut_native_text_to_speech"
             provider_meta["audioKind"] = "jianying_native_tts_pending"
+        elif status == "ready" and not payload.dryRun and provider == "edge":
+            try:
+                result = synthesize_edge_voiceover(
+                    script=script,
+                    output_dir=Path(settings.storage_dir) / "voiceover" / project_id,
+                    file_stem=publish.id,
+                    style=publish.voiceover_style or "natural",
+                    emotion=publish.voiceover_emotion or "calm",
+                    speed=getattr(publish, "voiceover_speed", 1.0) or 1.0,
+                    selected_voice=getattr(publish, "voiceover_voice", "auto") or "auto",
+                    caption_blocks=caption_blocks or [script],
+                )
+                duration_sec = result.duration_sec or duration_sec
+                status = "generated"
+                caption_timings = result.provider_meta.get("captionTimings", [])
+                if isinstance(caption_timings, list):
+                    for index, timing in enumerate(caption_timings):
+                        if isinstance(timing, dict) and index < len(caption_block_segment_ids):
+                            timing["segmentIds"] = caption_block_segment_ids[index]
+                provider_meta.update(result.provider_meta)
+                provider_meta["actualDurationSec"] = duration_sec
+                provider_meta["message"] = "真实口播已生成，可直接试听、下载或写入剪映草稿。"
+                publish.voiceover_audio_path = result.audio_path
+                if previous_audio_path and previous_audio_path != result.audio_path:
+                    self._remove_stored_audio(previous_audio_path)
+            except VoiceoverSynthesisError as exc:
+                status = "failed"
+                provider_meta["message"] = str(exc)
+                provider_meta["errorType"] = "voiceover_synthesis_failed"
+                self._remove_stored_audio(previous_audio_path)
 
         publish.voiceover_generation_status = status
         publish.voiceover_duration_sec = duration_sec
@@ -1727,6 +1795,7 @@ class SqlRepository:
             coverSuggestion="",
             voiceoverScript="",
             voiceoverProvider="",
+            voiceoverVoice="auto",
             voiceoverStyle="natural",
             voiceoverSpeed=1.0,
             voiceoverEmotion="calm",
@@ -2069,6 +2138,7 @@ class SqlRepository:
             coverSuggestion=item.cover_suggestion,
             voiceoverScript=getattr(item, "voiceover_script", "") or "",
             voiceoverProvider=getattr(item, "voiceover_provider", "") or "",
+            voiceoverVoice=getattr(item, "voiceover_voice", "") or "auto",
             voiceoverStyle=getattr(item, "voiceover_style", "") or "natural",
             voiceoverSpeed=float(getattr(item, "voiceover_speed", 1.0) or 1.0),
             voiceoverEmotion=getattr(item, "voiceover_emotion", "") or "calm",
@@ -2123,6 +2193,8 @@ class SqlRepository:
             return "请先填写整段口播稿，或在分镜中补充逐镜头口播。"
         if status == "provider_not_supported":
             return "当前 Provider 还没有接入真实 TTS，请先使用本地占位静音或等待后续接入。"
+        if status == "failed":
+            return "口播音频生成失败，请检查网络和 Provider 配置后重试。"
         return "请先选择口播 Provider，再生成口播音频。"
 
     @staticmethod
@@ -2269,8 +2341,15 @@ class SqlRepository:
 
     @staticmethod
     def _remove_stored_audio(file_path: str) -> None:
-        if file_path and os.path.exists(file_path):
-            os.remove(file_path)
+        if not file_path:
+            return
+        try:
+            if os.path.exists(file_path):
+                os.remove(file_path)
+        except OSError:
+            # Browsers and JianYing may keep the previous audio open on Windows.
+            # A stale file must not make regeneration or state cleanup fail.
+            return
 
 
 repository = SqlRepository()

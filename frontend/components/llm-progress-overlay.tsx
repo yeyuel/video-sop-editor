@@ -8,6 +8,7 @@ import {
   stageStatus,
   type LlmProgressViewState
 } from "@/lib/llm-progress-stages";
+import { cancelActiveLlmTask } from "@/lib/llm-stream";
 
 type LlmProgressOverlayProps = {
   state: LlmProgressViewState;
@@ -16,6 +17,7 @@ type LlmProgressOverlayProps = {
 
 export function LlmProgressOverlay({ state, visible }: LlmProgressOverlayProps) {
   const [elapsedSec, setElapsedSec] = useState(0);
+  const [isCancelling, setIsCancelling] = useState(false);
 
   useEffect(() => {
     if (!visible) {
@@ -31,6 +33,16 @@ export function LlmProgressOverlay({ state, visible }: LlmProgressOverlayProps) 
 
   if (!visible) {
     return null;
+  }
+
+  async function handleCancel() {
+    setIsCancelling(true);
+    try {
+      const requested = await cancelActiveLlmTask();
+      if (!requested) setIsCancelling(false);
+    } catch {
+      setIsCancelling(false);
+    }
   }
 
   const progress = Math.max(0, Math.min(state.progress, 100));
@@ -94,6 +106,16 @@ export function LlmProgressOverlay({ state, visible }: LlmProgressOverlayProps) 
         <p className="mt-5 text-center text-xs leading-5 text-ink/50">
           请保持页面打开。模型响应较慢时会每 5 秒更新等待状态。
         </p>
+        <div className="mt-4 flex justify-center">
+          <button
+            type="button"
+            className="btn-secondary px-5 py-2 text-sm"
+            disabled={isCancelling}
+            onClick={handleCancel}
+          >
+            {isCancelling ? "正在取消..." : "取消生成"}
+          </button>
+        </div>
       </div>
     </div>
   );

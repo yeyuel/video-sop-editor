@@ -68,6 +68,87 @@ def test_build_llm_meta_success() -> None:
     assert meta.llmUsedFallback == "false"
 
 
+def test_build_llm_meta_exposes_cache_hit() -> None:
+    meta = build_llm_meta(
+        LlmCallResult.success(
+            {"themes": []},
+            provider_id="deepseek",
+            model="deepseek-chat",
+            attempts=0,
+            cached=True,
+            input_fingerprint="abc123",
+        )
+    )
+    assert meta.llmStatus == "success"
+    assert meta.llmCacheHit == "true"
+    assert meta.llmInputFingerprint == "abc123"
+    assert meta.llmAttempts == "0"
+    assert "复用" in meta.llmMessage
+
+
+def test_gateway_reuses_successful_result_cache(regression_env: dict, monkeypatch) -> None:
+    gateway = LlmGateway()
+    engine = regression_env["engine"]
+    config = ResolvedLlmConfig(
+        provider_id="deepseek",
+        provider_name="DeepSeek",
+        auth_type="api_key",
+        base_url="https://api.deepseek.com/v1",
+        model="deepseek-chat",
+        api_key="test-key",
+        status=LlmProviderStatus.CONFIGURED,
+    )
+    calls = 0
+
+    def fake_generate_json_with_config(**kwargs):
+        nonlocal calls
+        calls += 1
+        return LlmCallResult.success(
+            {"themes": [{"title": "缓存主题"}]},
+            provider_id=config.provider_id,
+            model=config.model,
+        )
+
+    monkeypatch.setattr(
+        "app.services.llm.gateway.resolve_active_config",
+        lambda session: config,
+    )
+    monkeypatch.setattr(
+        "app.services.llm.gateway.enrich_config_with_auth",
+        lambda session, resolved: resolved,
+    )
+    monkeypatch.setattr(gateway, "generate_json_with_config", fake_generate_json_with_config)
+
+    with Session(engine) as session:
+        first = gateway.generate_json(
+            system_prompt="system-v1",
+            user_prompt='{"project":"demo"}',
+            max_tokens=800,
+            session=session,
+        )
+        second = gateway.generate_json(
+            system_prompt="system-v1",
+            user_prompt='{"project":"demo"}',
+            max_tokens=800,
+            session=session,
+        )
+        changed = gateway.generate_json(
+            system_prompt="system-v1",
+            user_prompt='{"project":"changed"}',
+            max_tokens=800,
+            session=session,
+        )
+
+    assert first.ok and not first.cached
+    assert second.ok and second.cached
+    assert second.attempts == 0
+    assert second.data == first.data
+    assert second.input_fingerprint == first.input_fingerprint
+    assert changed.ok and not changed.cached
+    assert changed.input_fingerprint != first.input_fingerprint
+    assert calls == 2
+
+
 def test_build_llm_meta_fallback() -> None:
     meta = build_llm_meta(
         LlmCallResult.failure(

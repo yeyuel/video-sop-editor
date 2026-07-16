@@ -44,8 +44,9 @@
 |---------|---------|------|
 | `startTime` / `endTime` | `segments[].target_timerange` | 秒 → 微秒 |
 | `asset.relativePath` + `project.mediaRoot` | `materials.videos[].path` | 素材绝对路径 |
-| `subtitle` | `materials.texts[]` + 文本轨 | UTF-16 字节 range；默认 **悠然体**、字号 15 的 50%（7.5） |
+| `subtitle` | `materials.texts[]` + 文本轨 | UTF-16 字节 range；默认 **悠然体**、字号 15 的 40%（6.0），长文本自动缩小 |
 | 压缩口播块（`jianying_native_tts`） | “最终字幕（剪映朗读源）”文本轨 | 替代逐镜头原字幕，同一份文本同时用于画面显示和剪映朗读 |
+| Edge TTS 口播音频 | 独立“口播”音轨 + “最终字幕（口播同步）”文本轨 | 支持智能匹配或指定中文音色；字幕按真实发音边界对齐，重新生成后立即替换旧音频 |
 | `transitionPolicy=fade_or_match_cut` | `materials.transitions[]` | 写入剪映内置“叠化”，时长按相邻镜头长度限制在 0.2-0.5s |
 | `motionPolicy=slow_push/gentle_zoom` | `segments[].common_keyframes` | 仅对照片写入等比缩放关键帧；视频素材保持原始运动 |
 | `attentionRole/function` | 字幕文字样式 | 钩子、反转、高潮、收尾字幕适度放大并加粗 |
@@ -57,7 +58,7 @@
 | 项 | 默认 | 剪映内可调 |
 |----|------|-----------|
 | 字幕字体 | 悠然体（内置 resource_id `349311`） | 是 |
-| 字幕字号 | 7.5（原导出默认 15 的 50%） | 是 |
+| 字幕字号 | 默认 6.0；重点字幕最高 6.6；超过 18/24/32 字分级缩小，最低 4.2 | 是 |
 | BGM 开始/结束 | 0.4s 淡入、1s 淡出（`materials.audio_fades`） | 是 |
 | 缓冲转场 | 叠化；硬切和干净切不添加转场材料 | 是 |
 | 照片动效 | 慢推 1.00→1.12，轻缩放 1.02→1.08 | 是 |

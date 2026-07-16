@@ -3,6 +3,10 @@ export type LlmMeta = {
   llmMessage?: string;
   llmProviderId?: string;
   llmUsedFallback?: string;
+  llmCacheHit?: string;
+  llmInputFingerprint?: string;
+  llmModel?: string;
+  llmAttempts?: string;
   storyboardCaptionsUpdated?: string;
   assetReuseEnabled?: string;
 };
@@ -72,6 +76,13 @@ export function describeLlmStatus(meta?: LlmMeta): {
   const message = meta.llmMessage ?? "";
 
   if (status === "success") {
+    if (meta.llmCacheHit === "true") {
+      return {
+        title: "已复用上次生成结果",
+        message: message || "项目输入未变化，本次无需重复调用大模型。",
+        tone: "success"
+      };
+    }
     return {
       title: "LLM 建议已生成",
       message: message || "大模型建议已成功返回。",

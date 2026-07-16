@@ -35,6 +35,8 @@ class LlmCallResult:
     provider_id: str = ""
     model: str = ""
     attempts: int = 1
+    cached: bool = False
+    input_fingerprint: str = ""
 
     @classmethod
     def success(
@@ -44,6 +46,8 @@ class LlmCallResult:
         provider_id: str,
         model: str,
         attempts: int = 1,
+        cached: bool = False,
+        input_fingerprint: str = "",
     ) -> LlmCallResult:
         return cls(
             ok=True,
@@ -51,6 +55,8 @@ class LlmCallResult:
             provider_id=provider_id,
             model=model,
             attempts=attempts,
+            cached=cached,
+            input_fingerprint=input_fingerprint,
         )
 
     @classmethod
@@ -117,6 +123,10 @@ class LlmMeta:
     llmMessage: str
     llmProviderId: str = ""
     llmUsedFallback: str = "false"
+    llmCacheHit: str = "false"
+    llmInputFingerprint: str = ""
+    llmModel: str = ""
+    llmAttempts: str = "1"
 
     def as_dict(self) -> dict[str, str]:
         return {
@@ -124,6 +134,10 @@ class LlmMeta:
             "llmMessage": self.llmMessage,
             "llmProviderId": self.llmProviderId,
             "llmUsedFallback": self.llmUsedFallback,
+            "llmCacheHit": self.llmCacheHit,
+            "llmInputFingerprint": self.llmInputFingerprint,
+            "llmModel": self.llmModel,
+            "llmAttempts": self.llmAttempts,
         }
 
 
@@ -136,9 +150,17 @@ def build_llm_meta(
     if result.ok:
         return LlmMeta(
             llmStatus="success",
-            llmMessage="LLM 建议生成成功。",
+            llmMessage=(
+                "项目输入未变化，已复用上次生成结果。"
+                if result.cached
+                else "LLM 建议生成成功。"
+            ),
             llmProviderId=result.provider_id,
             llmUsedFallback="false",
+            llmCacheHit="true" if result.cached else "false",
+            llmInputFingerprint=result.input_fingerprint,
+            llmModel=result.model,
+            llmAttempts=str(result.attempts),
         )
 
     status = result.error_code.value if result.error_code else "unknown"
@@ -150,4 +172,8 @@ def build_llm_meta(
         llmMessage=message,
         llmProviderId=result.provider_id,
         llmUsedFallback="true" if used_fallback else "false",
+        llmCacheHit="false",
+        llmInputFingerprint=result.input_fingerprint,
+        llmModel=result.model,
+        llmAttempts=str(result.attempts),
     )

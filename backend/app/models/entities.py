@@ -33,6 +33,47 @@ class LlmCallLogEntity(SQLModel, table=True):
     created_at: str = Field(default="")
 
 
+class LlmResultCacheEntity(SQLModel, table=True):
+    id: str = Field(primary_key=True)
+    input_fingerprint: str = Field(index=True, unique=True)
+    provider_id: str = Field(default="", index=True)
+    model: str = Field(default="")
+    response_json: str = Field(default="{}")
+    hit_count: int = Field(default=0)
+    created_at: str = Field(default="")
+    last_hit_at: str = Field(default="")
+
+
+class LlmTaskEntity(SQLModel, table=True):
+    id: str = Field(primary_key=True)
+    user_id: str = Field(default="", index=True)
+    project_id: str = Field(default="", index=True)
+    operation: str = Field(default="", index=True)
+    status: str = Field(default="queued", index=True)
+    stage: str = Field(default="queued")
+    message: str = Field(default="")
+    detail: str = Field(default="")
+    progress: int = Field(default=0)
+    result_json: str = Field(default="")
+    meta_json: str = Field(default="")
+    error_message: str = Field(default="")
+    cancel_requested: bool = Field(default=False)
+    created_at: str = Field(default="")
+    updated_at: str = Field(default="")
+    completed_at: str = Field(default="")
+
+
+class RoughCutVersionEntity(SQLModel, table=True):
+    id: str = Field(primary_key=True)
+    project_id: str = Field(index=True)
+    label: str = Field(default="")
+    generation_mode: str = Field(default="")
+    provider_id: str = Field(default="")
+    model: str = Field(default="")
+    snapshot_json: str = Field(default="{}")
+    created_at: str = Field(default="")
+
+
 class ProjectEntity(SQLModel, table=True):
     id: str = Field(primary_key=True)
     name: str
@@ -143,6 +184,7 @@ class PublishPlanEntity(SQLModel, table=True):
     cover_suggestion: str
     voiceover_script: str = ""
     voiceover_provider: str = ""
+    voiceover_voice: str = "auto"
     voiceover_style: str = "natural"
     voiceover_speed: float = 1.0
     voiceover_emotion: str = "calm"

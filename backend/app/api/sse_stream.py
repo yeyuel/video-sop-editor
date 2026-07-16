@@ -8,9 +8,18 @@ from typing import Any
 
 from sqlmodel import Session
 
-from app.api.meta import merge_response_meta
 from app import db
+from app.api.meta import merge_response_meta
 from app.runtime.shutdown import is_shutting_down
+from app.services.llm.task_store import (
+    LlmTaskCancelled,
+    create_llm_task,
+    mark_task_cancelled,
+    mark_task_completed,
+    mark_task_failed,
+    mark_task_running,
+    update_task_progress,
+)
 
 QUEUE_POLL_SEC = 1.0
 
@@ -23,8 +32,20 @@ def run_streaming_task(
     task: Callable[[Session, Callable[..., None]], Any],
     *,
     serialize_complete: Callable[[Any], tuple[Any, dict[str, str] | None]],
+    user_id: str = "",
+    project_id: str = "",
+    operation: str = "llm_generation",
 ) -> Iterator[str]:
     event_queue: queue.Queue[dict[str, Any] | None] = queue.Queue()
+    task_id = create_llm_task(user_id=user_id, project_id=project_id, operation=operation)
+    event_queue.put(
+        {
+            "type": "task",
+            "taskId": task_id,
+            "status": "queued",
+            "operation": operation,
+        }
+    )
 
     def report(
         *,
@@ -33,8 +54,16 @@ def run_streaming_task(
         progress: int | None = None,
         detail: str = "",
     ) -> None:
+        update_task_progress(
+            task_id,
+            stage=stage,
+            message=message,
+            progress=progress,
+            detail=detail,
+        )
         payload: dict[str, Any] = {
             "type": "progress",
+            "taskId": task_id,
             "stage": stage,
             "message": message,
         }
@@ -44,22 +73,51 @@ def run_streaming_task(
             payload["detail"] = detail
         event_queue.put(payload)
 
-    result_box: dict[str, Any] = {"value": None, "error": None}
-
     def worker() -> None:
         try:
             if is_shutting_down():
-                result_box["error"] = RuntimeError("服务正在关闭。")
-                return
+                raise RuntimeError("服务正在关闭。")
+            mark_task_running(task_id)
             with Session(db.engine) as session:
-                result_box["value"] = task(session, report)
-        except Exception as exc:  # noqa: BLE001 - stream endpoint must surface errors
-            result_box["error"] = exc
+                result = task(session, report)
+            data, llm_meta = serialize_complete(result)
+            meta = merge_response_meta(llm_meta)
+            mark_task_completed(task_id, data=data, meta=meta)
+            event_queue.put(
+                {
+                    "type": "complete",
+                    "taskId": task_id,
+                    "progress": 100,
+                    "stage": "complete",
+                    "message": "生成完成",
+                    "data": data,
+                    "meta": meta,
+                }
+            )
+        except LlmTaskCancelled:
+            mark_task_cancelled(task_id)
+            event_queue.put(
+                {
+                    "type": "error",
+                    "taskId": task_id,
+                    "status": "cancelled",
+                    "message": "任务已取消。",
+                }
+            )
+        except Exception as exc:  # noqa: BLE001 - task failures must be persisted
+            mark_task_failed(task_id, str(exc))
+            event_queue.put(
+                {
+                    "type": "error",
+                    "taskId": task_id,
+                    "status": "failed",
+                    "message": str(exc),
+                }
+            )
         finally:
             event_queue.put(None)
 
-    thread = threading.Thread(target=worker, daemon=True)
-    thread.start()
+    threading.Thread(target=worker, daemon=True).start()
 
     while not is_shutting_down():
         try:
@@ -70,29 +128,11 @@ def run_streaming_task(
             break
         yield format_sse(item)
 
-    thread.join(timeout=0.2)
-
     if is_shutting_down():
-        yield format_sse({"type": "error", "message": "服务正在关闭，流式任务已中断。"})
-        return
-
-    if result_box["error"] is not None:
         yield format_sse(
             {
                 "type": "error",
-                "message": str(result_box["error"]),
+                "taskId": task_id,
+                "message": "服务正在关闭，任务已中断。",
             }
         )
-        return
-
-    data, llm_meta = serialize_complete(result_box["value"])
-    yield format_sse(
-        {
-            "type": "complete",
-            "progress": 100,
-            "stage": "complete",
-            "message": "生成完成",
-            "data": data,
-            "meta": merge_response_meta(llm_meta),
-        }
-    )

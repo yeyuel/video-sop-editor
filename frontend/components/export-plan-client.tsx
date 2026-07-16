@@ -106,6 +106,15 @@ const voiceoverEmotionOptions = [
   { value: "nostalgic", label: "回忆感" }
 ];
 
+const fallbackEdgeVoiceOptions = [
+  { id: "auto", label: "智能匹配", gender: "auto", description: "根据口播风格和情绪自动选择音色。" },
+  { id: "zh-CN-XiaoxiaoNeural", label: "晓晓（女声）", gender: "female", description: "自然温暖，适合旅行叙事和治愈内容。" },
+  { id: "zh-CN-XiaoyiNeural", label: "晓伊（女声）", gender: "female", description: "明快活泼，适合种草和轻快短视频。" },
+  { id: "zh-CN-YunxiNeural", label: "云希（男声）", gender: "male", description: "年轻清晰，适合攻略和旅行向导。" },
+  { id: "zh-CN-YunjianNeural", label: "云健（男声）", gender: "male", description: "沉稳有力，适合纪录片和风光旁白。" },
+  { id: "zh-CN-YunyangNeural", label: "云扬（男声）", gender: "male", description: "专业清楚，适合信息密集型讲解。" }
+];
+
 const voiceoverDensityOptions = [
   {
     value: "light",
@@ -130,7 +139,7 @@ function getVoiceoverStatusLabel(status: string) {
     provider_required: "缺少 Provider",
     script_required: "缺少口播稿",
     ready: "可生成音频",
-    generated: "已生成占位音频",
+    generated: "已生成音频",
     manual_required: "需在剪映中朗读",
     provider_not_supported: "Provider 未接入",
     failed: "生成失败"
@@ -304,8 +313,31 @@ export function ExportPlanClient({
     () => voiceoverProviders.find((provider) => provider.id === (plan.voiceoverProvider ?? "")),
     [plan.voiceoverProvider, voiceoverProviders]
   );
+  const availableVoiceoverVoices = useMemo(() => {
+    if (plan.voiceoverProvider !== "edge") return [];
+    return selectedVoiceoverProvider?.voices?.length
+      ? selectedVoiceoverProvider.voices
+      : fallbackEdgeVoiceOptions;
+  }, [plan.voiceoverProvider, selectedVoiceoverProvider]);
+  const selectedVoiceoverVoice = availableVoiceoverVoices.find(
+    (voice) => voice.id === (plan.voiceoverVoice ?? "auto")
+  );
+  const voiceoverAudioUrl = getExportVoiceoverAudioUrl(
+    projectId,
+    plan.voiceoverGeneratedAt || plan.voiceoverAudioPath
+  );
+  const generatedVoiceLabel =
+    typeof plan.voiceoverProviderMeta?.voiceLabel === "string"
+      ? plan.voiceoverProviderMeta.voiceLabel
+      : "";
   const voiceoverGenerateButtonLabel =
-    plan.voiceoverProvider === "jianying_native_tts" ? "准备剪映朗读" : "生成占位音频";
+    plan.voiceoverProvider === "jianying_native_tts"
+      ? "准备剪映朗读"
+      : plan.voiceoverProvider === "edge"
+        ? "生成真实口播"
+        : plan.voiceoverProvider === "mock_silence"
+          ? "生成占位音频"
+          : "生成口播音频";
   const selectedVoiceoverDensity = voiceoverDensityOptions.find(
     (option) => option.value === (plan.voiceoverDensity ?? "standard")
   );
@@ -546,7 +578,7 @@ export function ExportPlanClient({
     });
   }
 
-  function handleGenerateMockVoiceoverAudio() {
+  function handleGenerateVoiceoverAudio() {
     setError("");
     startTransition(async () => {
       try {
@@ -564,17 +596,21 @@ export function ExportPlanClient({
         const message =
           typeof nextPlan.voiceoverProviderMeta?.message === "string"
             ? nextPlan.voiceoverProviderMeta.message
-            : "已生成本地占位口播音频。";
+            : "口播音频处理完成。";
+        const actualVoice =
+          typeof nextPlan.voiceoverProviderMeta?.voiceLabel === "string"
+            ? ` 本次实际音色：${nextPlan.voiceoverProviderMeta.voiceLabel}。`
+            : "";
         setNotice({
           title: getVoiceoverStatusLabel(nextPlan.voiceoverGenerationStatus),
-          message,
+          message: `${message}${actualVoice}`,
           tone: ["generated", "manual_required"].includes(nextPlan.voiceoverGenerationStatus)
             ? "success"
             : "warning"
         });
       } catch (submitError) {
         showError(
-          submitError instanceof Error ? submitError.message : "生成占位口播音频失败，请稍后重试。"
+          submitError instanceof Error ? submitError.message : "生成口播音频失败，请稍后重试。"
         );
       }
     });
@@ -878,7 +914,13 @@ export function ExportPlanClient({
             <span className="mb-2 block text-sm text-ink/75">口播 Provider</span>
             <select
               value={plan.voiceoverProvider ?? ""}
-              onChange={(event) => setPlan({ ...plan, voiceoverProvider: event.target.value })}
+              onChange={(event) =>
+                setPlan({
+                  ...plan,
+                  voiceoverProvider: event.target.value,
+                  voiceoverVoice: "auto"
+                })
+              }
               className="input-field"
             >
               {providerOptionsForSelect.map((option) => (
@@ -893,6 +935,40 @@ export function ExportPlanClient({
                 {!selectedVoiceoverProvider.isEnabled ? " 当前仅作为后续接入预留。" : ""}
               </p>
             ) : null}
+          </label>
+          <label className="block">
+            <span className="mb-2 block text-sm text-ink/75">口播音色</span>
+            <select
+              value={plan.voiceoverVoice ?? "auto"}
+              onChange={(event) => setPlan({ ...plan, voiceoverVoice: event.target.value })}
+              disabled={plan.voiceoverProvider !== "edge"}
+              className={`input-field ${
+                plan.voiceoverProvider !== "edge"
+                  ? "cursor-not-allowed bg-sand/60 text-ink/45"
+                  : ""
+              }`}
+            >
+              {plan.voiceoverProvider === "edge" ? (
+                availableVoiceoverVoices.map((voice) => (
+                  <option key={voice.id} value={voice.id}>
+                    {voice.label}
+                  </option>
+                ))
+              ) : (
+                <option value="auto">
+                  {plan.voiceoverProvider === "jianying_native_tts"
+                    ? "在剪映中选择"
+                    : "当前 Provider 不支持"}
+                </option>
+              )}
+            </select>
+            <p className="mt-2 text-xs leading-5 text-ink/55">
+              {plan.voiceoverProvider === "edge"
+                ? selectedVoiceoverVoice?.description ?? "选择用于生成口播的具体音色。"
+                : plan.voiceoverProvider === "jianying_native_tts"
+                  ? "剪映音色需在打开草稿后使用专业版音色库选择。"
+                  : "选择 Edge TTS 后可指定中文男女声。"}
+            </p>
           </label>
           <label className="block">
             <span className="mb-2 block text-sm text-ink/75">口播风格</span>
@@ -971,13 +1047,15 @@ export function ExportPlanClient({
               </div>
             </div>
           </label>
-          {plan.voiceoverProvider === "jianying_native_tts" ? (
+          {["jianying_native_tts", "edge"].includes(plan.voiceoverProvider ?? "") ? (
             <div className="rounded-2xl border border-pine/15 bg-white/65 p-4 md:col-span-4">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <div>
                   <p className="text-sm font-medium text-ink">最终字幕与口播评估</p>
                   <p className="mt-1 text-xs text-ink/55">
-                    压缩后的文本会同时作为最终字幕和剪映朗读源，实际朗读时长会受剪映音色影响。
+                    {plan.voiceoverProvider === "edge"
+                      ? "压缩后的文本会同时用于真实口播和最终字幕；生成后字幕时间会按实际发音边界对齐。"
+                      : "压缩后的文本会同时作为最终字幕和剪映朗读源，实际朗读时长会受剪映音色影响。"}
                   </p>
                 </div>
                 {isVoiceoverPreviewLoading ? (
@@ -1102,7 +1180,7 @@ export function ExportPlanClient({
             </button>
             <button
               type="button"
-              onClick={handleGenerateMockVoiceoverAudio}
+              onClick={handleGenerateVoiceoverAudio}
               disabled={isPending || isLlmRunning}
               className="btn-secondary px-4 py-2 text-xs"
             >
@@ -1122,12 +1200,21 @@ export function ExportPlanClient({
           {plan.voiceoverAudioPath ? (
             <div className="rounded-2xl bg-white/70 px-4 py-3 md:col-span-4">
               <p className="mb-2 text-xs text-ink/55">
-                当前音频是本地占位静音 WAV，仅用于验证链路，不代表真实 AI 口播效果。
+                {plan.voiceoverProvider === "edge"
+                  ? `当前音频由 Edge TTS 生成${
+                      generatedVoiceLabel ? `，实际音色：${generatedVoiceLabel}` : ""
+                    }，可试听、下载并直接写入剪映草稿。`
+                  : "当前音频是本地占位静音 WAV，仅用于验证链路，不代表真实口播效果。"}
               </p>
               <div className="flex flex-wrap items-center gap-3">
-                <audio controls src={getExportVoiceoverAudioUrl(projectId)} className="h-10 min-w-[280px]" />
+                <audio
+                  key={voiceoverAudioUrl}
+                  controls
+                  src={voiceoverAudioUrl}
+                  className="h-10 min-w-[280px]"
+                />
                 <a
-                  href={getExportVoiceoverAudioUrl(projectId)}
+                  href={voiceoverAudioUrl}
                   download
                   className="btn-secondary px-4 py-2 text-xs"
                 >

@@ -20,9 +20,11 @@ JIANYING_PLATFORM = {
 }
 DRAFT_FILE_NAMES = ("draft_content.json", "draft_meta_info.json")
 
-# CapCut default caption export used 15; user feedback prefers half size.
+# JianYing renders imported text larger than the raw size suggests.
 DEFAULT_CAPTION_FONT_SIZE = 15.0
-CAPTION_FONT_SIZE = DEFAULT_CAPTION_FONT_SIZE * 0.5
+CAPTION_FONT_SIZE = DEFAULT_CAPTION_FONT_SIZE * 0.4
+MAX_CAPTION_FONT_SIZE = 6.6
+MIN_CAPTION_FONT_SIZE = 4.2
 
 # JianYing built-in font metadata (pyJianYingDraft FontType.悠然体 / EffectMeta).
 # EffectMeta(resource_id, effect_id): content.styles[].font.id uses resource_id.
@@ -121,6 +123,18 @@ def build_text_content(
     return json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
 
 
+def fit_caption_font_size(text: str, requested_size: float) -> float:
+    visible_chars = len(re.sub(r"\s+", "", text))
+    safe_size = min(MAX_CAPTION_FONT_SIZE, max(MIN_CAPTION_FONT_SIZE, requested_size))
+    if visible_chars > 32:
+        safe_size *= 0.7
+    elif visible_chars > 24:
+        safe_size *= 0.78
+    elif visible_chars > 18:
+        safe_size *= 0.88
+    return round(max(MIN_CAPTION_FONT_SIZE, safe_size), 2)
+
+
 def _default_clip() -> dict[str, Any]:
     return {
         "alpha": 1,
@@ -133,7 +147,7 @@ def _default_clip() -> dict[str, Any]:
 
 def _caption_clip() -> dict[str, Any]:
     clip = _default_clip()
-    clip["transform"] = {"x": 0, "y": -0.75}
+    clip["transform"] = {"x": 0, "y": -0.68}
     return clip
 
 
@@ -345,13 +359,14 @@ def _text_material(
 ) -> dict[str, Any]:
     # Match pyJianYingDraft TextSegment.export_material(): font lives in content JSON.
     clamped_alpha = min(1.0, max(0.0, alpha))
+    fitted_font_size = fit_caption_font_size(text, font_size)
     return {
         "id": material_id,
         "type": "text",
         "content": build_text_content(
             text,
             alpha=clamped_alpha,
-            font_size=font_size,
+            font_size=fitted_font_size,
             bold=bold,
         ),
         "alignment": 1,
@@ -492,11 +507,11 @@ def _attach_transition(
 def _subtitle_presentation(segment: Any) -> tuple[float, bool, float]:
     policy = (getattr(segment, "subtitlePolicy", "") or "").strip()
     if policy == "emphasis":
-        return CAPTION_FONT_SIZE * 1.2, True, 1.0
+        return CAPTION_FONT_SIZE * 1.1, True, 1.0
     if policy == "info":
         return CAPTION_FONT_SIZE, False, 1.0
     if policy == "minimal":
-        return CAPTION_FONT_SIZE * 0.88, False, 0.78
+        return CAPTION_FONT_SIZE * 0.85, False, 0.78
     if policy == "standard":
         return CAPTION_FONT_SIZE, False, 1.0
 
@@ -512,11 +527,11 @@ def _subtitle_presentation(segment: Any) -> tuple[float, bool, float]:
         "emotional_climax",
         "payoff",
     }:
-        return CAPTION_FONT_SIZE * 1.2, True, 1.0
+        return CAPTION_FONT_SIZE * 1.1, True, 1.0
     if role in {"buffer", "afterglow", "aftertaste", "transition_buffer"}:
-        return CAPTION_FONT_SIZE * 0.88, False, 0.78
+        return CAPTION_FONT_SIZE * 0.85, False, 0.78
     if role in {"ending", "closing", "final"}:
-        return CAPTION_FONT_SIZE * 1.08, True, 1.0
+        return CAPTION_FONT_SIZE * 1.05, True, 1.0
     return CAPTION_FONT_SIZE, False, 1.0
 
 
@@ -959,6 +974,38 @@ def build_native_voiceover_blocks(workspace: WorkspaceDataRead) -> list[Voiceove
     )
 
 
+def build_generated_voiceover_caption_blocks(workspace: WorkspaceDataRead) -> list[VoiceoverBlock]:
+    raw_timings = workspace.exportPlan.voiceoverProviderMeta.get("captionTimings", [])
+    if not isinstance(raw_timings, list):
+        return []
+
+    timeline_duration = max((segment.endTime for segment in workspace.storyboard), default=0.0)
+    blocks: list[VoiceoverBlock] = []
+    for item in raw_timings:
+        if not isinstance(item, dict):
+            continue
+        try:
+            start_sec = max(0.0, float(item.get("startTime", 0.0)))
+            end_sec = min(timeline_duration, float(item.get("endTime", 0.0)))
+        except (TypeError, ValueError):
+            continue
+        text = str(item.get("text", "")).strip()
+        if not text or end_sec <= start_sec:
+            continue
+        segment_ids = item.get("segmentIds", [])
+        blocks.append(
+            VoiceoverBlock(
+                start_sec=round(start_sec, 3),
+                end_sec=round(end_sec, 3),
+                text=text,
+                segment_ids=[str(value) for value in segment_ids]
+                if isinstance(segment_ids, list)
+                else [],
+            )
+        )
+    return blocks
+
+
 def build_capcut_draft(workspace: WorkspaceDataRead, *, bgm_path: str = "") -> dict[str, Any]:
     asset_map: dict[str, AssetRead] = {asset.assetId: asset for asset in workspace.assets}
     draft_id = _new_id("draft")
@@ -975,9 +1022,18 @@ def build_capcut_draft(workspace: WorkspaceDataRead, *, bgm_path: str = "") -> d
     text_segments: list[dict[str, Any]] = []
     video_material_ids_by_path: dict[str, str] = {}
     use_native_voiceover_text = workspace.exportPlan.voiceoverProvider == "jianying_native_tts"
-    native_voiceover_blocks = (
-        build_native_voiceover_blocks(workspace) if use_native_voiceover_text else []
+    use_generated_voiceover_text = (
+        workspace.exportPlan.voiceoverProvider == "edge"
+        and bool(workspace.exportPlan.voiceoverAudioPath.strip())
     )
+    final_voiceover_blocks = (
+        build_native_voiceover_blocks(workspace)
+        if use_native_voiceover_text
+        else build_generated_voiceover_caption_blocks(workspace)
+        if use_generated_voiceover_text
+        else []
+    )
+    use_final_voiceover_text = bool(final_voiceover_blocks)
     storyboard_by_id = {segment.id: segment for segment in workspace.storyboard}
     total_duration_us = 0
     transition_count = 0
@@ -1051,7 +1107,7 @@ def build_capcut_draft(workspace: WorkspaceDataRead, *, bgm_path: str = "") -> d
             )
 
         subtitle = segment.subtitle.strip()
-        if subtitle and not use_native_voiceover_text:
+        if subtitle and not use_final_voiceover_text:
             subtitle_font_size, subtitle_bold, subtitle_alpha = _subtitle_presentation(segment)
             if subtitle_bold:
                 emphasized_subtitle_count += 1
@@ -1080,8 +1136,8 @@ def build_capcut_draft(workspace: WorkspaceDataRead, *, bgm_path: str = "") -> d
                 )
             )
 
-    if use_native_voiceover_text:
-        for index, block in enumerate(native_voiceover_blocks):
+    if use_final_voiceover_text:
+        for index, block in enumerate(final_voiceover_blocks):
             duration_us = seconds_to_microseconds(block.end_sec - block.start_sec)
             if duration_us <= 0:
                 continue
@@ -1243,6 +1299,8 @@ def build_capcut_draft(workspace: WorkspaceDataRead, *, bgm_path: str = "") -> d
             text_track_name = "最终字幕（剪映朗读源）"
             if abs(voiceover_speed - 1.0) >= 0.01:
                 text_track_name += f"（按{voiceover_speed:g}x校准）"
+        elif use_generated_voiceover_text:
+            text_track_name = "最终字幕（口播同步）"
         tracks.append(
             {
                 "id": text_track_id,
@@ -1273,9 +1331,14 @@ def build_capcut_draft(workspace: WorkspaceDataRead, *, bgm_path: str = "") -> d
             "jianying_native_tts_text_track_included": bool(
                 use_native_voiceover_text and text_segments
             ),
-            "jianying_native_tts_block_count": len(native_voiceover_blocks),
+            "jianying_native_tts_block_count": len(final_voiceover_blocks)
+            if use_native_voiceover_text
+            else 0,
+            "generated_voiceover_caption_count": len(final_voiceover_blocks)
+            if use_generated_voiceover_text
+            else 0,
             "final_subtitles_use_compressed_voiceover": bool(
-                use_native_voiceover_text and text_segments
+                use_final_voiceover_text and text_segments
             ),
             "voiceover_density": _normalize_voiceover_density(
                 workspace.exportPlan.voiceoverDensity

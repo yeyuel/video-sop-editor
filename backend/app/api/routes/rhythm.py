@@ -11,7 +11,12 @@ from app.api.meta import merge_response_meta
 from app.api.sse_stream import run_streaming_task
 from app.core.config import settings
 from app.db import get_session
-from app.models.schemas import ApiResponse, BgmSelectionRequest, RhythmPlanWriteRequest
+from app.models.schemas import (
+    ApiResponse,
+    AuthUserRead,
+    BgmSelectionRequest,
+    RhythmPlanWriteRequest,
+)
 from app.services.repository import repository
 
 router = APIRouter(
@@ -51,7 +56,10 @@ def recommend_bgm(project_id: str, session: Session = Depends(get_session)) -> A
 
 
 @router.post("/rhythm-plan/bgm-recommend/stream")
-def recommend_bgm_stream(project_id: str) -> StreamingResponse:
+def recommend_bgm_stream(
+    project_id: str,
+    current_user: AuthUserRead = Depends(require_project_editor),
+) -> StreamingResponse:
     def serialize_complete(result: object) -> tuple[object, dict[str, str] | None]:
         if result is None:
             raise HTTPException(status_code=404, detail="Project not found")
@@ -62,7 +70,13 @@ def recommend_bgm_stream(project_id: str) -> StreamingResponse:
         return repository.recommend_bgm(session, project_id, on_progress=report)
 
     return StreamingResponse(
-        run_streaming_task(task, serialize_complete=serialize_complete),
+        run_streaming_task(
+            task,
+            serialize_complete=serialize_complete,
+            user_id=current_user.id,
+            project_id=project_id,
+            operation="rhythm_generation",
+        ),
         media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache",
@@ -88,7 +102,10 @@ def select_bgm_recommendation(
 
 
 @router.post("/rhythm-plan/generate/stream")
-def generate_rhythm_plan_stream(project_id: str) -> StreamingResponse:
+def generate_rhythm_plan_stream(
+    project_id: str,
+    current_user: AuthUserRead = Depends(require_project_editor),
+) -> StreamingResponse:
     def serialize_complete(result: object) -> tuple[object, dict[str, str] | None]:
         if result is None:
             raise HTTPException(status_code=404, detail="Project not found")
@@ -99,7 +116,13 @@ def generate_rhythm_plan_stream(project_id: str) -> StreamingResponse:
         return repository.recommend_bgm(session, project_id, on_progress=report)
 
     return StreamingResponse(
-        run_streaming_task(task, serialize_complete=serialize_complete),
+        run_streaming_task(
+            task,
+            serialize_complete=serialize_complete,
+            user_id=current_user.id,
+            project_id=project_id,
+            operation="rhythm_generation",
+        ),
         media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache",
@@ -166,6 +189,7 @@ async def upload_audio_for_rhythm(
 async def upload_audio_for_rhythm_stream(
     project_id: str,
     audio: UploadFile = File(...),
+    current_user: AuthUserRead = Depends(require_project_editor),
 ) -> StreamingResponse:
     if not audio.filename:
         raise HTTPException(status_code=400, detail="Audio file name is required")
@@ -200,7 +224,13 @@ async def upload_audio_for_rhythm_stream(
         )
 
     return StreamingResponse(
-        run_streaming_task(task, serialize_complete=serialize_complete),
+        run_streaming_task(
+            task,
+            serialize_complete=serialize_complete,
+            user_id=current_user.id,
+            project_id=project_id,
+            operation="audio_rhythm_analysis",
+        ),
         media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache",

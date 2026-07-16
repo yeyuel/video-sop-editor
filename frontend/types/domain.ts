@@ -189,6 +189,7 @@ export type ExportPlan = {
   coverSuggestion: string;
   voiceoverScript: string;
   voiceoverProvider: string;
+  voiceoverVoice: string;
   voiceoverStyle: string;
   voiceoverSpeed: number;
   voiceoverEmotion: string;
@@ -224,4 +225,20 @@ export type WorkspaceData = {
   exportValidation: ExportValidation;
   rhythmPlan: RhythmPlan;
   exportPlan: ExportPlan;
+};
+
+export type RoughCutGenerationResult = {
+  status: "waiting_audio" | "completed";
+  generationMode?: "fill_missing" | "regenerate_creative";
+  completedSteps: string[];
+  nextStep: string;
+  nextPath: string;
+  message: string;
+  storyboardCount?: number;
+  exportTitle?: string;
+  baselineVersionId?: string;
+  generatedVersionId?: string;
+  providerId?: string;
+  model?: string;
+  preservedAudioRhythm?: boolean;
 };

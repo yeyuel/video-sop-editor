@@ -7,6 +7,7 @@ import type {
   NarrativeTheme,
   Project,
   RhythmPlan,
+  RoughCutGenerationResult,
   StoryboardBundle,
   StoryboardSegment
 } from "@/types/domain";
@@ -19,7 +20,12 @@ import type {
   LlmTestResult
 } from "@/lib/llm-status";
 import { getBrowserApiBaseUrl, readApiErrorDetail } from "@/lib/api-base";
-import { postLlmStream, postLlmStreamFormData, type LlmStreamProgressEvent } from "@/lib/llm-stream";
+import {
+  postLlmStream,
+  postLlmStreamFormData,
+  type LlmStreamEvent,
+  type LlmStreamProgressEvent
+} from "@/lib/llm-stream";
 
 type ApiEnvelope<T> = {
   success: boolean;
@@ -247,7 +253,7 @@ export function getAssetVisionCapability(
 export function analyzeAssetVisionStream(
   projectId: string,
   assetId: string,
-  onEvent: (event: LlmStreamProgressEvent | { type: "complete"; data: AssetVisionPrefill; meta?: LlmMeta } | { type: "error"; message: string }) => void
+  onEvent: (event: LlmStreamEvent<AssetVisionPrefill>) => void
 ): Promise<{ data: AssetVisionPrefill; meta?: LlmMeta }> {
   return postLlmStream<AssetVisionPrefill>(
     `/projects/${projectId}/assets/${assetId}/vision-analyze/stream`,
@@ -261,6 +267,22 @@ export function generateThemes(projectId: string, count = 3): Promise<NarrativeT
     method: "POST",
     body: JSON.stringify({ count })
   });
+}
+
+export function generateRoughCutPlan(
+  projectId: string,
+  mode: "fill_missing" | "regenerate_creative",
+  onProgress: (event: LlmStreamProgressEvent) => void,
+  signal?: AbortSignal
+): Promise<RequestWithMetaResult<RoughCutGenerationResult>> {
+  return postLlmStream<RoughCutGenerationResult>(
+    `/projects/${projectId}/rough-cut/generate/stream`,
+    { mode },
+    (event) => {
+      if (event.type === "progress") onProgress(event);
+    },
+    signal
+  );
 }
 
 export function generateThemesWithLlm(
@@ -543,6 +565,12 @@ export type VoiceoverProvider = {
   isRealTts: boolean;
   outputFormat: string;
   recommendedFor: string;
+  voices: Array<{
+    id: string;
+    label: string;
+    gender: string;
+    description: string;
+  }>;
 };
 
 export function fetchVoiceoverProviders(projectId: string): Promise<VoiceoverProvider[]> {
@@ -593,8 +621,9 @@ export function deleteExportVoiceoverAudio(projectId: string): Promise<ExportPla
   });
 }
 
-export function getExportVoiceoverAudioUrl(projectId: string) {
-  return `${getBrowserApiBaseUrl()}/projects/${projectId}/export-plan/voiceover/audio`;
+export function getExportVoiceoverAudioUrl(projectId: string, version = "") {
+  const baseUrl = `${getBrowserApiBaseUrl()}/projects/${projectId}/export-plan/voiceover/audio`;
+  return version ? `${baseUrl}?v=${encodeURIComponent(version)}` : baseUrl;
 }
 
 export type LlmProviderConfigPayload = {

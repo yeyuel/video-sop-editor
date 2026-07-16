@@ -246,6 +246,10 @@ class StoryboardGenerateRequest(BaseModel):
     selectedTrackName: str | None = None
 
 
+class RoughCutGenerateRequest(BaseModel):
+    mode: str = "fill_missing"
+
+
 class StoryboardSaveRequest(BaseModel):
     themeId: str | None = None
     segments: list[StoryboardSegmentWrite]
@@ -375,6 +379,7 @@ class ExportPlanRead(BaseModel):
     coverSuggestion: str
     voiceoverScript: str = ""
     voiceoverProvider: str = ""
+    voiceoverVoice: str = "auto"
     voiceoverStyle: str = "natural"
     voiceoverSpeed: float = 1.0
     voiceoverEmotion: str = "calm"
@@ -394,6 +399,7 @@ class ExportPlanWriteRequest(BaseModel):
     coverSuggestion: str = ""
     voiceoverScript: str = ""
     voiceoverProvider: str = ""
+    voiceoverVoice: str = "auto"
     voiceoverStyle: str = "natural"
     voiceoverSpeed: float = 1.0
     voiceoverEmotion: str = "calm"
@@ -405,6 +411,13 @@ class VoiceoverGenerateRequest(BaseModel):
     useSegmentFallback: bool = True
 
 
+class VoiceoverVoiceRead(BaseModel):
+    id: str
+    label: str
+    gender: str
+    description: str
+
+
 class VoiceoverProviderRead(BaseModel):
     id: str
     label: str
@@ -413,6 +426,7 @@ class VoiceoverProviderRead(BaseModel):
     isRealTts: bool
     outputFormat: str
     recommendedFor: str
+    voices: list[VoiceoverVoiceRead] = Field(default_factory=list)
 
 
 class VoiceoverPreviewRequest(BaseModel):

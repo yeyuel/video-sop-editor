@@ -48,6 +48,18 @@
 | 17 | `017_project_jianying_draft_root` | 项目表新增 `jianying_draft_root` |
 | 18 | `018_phase4_rhythm_profile` | 节奏表新增 `rhythm_profile_json`、`attention_beats_json`、`beat_calibration_json`、`audio_fingerprint`、`audio_analysis_version` |
 | 19 | `019_phase4_storyboard_segment_roles` | 分镜表新增 `attention_role`、`visual_strength`、`motion_policy`、`transition_policy` |
+| 20 | `020_storyboard_selection_trace` | 分镜表新增素材选择与排序追溯信息 |
+| 21 | `021_project_duration_fill_max_consecutive_route` | 项目新增同一地点连续补齐镜头上限 |
+| 22 | `022_storyboard_voiceover_fields` | 分镜新增口播文案、角色与时间策略 |
+| 23 | `023_export_voiceover_script` | 导出方案新增整段口播稿 |
+| 24 | `024_export_voiceover_settings` | 导出方案新增 Provider、风格、语速与情绪配置 |
+| 25 | `025_export_voiceover_generation_state` | 导出方案新增口播音频生成状态和元数据 |
+| 26 | `026_export_voiceover_density` | 导出方案新增口播密度配置 |
+| 27 | `027_storyboard_subtitle_policy` | 分镜新增字幕样式策略 |
+| 28 | `028_export_voiceover_voice` | 导出方案新增 `voiceover_voice`，保存 Edge TTS 音色选择 |
+| 29 | `029_llm_result_cache` | 新增 `llmresultcacheentity`，按输入指纹持久化成功的 LLM JSON 结果及命中次数 |
+| 30 | `030_llm_background_tasks` | 新增 `llmtaskentity`，持久化 LLM 后台任务状态、进度、结果和取消标记 |
+| 31 | `031_rough_cut_versions` | 新增 `roughcutversionentity`，保存一键初剪的结构化方案快照、生成模式及 Provider/模型信息 |
 
 ## 5. 注意事项
 

@@ -531,8 +531,8 @@ def test_rhythm_context_for_llm_omits_beat_arrays() -> None:
 
 
 def test_storyboard_max_tokens_scales_with_assets() -> None:
-    assert _storyboard_max_tokens(3) == 2240
-    assert _storyboard_max_tokens(100) == 8000
+    assert _storyboard_max_tokens(3) == 1565
+    assert _storyboard_max_tokens(100) == 6000
 
 
 def test_normalize_storyboard_plan_accepts_copy_only_segments() -> None:

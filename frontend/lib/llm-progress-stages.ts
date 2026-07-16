@@ -6,6 +6,7 @@ export type LlmStageDefinition = {
 export const THEME_LLM_STAGES: LlmStageDefinition[] = [
   { id: "preparing", label: "读取项目与素材" },
   { id: "configuring", label: "加载模型配置" },
+  { id: "cache_hit", label: "检查可复用结果" },
   { id: "calling_llm", label: "模型生成主题" },
   { id: "parsing", label: "解析模型输出" },
   { id: "building", label: "整理候选主题" },
@@ -16,6 +17,7 @@ export const THEME_LLM_STAGES: LlmStageDefinition[] = [
 export const STORYBOARD_LLM_STAGES: LlmStageDefinition[] = [
   { id: "preparing", label: "读取主题与素材" },
   { id: "configuring", label: "加载模型配置" },
+  { id: "cache_hit", label: "检查可复用结果" },
   { id: "calling_llm", label: "模型生成分镜" },
   { id: "parsing", label: "解析模型输出" },
   { id: "building", label: "组装时间线" },
@@ -26,6 +28,7 @@ export const STORYBOARD_LLM_STAGES: LlmStageDefinition[] = [
 export const BGM_RECOMMEND_LLM_STAGES: LlmStageDefinition[] = [
   { id: "preparing", label: "读取项目与主题" },
   { id: "configuring", label: "加载模型配置" },
+  { id: "cache_hit", label: "检查可复用结果" },
   { id: "calling_llm", label: "模型推荐 BGM" },
   { id: "parsing", label: "解析推荐结果" },
   { id: "building", label: "整理候选曲目" },
@@ -38,6 +41,7 @@ export const RHYTHM_LLM_STAGES: LlmStageDefinition[] = [
   { id: "analyzing_audio", label: "分析音频节拍" },
   { id: "building_beats", label: "生成节拍点" },
   { id: "configuring", label: "加载模型配置" },
+  { id: "cache_hit", label: "检查可复用结果" },
   { id: "calling_llm", label: "模型生成节奏文案" },
   { id: "parsing", label: "解析模型输出" },
   { id: "building", label: "整理节奏规划" },
@@ -48,6 +52,7 @@ export const RHYTHM_LLM_STAGES: LlmStageDefinition[] = [
 export const EXPORT_LLM_STAGES: LlmStageDefinition[] = [
   { id: "preparing", label: "读取项目与分镜" },
   { id: "configuring", label: "加载模型配置" },
+  { id: "cache_hit", label: "检查可复用结果" },
   { id: "calling_llm", label: "模型生成发布文案" },
   { id: "parsing", label: "解析模型输出" },
   { id: "building", label: "整理导出字段" },
@@ -70,6 +75,15 @@ export const LLM_TEST_STAGES: LlmStageDefinition[] = [
   { id: "configuring", label: "加载模型配置" },
   { id: "calling_llm", label: "测试模型连通性" },
   { id: "parsing", label: "解析测试结果" }
+];
+
+export const ROUGH_CUT_LLM_STAGES: LlmStageDefinition[] = [
+  { id: "themes", label: "确认叙事主题" },
+  { id: "rhythm", label: "准备音乐与节奏" },
+  { id: "waiting_audio", label: "等待真实音频节拍" },
+  { id: "storyboard", label: "生成分镜时间线" },
+  { id: "export", label: "生成导出文案" },
+  { id: "complete", label: "初剪方案完成" }
 ];
 
 export type LlmProgressViewState = {
