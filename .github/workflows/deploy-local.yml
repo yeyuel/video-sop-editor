@@ -1,0 +1,38 @@
+name: Deploy to local desktop
+
+on:
+  workflow_dispatch:
+    inputs:
+      run_tests:
+        description: Run the full test suite again on the desktop
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: local-production-deployment
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy main to Windows desktop
+    if: github.ref == 'refs/heads/main'
+    runs-on: [self-hosted, windows, x64, video-sop-prod]
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          clean: true
+      - name: Deploy release
+        shell: powershell
+        run: |
+          $deployRoot = if ("${{ vars.DEPLOY_ROOT }}") { "${{ vars.DEPLOY_ROOT }}" } else { "D:\video-sop-production" }
+          $runTests = "${{ inputs.run_tests }}" -eq "true"
+          & .\scripts\windows-deploy\Deploy.ps1 `
+            -DeployRoot $deployRoot `
+            -SourceRoot "${{ github.workspace }}" `
+            -RunTests:$runTests `
+            -RegisterTasks

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
 import { AUTH_COOKIE_NAME, AUTH_ROLE_COOKIE } from "@/lib/auth-constants";
+import { createPublicRequestUrl } from "@/lib/request-origin";
 
 const DIRECTOR_ONLY_PREFIXES = ["/settings/llm", "/settings/users"];
 
@@ -27,7 +28,7 @@ export function middleware(request: NextRequest) {
   const role = request.cookies.get(AUTH_ROLE_COOKIE)?.value ?? "";
 
   if (pathname === "/login" && isAuthed) {
-    return NextResponse.redirect(new URL("/", request.url));
+    return NextResponse.redirect(createPublicRequestUrl(request.url, request.headers, "/"));
   }
 
   if (isAllowedPath(pathname)) {
@@ -35,7 +36,7 @@ export function middleware(request: NextRequest) {
   }
 
   if (!isAuthed) {
-    const loginUrl = new URL("/login", request.url);
+    const loginUrl = createPublicRequestUrl(request.url, request.headers, "/login");
     const nextPath = `${pathname}${search}`;
     if (nextPath !== "/") {
       loginUrl.searchParams.set("next", nextPath);
@@ -44,7 +45,7 @@ export function middleware(request: NextRequest) {
   }
 
   if (isDirectorOnlyPath(pathname) && role !== "director") {
-    return NextResponse.redirect(new URL("/", request.url));
+    return NextResponse.redirect(createPublicRequestUrl(request.url, request.headers, "/"));
   }
 
   return NextResponse.next();

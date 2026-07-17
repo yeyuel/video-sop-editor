@@ -130,6 +130,9 @@ VISION_USE_MOCK=false
 
 四期 10 用户轻量部署结论见 [`docs/phase4-deployment-storage.md`](docs/phase4-deployment-storage.md)。SQLite 已默认启用 WAL 和写锁等待；保持单 FastAPI 进程，不要用多个 Uvicorn worker 共同写同一个数据库文件。
 
+Windows 台式机可执行部署、GitHub Actions CI/CD、启停与回滚步骤见
+[`docs/windows-local-deployment.md`](docs/windows-local-deployment.md)。
+
 ## 回归测试
 
 依赖分三层：**Python 测后端**（`backend/requirements.txt`）、**Node 测前端单元**（`frontend/package.json`）、**Playwright 测 E2E**（根目录 `package.json`）。Vitest / Playwright **不在** `requirements.txt` 里。
@@ -192,6 +195,7 @@ npm run test:e2e
 - API：[`docs/api.md`](docs/api.md)
 - 迁移规范：[`docs/schema-migration.md`](docs/schema-migration.md)
 - P4 部署与存储评估：[`docs/phase4-deployment-storage.md`](docs/phase4-deployment-storage.md)
+- Windows 本地部署与 CI/CD：[`docs/windows-local-deployment.md`](docs/windows-local-deployment.md)
 
 ## 开发约定
 
