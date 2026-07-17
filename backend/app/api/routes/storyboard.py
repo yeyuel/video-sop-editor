@@ -12,6 +12,7 @@ from app.models.schemas import (
     AuthUserRead,
     StoryboardGenerateRequest,
     StoryboardInsertRequest,
+    StoryboardPartialRegenerateRequest,
     StoryboardReorderRequest,
     StoryboardSaveRequest,
     StoryboardSegmentWrite,
@@ -19,6 +20,7 @@ from app.models.schemas import (
 )
 from app.services.llm.audit_log import record_llm_call_from_meta
 from app.services.repository import repository
+from app.services.rough_cut_pipeline import rerun_storyboard_range
 
 router = APIRouter(
     prefix="/projects/{project_id}",
@@ -109,6 +111,52 @@ def generate_storyboard_with_llm_stream(
             user_id=current_user.id,
             project_id=project_id,
             operation="storyboard_generation",
+        ),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
+
+
+@router.post("/storyboard/rerun-partial/stream")
+def rerun_storyboard_range_stream(
+    project_id: str,
+    request: StoryboardPartialRegenerateRequest,
+    current_user: AuthUserRead = Depends(require_project_editor),
+) -> StreamingResponse:
+    endpoint = f"/projects/{project_id}/storyboard/rerun-partial/stream"
+
+    def serialize_complete(result: object) -> tuple[dict, dict[str, str] | None]:
+        if result is None:
+            raise HTTPException(status_code=404, detail="Project not found")
+        bundle, llm_meta = result  # type: ignore[misc]
+        with Session(db.engine) as audit_session:
+            record_llm_call_from_meta(
+                audit_session,
+                user_id=current_user.id,
+                endpoint=endpoint,
+                llm_meta=llm_meta,
+            )
+        return bundle.model_dump(), llm_meta
+
+    def task(session: Session, report) -> object:
+        return rerun_storyboard_range(
+            session,
+            project_id,
+            request,
+            on_progress=report,
+        )
+
+    return StreamingResponse(
+        run_streaming_task(
+            task,
+            serialize_complete=serialize_complete,
+            user_id=current_user.id,
+            project_id=project_id,
+            operation="storyboard_partial_rerun",
         ),
         media_type="text/event-stream",
         headers={

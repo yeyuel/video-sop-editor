@@ -121,6 +121,7 @@ class ResolvedLlmConfig:
 class LlmMeta:
     llmStatus: str
     llmMessage: str
+    llmErrorCode: str = ""
     llmProviderId: str = ""
     llmUsedFallback: str = "false"
     llmCacheHit: str = "false"
@@ -132,6 +133,7 @@ class LlmMeta:
         return {
             "llmStatus": self.llmStatus,
             "llmMessage": self.llmMessage,
+            "llmErrorCode": self.llmErrorCode,
             "llmProviderId": self.llmProviderId,
             "llmUsedFallback": self.llmUsedFallback,
             "llmCacheHit": self.llmCacheHit,
@@ -170,6 +172,7 @@ def build_llm_meta(
     return LlmMeta(
         llmStatus=status if not used_fallback else "fallback_rule",
         llmMessage=message,
+        llmErrorCode=status,
         llmProviderId=result.provider_id,
         llmUsedFallback="true" if used_fallback else "false",
         llmCacheHit="false",

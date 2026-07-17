@@ -5,10 +5,19 @@ from datetime import datetime, timezone
 from typing import Any
 from uuid import uuid4
 
+from sqlalchemy import delete
 from sqlmodel import Session, select
 
-from app.models.entities import RoughCutVersionEntity
-from app.models.schemas import StoryboardGenerateRequest, ThemeSelectRequest
+from app.models.entities import RoughCutVersionEntity, ThemeEntity
+from app.models.schemas import (
+    ExportPlanWriteRequest,
+    StoryboardGenerateRequest,
+    StoryboardPartialRegenerateRequest,
+    StoryboardSegmentWrite,
+    ThemeSelectRequest,
+    WorkspaceDataRead,
+)
+from app.services.serialization import dumps_list
 from app.services.llm.config_store import resolve_active_config
 from app.services.llm.progress import ProgressReporter, emit_progress
 from app.services.repository import repository
@@ -16,6 +25,7 @@ from app.services.rhythm_readiness import rhythm_ready_for_storyboard
 
 
 ROUGH_CUT_MODES = {"fill_missing", "regenerate_creative"}
+ROUGH_CUT_RERUN_STEPS = {"theme", "storyboard", "export"}
 
 
 def _phase_reporter(
@@ -90,23 +100,325 @@ def _save_version(
     return entity
 
 
-def list_rough_cut_versions(session: Session, project_id: str) -> list[dict[str, str]]:
+def _load_version_workspace(entity: RoughCutVersionEntity) -> WorkspaceDataRead:
+    try:
+        return WorkspaceDataRead.model_validate(json.loads(entity.snapshot_json))
+    except (json.JSONDecodeError, ValueError, TypeError) as exc:
+        raise ValueError("历史版本数据无法读取。") from exc
+
+
+def _selected_theme_title(workspace: WorkspaceDataRead) -> str:
+    selected = next((theme for theme in workspace.themes if theme.isSelected), None)
+    return selected.title if selected else (workspace.themes[0].title if workspace.themes else "")
+
+
+def _version_summary(workspace: WorkspaceDataRead) -> dict[str, Any]:
+    duration = max((segment.endTime for segment in workspace.storyboard), default=0.0)
+    return {
+        "themeTitle": _selected_theme_title(workspace),
+        "storyboardCount": len(workspace.storyboard),
+        "durationSec": round(duration, 2),
+        "exportTitle": workspace.exportPlan.title,
+    }
+
+
+def _version_diff(
+    current: WorkspaceDataRead,
+    historical: WorkspaceDataRead,
+) -> dict[str, Any]:
+    current_assets = [segment.assetId for segment in current.storyboard]
+    historical_assets = [segment.assetId for segment in historical.storyboard]
+    sequence_changes = sum(
+        current_id != historical_id
+        for current_id, historical_id in zip(current_assets, historical_assets)
+    ) + abs(len(current_assets) - len(historical_assets))
+    current_summary = _version_summary(current)
+    historical_summary = _version_summary(historical)
+    return {
+        "themeChanged": current_summary["themeTitle"] != historical_summary["themeTitle"],
+        "storyboardCountDelta": (
+            historical_summary["storyboardCount"] - current_summary["storyboardCount"]
+        ),
+        "durationDeltaSec": round(
+            historical_summary["durationSec"] - current_summary["durationSec"], 2
+        ),
+        "sequenceChangeCount": sequence_changes,
+        "exportTitleChanged": current_summary["exportTitle"] != historical_summary["exportTitle"],
+    }
+
+
+def list_rough_cut_versions(session: Session, project_id: str) -> list[dict[str, Any]]:
     entities = session.exec(
         select(RoughCutVersionEntity)
         .where(RoughCutVersionEntity.project_id == project_id)
         .order_by(RoughCutVersionEntity.created_at.desc())
     ).all()
-    return [
-        {
+    current = repository.get_workspace(session, project_id)
+    versions: list[dict[str, Any]] = []
+    for item in entities:
+        historical = _load_version_workspace(item)
+        versions.append({
             "id": item.id,
             "label": item.label,
             "generationMode": item.generation_mode,
             "providerId": item.provider_id,
             "model": item.model,
             "createdAt": item.created_at,
-        }
-        for item in entities
+            "summary": _version_summary(historical),
+            "diff": _version_diff(current, historical) if current else {},
+        })
+    return versions
+
+
+def restore_rough_cut_version(
+    session: Session,
+    project_id: str,
+    version_id: str,
+) -> dict[str, Any] | None:
+    project = repository.get_project_entity(session, project_id)
+    version = session.get(RoughCutVersionEntity, version_id)
+    if not project or not version or version.project_id != project_id:
+        return None
+
+    historical = _load_version_workspace(version)
+    available_asset_ids = {asset.assetId for asset in repository.list_assets(session, project_id)}
+    referenced_asset_ids = {segment.assetId for segment in historical.storyboard}
+    missing_asset_ids = sorted(referenced_asset_ids - available_asset_ids)
+    if missing_asset_ids:
+        preview = "、".join(missing_asset_ids[:5])
+        suffix = " 等" if len(missing_asset_ids) > 5 else ""
+        raise ValueError(f"历史版本引用的素材已被删除：{preview}{suffix}。请补回素材后再恢复。")
+
+    backup = _save_version(
+        session,
+        project_id,
+        label="恢复前备份",
+        generation_mode="pre_restore",
+    )
+
+    session.exec(delete(ThemeEntity).where(ThemeEntity.project_id == project_id))
+    selected_theme_id = ""
+    for theme in historical.themes:
+        session.add(
+            ThemeEntity(
+                id=theme.id,
+                project_id=project_id,
+                title=theme.title,
+                summary=theme.summary,
+                core_emotion=theme.coreEmotion,
+                rhythm_profile=theme.rhythmProfile,
+                platform_reason=theme.platformReason,
+                used_locations=dumps_list(theme.usedLocations),
+                used_asset_ids=dumps_list(theme.usedAssetIds),
+            )
+        )
+        if theme.isSelected:
+            selected_theme_id = theme.id
+    if not selected_theme_id and historical.themes:
+        selected_theme_id = historical.themes[0].id
+    project.selected_theme_id = selected_theme_id
+    session.add(project)
+    session.commit()
+
+    segments = [
+        StoryboardSegmentWrite.model_validate(segment.model_dump())
+        for segment in historical.storyboard
     ]
+    repository._replace_storyboard_segments(
+        session,
+        project_id,
+        selected_theme_id,
+        segments,
+    )
+    export_payload = ExportPlanWriteRequest.model_validate(
+        historical.exportPlan.model_dump()
+    )
+    repository.upsert_export_plan(session, project_id, export_payload)
+    repository.clear_export_voiceover_audio(session, project_id)
+
+    restored = _save_version(
+        session,
+        project_id,
+        label=f"已恢复：{version.label}",
+        generation_mode="restore",
+        provider_id=version.provider_id,
+        model=version.model,
+    )
+    return {
+        "restoredVersionId": version.id,
+        "backupVersionId": backup.id if backup else "",
+        "currentVersionId": restored.id if restored else "",
+        "message": "历史方案已恢复。真实音频和节拍校准保持不变，旧口播音频已清除。",
+    }
+
+
+def rerun_rough_cut_step(
+    session: Session,
+    project_id: str,
+    step: str,
+    *,
+    on_progress: ProgressReporter | None = None,
+) -> tuple[dict[str, Any], dict[str, str]] | None:
+    if step not in ROUGH_CUT_RERUN_STEPS:
+        raise ValueError("不支持的重跑阶段。")
+    project = repository.get_project_entity(session, project_id)
+    if not project:
+        return None
+    if not repository.list_assets(session, project_id):
+        raise ValueError("请先录入素材，再重跑生成阶段。")
+
+    active_config = resolve_active_config(session)
+    baseline = _save_version(
+        session,
+        project_id,
+        label=f"重跑{step}前备份",
+        generation_mode=f"pre_rerun_{step}",
+    )
+    meta: dict[str, str] = {
+        "generationMode": "rerun_step",
+        "rerunStep": step,
+        "providerId": active_config.provider_id,
+        "model": active_config.model,
+    }
+
+    if step == "theme":
+        emit_progress(on_progress, "themes", "正在重新生成主题候选。", progress=8)
+        result = repository.generate_themes_with_llm(
+            session,
+            project_id,
+            3,
+            on_progress=_phase_reporter(on_progress, phase="themes", start=8, end=88),
+        )
+        if result is None:
+            return None
+        themes, step_meta = result
+        if not themes:
+            raise ValueError("当前素材不足以生成主题。")
+        repository.select_theme(
+            session,
+            project_id,
+            ThemeSelectRequest(themeId=themes[0].id),
+        )
+        next_path = f"/projects/{project_id}/themes"
+        message = "主题已重新生成并选择首个候选。现有分镜未覆盖，可按需继续重跑分镜。"
+    elif step == "storyboard":
+        rhythm = repository.get_rhythm_plan(session, project_id)
+        if not rhythm_ready_for_storyboard(rhythm):
+            raise ValueError("真实音频节拍尚未就绪，请先在节奏页完成音乐上传和节拍识别。")
+        selected_theme = repository.get_selected_theme(session, project_id)
+        emit_progress(on_progress, "storyboard", "正在重新生成完整分镜。", progress=8)
+        result = repository.generate_storyboard_with_llm(
+            session,
+            project_id,
+            StoryboardGenerateRequest(
+                themeId=selected_theme.id if selected_theme else None,
+                targetDurationSec=project.target_duration_sec,
+                beatMode=rhythm.beatMode,
+                alignToBeat=True,
+                selectedTrackName=rhythm.selectedTrackName,
+            ),
+            on_progress=_phase_reporter(
+                on_progress, phase="storyboard", start=8, end=88
+            ),
+        )
+        if result is None:
+            return None
+        _, step_meta = result
+        next_path = f"/projects/{project_id}/storyboard"
+        message = "完整分镜已重新生成。导出文案未覆盖，可检查分镜后再重跑导出建议。"
+    else:
+        emit_progress(on_progress, "export", "正在重新生成导出文案。", progress=8)
+        result = repository.suggest_export_plan_with_llm(
+            session,
+            project_id,
+            on_progress=_phase_reporter(on_progress, phase="export", start=8, end=88),
+        )
+        if result is None:
+            return None
+        _, step_meta = result
+        next_path = f"/projects/{project_id}/export"
+        message = "标题、标签、字幕和导出文案已重新生成，主题与分镜保持不变。"
+
+    meta.update(step_meta)
+    generated = _save_version(
+        session,
+        project_id,
+        label=f"重跑{step}：{active_config.provider_name} / {active_config.model}",
+        generation_mode=f"rerun_{step}",
+        provider_id=active_config.provider_id,
+        model=active_config.model,
+    )
+    emit_progress(on_progress, "complete", "单步骤重跑完成。", progress=99)
+    return (
+        {
+            "status": "completed",
+            "generationMode": "rerun_step",
+            "rerunStep": step,
+            "completedSteps": [step],
+            "nextStep": step,
+            "nextPath": next_path,
+            "message": message,
+            "baselineVersionId": baseline.id if baseline else "",
+            "generatedVersionId": generated.id if generated else "",
+            "providerId": active_config.provider_id,
+            "model": active_config.model,
+        },
+        meta,
+    )
+
+
+def rerun_storyboard_range(
+    session: Session,
+    project_id: str,
+    request: StoryboardPartialRegenerateRequest,
+    *,
+    on_progress: ProgressReporter | None = None,
+) -> tuple[Any, dict[str, str]] | None:
+    """Rerun one contiguous storyboard range and preserve a reversible version pair."""
+    current = repository.list_storyboard(session, project_id)
+    index_by_id = {segment.id: index for index, segment in enumerate(current)}
+    if len(set(request.segmentIds)) != len(request.segmentIds):
+        raise ValueError("选中的分镜不能重复。")
+    if any(segment_id not in index_by_id for segment_id in request.segmentIds):
+        raise ValueError("选中的分镜已不存在，请刷新页面后重试。")
+    selected_indexes = sorted(index_by_id[segment_id] for segment_id in request.segmentIds)
+    if selected_indexes != list(range(selected_indexes[0], selected_indexes[-1] + 1)):
+        raise ValueError("局部重跑只支持连续分镜区间。")
+
+    active_config = resolve_active_config(session)
+    baseline = _save_version(
+        session,
+        project_id,
+        label="局部分镜重跑前备份",
+        generation_mode="pre_rerun_storyboard_range",
+    )
+    result = repository.regenerate_storyboard_range_with_llm(
+        session,
+        project_id,
+        request,
+        on_progress=on_progress,
+    )
+    if result is None:
+        return None
+    bundle, meta = result
+    generated = _save_version(
+        session,
+        project_id,
+        label=f"局部分镜重跑：{active_config.provider_name} / {active_config.model}",
+        generation_mode="rerun_storyboard_range",
+        provider_id=active_config.provider_id,
+        model=active_config.model,
+    )
+    meta.update(
+        {
+            "baselineVersionId": baseline.id if baseline else "",
+            "generatedVersionId": generated.id if generated else "",
+            "providerId": active_config.provider_id,
+            "model": active_config.model,
+        }
+    )
+    emit_progress(on_progress, "complete", "局部分镜已经更新。", progress=99)
+    return bundle, meta
 
 
 def generate_rough_cut_plan(

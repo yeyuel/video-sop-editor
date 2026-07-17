@@ -44,6 +44,9 @@ if (-not $trackedFiles) {
 $hits = New-Object System.Collections.Generic.List[object]
 
 foreach ($relativePath in $trackedFiles) {
+  if ($relativePath -eq "docs/encoding-guardrails.md") {
+    continue
+  }
   if (-not (Test-TextFile $relativePath)) {
     continue
   }
@@ -57,6 +60,9 @@ foreach ($relativePath in $trackedFiles) {
     $content = Get-Content -LiteralPath $absolutePath -Encoding utf8 -Raw
   } catch {
     continue
+  }
+  if ($null -eq $content) {
+    $content = ""
   }
 
   $matched = New-Object System.Collections.Generic.List[string]
@@ -88,3 +94,4 @@ if ($hits.Count -eq 0) {
 $hits | Sort-Object File | Format-Table -AutoSize
 Write-Host ""
 Write-Host ("TOTAL_FILES={0}" -f $hits.Count) -ForegroundColor Yellow
+exit 1

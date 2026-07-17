@@ -1,6 +1,7 @@
 export type LlmMeta = {
   llmStatus?: string;
   llmMessage?: string;
+  llmErrorCode?: string;
   llmProviderId?: string;
   llmUsedFallback?: string;
   llmCacheHit?: string;

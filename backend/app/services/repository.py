@@ -47,6 +47,7 @@ from app.models.schemas import (
     StoryboardBundleRead,
     StoryboardGenerateRequest,
     StoryboardInsertRequest,
+    StoryboardPartialRegenerateRequest,
     StoryboardReorderRequest,
     StoryboardSaveRequest,
     StoryboardSegmentRead,
@@ -100,9 +101,11 @@ from app.services.serialization import dumps_list, loads_float_list, loads_str_l
 from app.services.storyboard_generation import (
     asset_order_key,
     build_llm_storyboard_plan,
+    build_llm_partial_storyboard_plan,
     build_storyboard_validation,
     generate_storyboard_segments,
     generate_storyboard_segments_from_plan,
+    apply_partial_storyboard_plan,
     normalize_storyboard_segments,
     parse_route_locations,
     resolve_storyboard_beat_points,
@@ -1143,6 +1146,69 @@ class SqlRepository:
         theme_id = theme.id if theme else project.selected_theme_id
         self._replace_storyboard_segments(session, project_id, theme_id, payload.segments)
         return self.get_storyboard_bundle(session, project_id)
+
+    def regenerate_storyboard_range_with_llm(
+        self,
+        session: Session,
+        project_id: str,
+        request: StoryboardPartialRegenerateRequest,
+        on_progress: ProgressReporter | None = None,
+    ) -> tuple[StoryboardBundleRead, dict[str, str]] | None:
+        project = self.get_project_entity(session, project_id)
+        if not project:
+            return None
+        current = self.list_storyboard(session, project_id)
+        if len(set(request.segmentIds)) != len(request.segmentIds):
+            raise ValueError("选中的分镜不能重复。")
+        index_by_id = {segment.id: index for index, segment in enumerate(current)}
+        if any(segment_id not in index_by_id for segment_id in request.segmentIds):
+            raise ValueError("选中的分镜已不存在，请刷新页面后重试。")
+        selected_indexes = sorted(index_by_id[segment_id] for segment_id in request.segmentIds)
+        if selected_indexes != list(range(selected_indexes[0], selected_indexes[-1] + 1)):
+            raise ValueError("局部重跑只支持连续分镜区间。")
+
+        start_index, end_index = selected_indexes[0], selected_indexes[-1]
+        selected_segments = current[start_index : end_index + 1]
+        theme = self._resolve_theme(session, project_id, project.selected_theme_id)
+        rhythm = self.get_rhythm_plan(session, project_id)
+        if not theme:
+            raise ValueError("请先选择叙事主题。")
+        if not rhythm_ready_for_storyboard(rhythm):
+            raise ValueError(rhythm_requirement_message(rhythm))
+
+        all_assets = self.list_assets(session, project_id)
+        outside_asset_ids = {
+            segment.assetId
+            for index, segment in enumerate(current)
+            if index < start_index or index > end_index
+        }
+        candidate_assets = [
+            asset
+            for asset in all_assets
+            if project.allow_asset_reuse or asset.assetId not in outside_asset_ids
+        ]
+        plan, meta = build_llm_partial_storyboard_plan(
+            project=project,
+            theme=theme,
+            assets=candidate_assets,
+            selected_segments=selected_segments,
+            previous_segment=current[start_index - 1] if start_index > 0 else None,
+            next_segment=current[end_index + 1] if end_index + 1 < len(current) else None,
+            rhythm=rhythm,
+            instruction=request.instruction,
+            on_progress=on_progress,
+        )
+        replacements = apply_partial_storyboard_plan(
+            selected_segments=selected_segments,
+            assets=candidate_assets,
+            plan=plan,
+        )
+        combined = [segment_read_to_write(segment) for segment in current]
+        combined[start_index : end_index + 1] = replacements
+        self._replace_storyboard_segments(session, project_id, theme.id, combined)
+        meta["rangeStartSec"] = str(selected_segments[0].startTime)
+        meta["rangeEndSec"] = str(selected_segments[-1].endTime)
+        return self.get_storyboard_bundle(session, project_id), meta
 
     def insert_storyboard_segment(
         self, session: Session, project_id: str, payload: StoryboardInsertRequest

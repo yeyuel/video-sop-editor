@@ -246,6 +246,11 @@ class StoryboardGenerateRequest(BaseModel):
     selectedTrackName: str | None = None
 
 
+class StoryboardPartialRegenerateRequest(BaseModel):
+    segmentIds: list[str] = Field(min_length=1, max_length=8)
+    instruction: str = Field(default="", max_length=500)
+
+
 class RoughCutGenerateRequest(BaseModel):
     mode: str = "fill_missing"
 

@@ -241,4 +241,34 @@ export type RoughCutGenerationResult = {
   providerId?: string;
   model?: string;
   preservedAudioRhythm?: boolean;
+  rerunStep?: "theme" | "storyboard" | "export";
+};
+
+export type RoughCutVersion = {
+  id: string;
+  label: string;
+  generationMode: string;
+  providerId: string;
+  model: string;
+  createdAt: string;
+  summary: {
+    themeTitle: string;
+    storyboardCount: number;
+    durationSec: number;
+    exportTitle: string;
+  };
+  diff: {
+    themeChanged: boolean;
+    storyboardCountDelta: number;
+    durationDeltaSec: number;
+    sequenceChangeCount: number;
+    exportTitleChanged: boolean;
+  };
+};
+
+export type RoughCutRestoreResult = {
+  restoredVersionId: string;
+  backupVersionId: string;
+  currentVersionId: string;
+  message: string;
 };

@@ -6,7 +6,7 @@
 - `backend/` — FastAPI 后端（领域模型、LLM、音频分析、导出）
 - `docs/` — 产品与技术文档
 
-**二期（Sprint 1～10）**：已关闭。**三期（Sprint 11～18）**：已于 2026-06-21 验收关闭。见 [`docs/phase3-master.md`](docs/phase3-master.md) / [`docs/phase3-checklist.md`](docs/phase3-checklist.md)。
+**二期（Sprint 1～10）**：已关闭。**三期（Sprint 11～18）**：已于 2026-06-21 验收关闭。**四期（自动粗剪质量与生成体验）**：已于 2026-07-17 完成当前范围。见 [`docs/phase4-master.md`](docs/phase4-master.md) / [`docs/phase4-checklist.md`](docs/phase4-checklist.md)。
 
 ## 技术栈
 
@@ -66,6 +66,7 @@ APP_HOST=127.0.0.1
 APP_PORT=8000
 APP_GRACEFUL_SHUTDOWN_SEC=5
 DATABASE_URL=sqlite:///./video_sop.db
+SQLITE_BUSY_TIMEOUT_MS=5000
 STORAGE_DIR=./storage
 
 # 生产环境必填：用于加密 LLM API Key（migration 009）
@@ -110,7 +111,7 @@ VISION_USE_MOCK=false
 
 ## 部署与升级注意
 
-1. **数据库迁移**：启动时自动执行 `app/migrations/runner.py`（当前至 **017**）。旧库直接启动即可升级；新库运行 `python init_db.py`。
+1. **数据库迁移**：启动时自动执行 `app/migrations/runner.py`（当前至 **031**）。旧库直接启动即可升级；新库运行 `python init_db.py`。
 2. **`APP_SECRET_KEY`**：生产必须设置稳定随机串。未设置时 LLM Key 加密功能受限；**更换密钥后需导演在 LLM 设置页重新保存 API Key**。
 3. **Session 升级（migration 008）**：若从无二期的旧库升级，已有用户需 **重新登录** 获取新 Session Token。
 4. **音频上传**：非 WAV 格式需系统 PATH 可调用 `ffmpeg`。
@@ -126,6 +127,8 @@ VISION_USE_MOCK=false
 | **LLM Vision** | 需 Vision 模型 Provider + `ffmpeg`；无 Key 时设 `VISION_USE_MOCK=true` 仅用于演示。 |
 | **剪映导出** | 项目可配置 `jianyingDraftRoot`；写入前关闭剪映；剪映 6+ 草稿为加密格式，本工具写入 **5.9 兼容明文 JSON**。 |
 | **存储** | 单机 SQLite + 本地 `STORAGE_DIR`；**不依赖 Redis**。 |
+
+四期 10 用户轻量部署结论见 [`docs/phase4-deployment-storage.md`](docs/phase4-deployment-storage.md)。SQLite 已默认启用 WAL 和写锁等待；保持单 FastAPI 进程，不要用多个 Uvicorn worker 共同写同一个数据库文件。
 
 ## 回归测试
 
@@ -179,6 +182,8 @@ npm run test:e2e
 
 ## 文档索引
 
+- 四期总控：[`docs/phase4-master.md`](docs/phase4-master.md)（**已关闭**）
+- 四期清单：[`docs/phase4-checklist.md`](docs/phase4-checklist.md)
 - 三期总控：[`docs/phase3-master.md`](docs/phase3-master.md)（**已关闭**）
 - 三期清单：[`docs/phase3-checklist.md`](docs/phase3-checklist.md)
 - 二期总控：[`docs/phase2-master.md`](docs/phase2-master.md)
@@ -186,6 +191,7 @@ npm run test:e2e
 - 三期 backlog：[`docs/phase3-backlog.md`](docs/phase3-backlog.md)
 - API：[`docs/api.md`](docs/api.md)
 - 迁移规范：[`docs/schema-migration.md`](docs/schema-migration.md)
+- P4 部署与存储评估：[`docs/phase4-deployment-storage.md`](docs/phase4-deployment-storage.md)
 
 ## 开发约定
 

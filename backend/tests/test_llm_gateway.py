@@ -160,6 +160,7 @@ def test_build_llm_meta_fallback() -> None:
         used_fallback=True,
     )
     assert meta.llmStatus == "fallback_rule"
+    assert meta.llmErrorCode == "not_configured"
     assert meta.llmUsedFallback == "true"
     assert "回退" in meta.llmMessage
 

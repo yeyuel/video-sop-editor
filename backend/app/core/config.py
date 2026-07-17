@@ -8,6 +8,7 @@ class Settings(BaseSettings):
     app_host: str = Field(default="127.0.0.1", alias="APP_HOST")
     app_port: int = Field(default=8000, alias="APP_PORT")
     database_url: str = Field(default="sqlite:///./video_sop.db", alias="DATABASE_URL")
+    sqlite_busy_timeout_ms: int = Field(default=5000, alias="SQLITE_BUSY_TIMEOUT_MS")
     storage_dir: str = Field(default="./storage", alias="STORAGE_DIR")
     cors_origins: list[str] = Field(
         default=["http://127.0.0.1:3000", "http://localhost:3000"],

@@ -2,16 +2,22 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
+import { BlockingNotice, ToastNotice } from "@/components/async-status";
 import { LlmProgressOverlay } from "@/components/llm-progress-overlay";
-import { generateRoughCutPlan } from "@/lib/browser-api";
+import {
+  fetchRoughCutVersions,
+  generateRoughCutPlan,
+  rerunRoughCutStep,
+  restoreRoughCutVersion
+} from "@/lib/browser-api";
 import {
   createLlmProgressState,
   ROUGH_CUT_LLM_STAGES
 } from "@/lib/llm-progress-stages";
 import { useLlmProgress } from "@/lib/use-llm-progress";
-import type { RoughCutGenerationResult } from "@/types/domain";
+import type { RoughCutGenerationResult, RoughCutVersion } from "@/types/domain";
 
 type RoughCutLauncherProps = {
   projectId: string;
@@ -19,6 +25,7 @@ type RoughCutLauncherProps = {
 };
 
 type GenerationMode = "fill_missing" | "regenerate_creative";
+type RerunStep = "theme" | "storyboard" | "export";
 
 const modeOptions: Array<{
   value: GenerationMode;
@@ -43,6 +50,32 @@ export function RoughCutLauncher({ projectId, assetCount }: RoughCutLauncherProp
   const [mode, setMode] = useState<GenerationMode>("fill_missing");
   const [result, setResult] = useState<RoughCutGenerationResult | null>(null);
   const [error, setError] = useState("");
+  const [versions, setVersions] = useState<RoughCutVersion[]>([]);
+  const [versionsLoading, setVersionsLoading] = useState(true);
+  const [restoreTarget, setRestoreTarget] = useState<RoughCutVersion | null>(null);
+  const [restoring, setRestoring] = useState(false);
+  const [restoreMessage, setRestoreMessage] = useState("");
+  const [runningStep, setRunningStep] = useState<RerunStep | null>(null);
+
+  async function loadVersions() {
+    try {
+      setVersions(await fetchRoughCutVersions(projectId));
+    } catch {
+      setVersions([]);
+    } finally {
+      setVersionsLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    void loadVersions();
+  }, [projectId]);
+
+  useEffect(() => {
+    if (!restoreMessage) return;
+    const timer = window.setTimeout(() => setRestoreMessage(""), 3600);
+    return () => window.clearTimeout(timer);
+  }, [restoreMessage]);
 
   async function handleGenerate() {
     setError("");
@@ -54,6 +87,7 @@ export function RoughCutLauncher({ projectId, assetCount }: RoughCutLauncherProp
     try {
       const response = await generateRoughCutPlan(projectId, mode, onProgress);
       setResult(response.data);
+      await loadVersions();
       router.refresh();
     } catch (generationError) {
       setError(
@@ -68,6 +102,50 @@ export function RoughCutLauncher({ projectId, assetCount }: RoughCutLauncherProp
 
   const regenerate = mode === "regenerate_creative";
 
+  async function handleRestore() {
+    if (!restoreTarget) return;
+    setError("");
+    setRestoring(true);
+    try {
+      const response = await restoreRoughCutVersion(projectId, restoreTarget.id);
+      setRestoreMessage(response.message);
+      setRestoreTarget(null);
+      await loadVersions();
+      router.refresh();
+    } catch (restoreError) {
+      setError(
+        restoreError instanceof Error ? restoreError.message : "历史方案恢复失败，请重试。"
+      );
+    } finally {
+      setRestoring(false);
+    }
+  }
+
+  async function handleRerun(step: RerunStep) {
+    const labels: Record<RerunStep, string> = {
+      theme: "主题",
+      storyboard: "分镜",
+      export: "导出文案"
+    };
+    setError("");
+    setResult(null);
+    setRunningStep(step);
+    start(`正在重新生成${labels[step]}`, ROUGH_CUT_LLM_STAGES);
+    try {
+      const response = await rerunRoughCutStep(projectId, step, onProgress);
+      setResult(response.data);
+      await loadVersions();
+      router.refresh();
+    } catch (rerunError) {
+      setError(
+        rerunError instanceof Error ? rerunError.message : `${labels[step]}重跑失败，请重试。`
+      );
+    } finally {
+      setRunningStep(null);
+      finish();
+    }
+  }
+
   return (
     <>
       <LlmProgressOverlay
@@ -75,6 +153,16 @@ export function RoughCutLauncher({ projectId, assetCount }: RoughCutLauncherProp
           llmProgress ?? createLlmProgressState("一键初剪", ROUGH_CUT_LLM_STAGES)
         }
         visible={isLlmRunning}
+      />
+      <BlockingNotice
+        visible={restoring}
+        title="正在恢复历史方案"
+        description="系统正在备份当前方案并恢复主题、分镜和导出文案。"
+      />
+      <ToastNotice
+        visible={Boolean(restoreMessage)}
+        title="恢复完成"
+        message={restoreMessage}
       />
       <section className="surface-panel mb-5 overflow-hidden p-6">
         <div className="flex flex-wrap items-start justify-between gap-5">
@@ -171,6 +259,153 @@ export function RoughCutLauncher({ projectId, assetCount }: RoughCutLauncherProp
                 {result.preservedAudioRhythm ? " · 已复用真实节拍" : ""}
               </p>
             ) : null}
+          </div>
+        ) : null}
+
+        <div className="mt-6 border-t border-pine/10 pt-5">
+          <div className="flex flex-wrap items-center justify-between gap-4 rounded-2xl bg-sand/45 px-4 py-4">
+            <div>
+              <h3 className="font-semibold text-ink">单步骤重跑</h3>
+              <p className="mt-1 text-sm text-ink/55">
+                只覆盖选定阶段，并自动保存重跑前后的方案版本。
+              </p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {([
+                ["theme", "重跑主题"],
+                ["storyboard", "重跑分镜"],
+                ["export", "重跑导出文案"]
+              ] as Array<[RerunStep, string]>).map(([step, label]) => (
+                <button
+                  key={step}
+                  type="button"
+                  disabled={isLlmRunning || restoring}
+                  onClick={() => handleRerun(step)}
+                  className="rounded-full border border-pine/20 bg-white px-4 py-2 text-sm font-medium text-pine transition hover:bg-mist disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {runningStep === step ? "生成中..." : label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="mt-5">
+          <div className="flex flex-wrap items-end justify-between gap-3">
+            <div>
+              <h3 className="text-lg font-semibold text-ink">方案版本</h3>
+              <p className="mt-1 text-sm text-ink/55">
+                对比不同模型或生成批次；恢复只影响主题、分镜和导出文案。
+              </p>
+            </div>
+            {versions.length > 0 ? (
+              <span className="rounded-full bg-sand px-3 py-1 text-xs text-ink/60">
+                {versions.length} 个版本
+              </span>
+            ) : null}
+          </div>
+
+          {versionsLoading ? (
+            <p className="mt-4 text-sm text-ink/50">正在读取历史版本...</p>
+          ) : versions.length === 0 ? (
+            <p className="mt-4 rounded-2xl bg-sand/45 px-4 py-4 text-sm text-ink/60">
+              暂无历史版本。使用“从头生成创意方案”后会自动保存版本快照。
+            </p>
+          ) : (
+            <div className="mt-4 grid gap-3 lg:grid-cols-2">
+              {versions.slice(0, 8).map((version) => {
+                const differs =
+                  version.diff.themeChanged ||
+                  version.diff.storyboardCountDelta !== 0 ||
+                  version.diff.durationDeltaSec !== 0 ||
+                  version.diff.sequenceChangeCount !== 0 ||
+                  version.diff.exportTitleChanged;
+                return (
+                  <article
+                    key={version.id}
+                    className="rounded-2xl border border-pine/12 bg-white/75 p-4"
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="truncate font-medium text-ink">{version.label}</p>
+                        <p className="mt-1 text-xs text-ink/45">
+                          {new Date(version.createdAt).toLocaleString("zh-CN")}
+                          {version.model ? ` · ${version.providerId}/${version.model}` : ""}
+                        </p>
+                      </div>
+                      <span
+                        className={`shrink-0 rounded-full px-2.5 py-1 text-xs ${
+                          differs ? "bg-sand text-ink/65" : "bg-mist text-pine"
+                        }`}
+                      >
+                        {differs ? "存在差异" : "与当前一致"}
+                      </span>
+                    </div>
+                    <div className="mt-3 grid grid-cols-2 gap-2 text-xs text-ink/60">
+                      <span className="rounded-xl bg-sand/45 px-3 py-2">
+                        主题：{version.summary.themeTitle || "未设置"}
+                      </span>
+                      <span className="rounded-xl bg-sand/45 px-3 py-2">
+                        {version.summary.storyboardCount} 镜头 · {version.summary.durationSec}s
+                      </span>
+                      <span className="col-span-2 truncate rounded-xl bg-sand/45 px-3 py-2">
+                        标题：{version.summary.exportTitle || "未设置"}
+                      </span>
+                    </div>
+                    {differs ? (
+                      <div className="mt-3 flex flex-wrap gap-2 text-xs text-ink/55">
+                        {version.diff.themeChanged ? <span>主题不同</span> : null}
+                        {version.diff.sequenceChangeCount ? (
+                          <span>{version.diff.sequenceChangeCount} 个镜头位置不同</span>
+                        ) : null}
+                        {version.diff.storyboardCountDelta ? (
+                          <span>
+                            镜头数 {version.diff.storyboardCountDelta > 0 ? "+" : ""}
+                            {version.diff.storyboardCountDelta}
+                          </span>
+                        ) : null}
+                        {version.diff.durationDeltaSec ? (
+                          <span>
+                            时长 {version.diff.durationDeltaSec > 0 ? "+" : ""}
+                            {version.diff.durationDeltaSec}s
+                          </span>
+                        ) : null}
+                        {version.diff.exportTitleChanged ? <span>标题不同</span> : null}
+                      </div>
+                    ) : null}
+                    <button
+                      type="button"
+                      disabled={!differs || restoring}
+                      onClick={() => setRestoreTarget(version)}
+                      className="mt-4 rounded-full border border-pine/20 px-4 py-2 text-sm font-medium text-pine transition hover:bg-mist disabled:cursor-not-allowed disabled:opacity-40"
+                    >
+                      恢复此版本
+                    </button>
+                  </article>
+                );
+              })}
+            </div>
+          )}
+          </div>
+        </div>
+
+        {restoreTarget ? (
+          <div className="mt-4 rounded-2xl border border-clay/20 bg-[#fff8f2] p-4">
+            <p className="font-medium text-ink">确认恢复“{restoreTarget.label}”？</p>
+            <p className="mt-2 text-sm leading-6 text-ink/60">
+              当前方案会先自动备份。恢复不会覆盖素材库、真实音频和节拍校准，但旧口播音频会被清除，避免文案与声音不一致。
+            </p>
+            <div className="mt-4 flex gap-3">
+              <button type="button" className="btn-primary" onClick={handleRestore}>
+                确认恢复
+              </button>
+              <button
+                type="button"
+                className="rounded-full border border-pine/20 px-5 py-2.5 text-sm text-pine"
+                onClick={() => setRestoreTarget(null)}
+              >
+                取消
+              </button>
+            </div>
           </div>
         ) : null}
       </section>

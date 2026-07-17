@@ -1334,6 +1334,182 @@ def build_llm_storyboard_plan(
     return plan, meta
 
 
+def build_llm_partial_storyboard_plan(
+    *,
+    project: ProjectEntity,
+    theme: NarrativeThemeRead,
+    assets: list[AssetRead],
+    selected_segments: list[StoryboardSegmentRead],
+    previous_segment: StoryboardSegmentRead | None,
+    next_segment: StoryboardSegmentRead | None,
+    rhythm: RhythmPlanRead | None,
+    instruction: str = "",
+    on_progress: ProgressReporter | None = None,
+) -> tuple[list[dict[str, str]], dict[str, str]]:
+    """Regenerate a fixed storyboard interval without changing its narrative skeleton."""
+    slot_count = len(selected_segments)
+    allowed_asset_ids = {asset.assetId for asset in assets}
+    allow_asset_reuse = bool(getattr(project, "allow_asset_reuse", False))
+    emit_progress(
+        on_progress,
+        "preparing",
+        f"正在整理连续 {slot_count} 个镜头的局部上下文…",
+        progress=12,
+    )
+    result = llm_suggestion_service.generate_json_result(
+        system_prompt=(
+            "You are revising one CONTIGUOUS interval of a travel-video storyboard. "
+            "Return JSON only with a segments array containing exactly slotCount items. "
+            "Each item must contain assetId, shotDescription, rhythm and subtitle. "
+            "Keep the supplied slot roles and timeline boundaries unchanged; only choose assets "
+            "and rewrite shot copy for each slot. Preserve route continuity between previousContext, "
+            "selectedSlots and nextContext. Do not invent asset IDs. "
+            + (
+                "Asset reuse is allowed when it has a distinct purpose."
+                if allow_asset_reuse
+                else "Use each candidate asset at most once."
+            )
+        ),
+        user_prompt=json.dumps(
+            {
+                "project": {
+                    "name": project.name,
+                    "platform": project.platform,
+                    "routeText": project.route_text,
+                },
+                "theme": _theme_context_for_llm(theme),
+                "rhythm": _rhythm_context_for_llm(
+                    rhythm,
+                    selected_segments[0].beatMode if selected_segments else "none",
+                ),
+                "slotCount": slot_count,
+                "instruction": instruction.strip(),
+                "previousContext": (
+                    {
+                        "assetId": previous_segment.assetId,
+                        "description": previous_segment.shotDescription,
+                        "role": previous_segment.attentionRole,
+                    }
+                    if previous_segment
+                    else None
+                ),
+                "selectedSlots": [
+                    {
+                        "startTime": segment.startTime,
+                        "endTime": segment.endTime,
+                        "role": segment.attentionRole,
+                        "function": segment.function,
+                        "currentAssetId": segment.assetId,
+                    }
+                    for segment in selected_segments
+                ],
+                "nextContext": (
+                    {
+                        "assetId": next_segment.assetId,
+                        "description": next_segment.shotDescription,
+                        "role": next_segment.attentionRole,
+                    }
+                    if next_segment
+                    else None
+                ),
+                "candidateAssets": [
+                    {
+                        "assetId": asset.assetId,
+                        "location": asset.location,
+                        "scene": asset.scene,
+                        "functionTags": asset.functionTags,
+                        "emotionTags": asset.emotionTags,
+                        "suggestedDurationSec": asset.suggestedDurationSec,
+                    }
+                    for asset in assets
+                ],
+            },
+            ensure_ascii=False,
+        ),
+        temperature=0.45,
+        max_tokens=min(1400 + slot_count * 180, 3200),
+        on_progress=on_progress,
+    )
+    emit_progress(on_progress, "building", "正在校验局部分镜与路线连续性…", progress=86)
+    normalized = _normalize_storyboard_plan(result, assets) or []
+    plan: list[dict[str, str]] = []
+    used_asset_ids: set[str] = set()
+    for item in normalized:
+        asset_id = item["assetId"]
+        if asset_id not in allowed_asset_ids:
+            continue
+        if not allow_asset_reuse and asset_id in used_asset_ids:
+            continue
+        plan.append(item)
+        used_asset_ids.add(asset_id)
+        if len(plan) == slot_count:
+            break
+
+    fallback_asset_ids = [segment.assetId for segment in selected_segments] + [
+        asset.assetId for asset in assets
+    ]
+    for asset_id in fallback_asset_ids:
+        if len(plan) == slot_count:
+            break
+        if asset_id not in allowed_asset_ids:
+            continue
+        if not allow_asset_reuse and asset_id in used_asset_ids:
+            continue
+        plan.append(
+            {
+                "assetId": asset_id,
+                "shotDescription": "",
+                "function": "",
+                "rhythm": "",
+                "subtitle": "",
+            }
+        )
+        used_asset_ids.add(asset_id)
+
+    if len(plan) != slot_count:
+        raise ValueError("可用素材不足，无法在不破坏时间线的前提下重跑该区间。")
+    used_fallback = not result.ok or len(normalized) < slot_count
+    meta = build_llm_meta(result, used_fallback=used_fallback).as_dict()
+    meta["promptMode"] = "partial_storyboard"
+    meta["rangeSegmentCount"] = str(slot_count)
+    return plan, meta
+
+
+def apply_partial_storyboard_plan(
+    *,
+    selected_segments: list[StoryboardSegmentRead],
+    assets: list[AssetRead],
+    plan: list[dict[str, str]],
+) -> list[StoryboardSegmentWrite]:
+    """Apply an LLM plan while preserving fixed IDs, timing, beats and narrative slots."""
+    asset_by_id = {asset.assetId: asset for asset in assets}
+    updated: list[StoryboardSegmentWrite] = []
+    for segment, item in zip(selected_segments, plan, strict=True):
+        asset = asset_by_id[item["assetId"]]
+        visual_strength = infer_visual_strength(asset)
+        subtitle = item.get("subtitle", "").strip() or subtitle_from_asset(asset)
+        updated.append(
+            segment_read_to_write(segment).model_copy(
+                update={
+                    "assetId": asset.assetId,
+                    "shotDescription": item.get("shotDescription", "").strip()
+                    or f"{asset.location} - {asset.scene}",
+                    "rhythm": item.get("rhythm", "").strip()
+                    or rhythm_label(asset.informationDensity),
+                    "subtitle": subtitle,
+                    "visualStrength": visual_strength,
+                    "motionPolicy": infer_motion_policy(asset, visual_strength),
+                    "selectionTrace": (
+                        f"局部重跑：保留 {segment.startTime}s-{segment.endTime}s、"
+                        f"{segment.attentionRole or segment.function} 叙事槽位，改选素材 {asset.assetId}。"
+                    ),
+                    "voiceoverText": subtitle if segment.voiceoverText.strip() else "",
+                }
+            )
+        )
+    return updated
+
+
 def _normalize_storyboard_plan(
     result: LlmCallResult,
     assets: list[AssetRead],

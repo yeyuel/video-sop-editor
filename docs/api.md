@@ -706,6 +706,37 @@ Prompt、模型、Provider、温度、输出上限或项目输入变化后会产
 
 `GET /projects/{projectId}/rough-cut/versions` 返回该项目的一键生成版本元数据，包括 Provider、模型、生成模式和创建时间；媒体文件不会复制到版本快照中。
 
+版本列表同时返回：
+
+- `summary`：主题、分镜数量、时间线时长和导出标题。
+- `diff`：相对当前方案的主题变化、镜头数差值、时长差值、镜头位置变化数和标题变化。
+
+`POST /projects/{projectId}/rough-cut/versions/{versionId}/restore` 恢复指定历史版本。恢复范围仅包括主题、分镜和导出文案；项目配置、素材库、真实音频、识别节拍和人工校准保持不变。恢复前自动保存当前方案，若历史版本引用了已删除素材则返回 `409` 并阻止恢复。为避免文案与声音不一致，恢复后会清除旧口播音频，用户可重新生成。
+
+`POST /projects/{projectId}/rough-cut/rerun/{step}/stream` 单独重跑指定阶段，`step` 支持：
+
+- `theme`：重新生成主题候选并选择首个候选，不覆盖现有分镜和导出文案。
+- `storyboard`：基于当前主题和真实节拍重新生成完整分镜，不覆盖导出文案；节拍未就绪时拒绝执行。
+- `export`：基于当前主题和分镜重新生成标题、标签、字幕与导出文案，不修改主题、分镜或节拍。
+
+每次单步骤重跑都会保存重跑前和重跑后的结构化版本快照，并通过 SSE 返回任务进度。
+
+`POST /projects/{projectId}/storyboard/rerun-partial/stream` 对连续分镜区间执行 LLM 局部重跑。
+
+请求体：
+
+```json
+{
+  "segmentIds": ["seg_001", "seg_002"],
+  "instruction": "保持路线顺序，增加人物参与感"
+}
+```
+
+- `segmentIds` 必须包含 1 至 8 个当前时间线中的连续镜头，重复、缺失或不连续时拒绝执行。
+- 只重新选择素材并改写镜头描述、节奏文案和字幕；镜头 ID、叙事角色、起止时间、节拍模式和节拍点保持不变。
+- 未启用素材复用时，候选素材会排除区间外已经使用的素材。
+- 执行前后自动保存版本快照，SSE `complete.meta` 返回 Provider、模型和前后版本 ID。
+
 分镜生成采用 `structure_only` Prompt，只输出素材顺序、镜头描述和可选结构标签；临时字幕由素材描述兜底。导出建议阶段作为独立 Copywriting Pass，再统一生成标题、标签、文案和逐镜头字幕，降低长 Prompt 的输出长度与职责冲突。
 
 长耗时 LLM 任务优先使用 `text/event-stream`，事件类型：
@@ -718,11 +749,14 @@ Prompt、模型、Provider、温度、输出上限或项目输入变化后会产
 |------|------|
 | 主题 LLM | `POST /projects/{id}/themes/generate-llm/stream` |
 | 分镜 LLM | `POST /projects/{id}/storyboard/generate-llm/stream` |
+| 分镜局部重跑 | `POST /projects/{id}/storyboard/rerun-partial/stream` |
 | 节奏 BGM 推荐 | `POST /projects/{id}/rhythm-plan/bgm-recommend/stream` |
 | 音频识别 | `POST /projects/{id}/rhythm-plan/audio-upload/stream` |
 | 导出建议 | `POST /projects/{id}/export-plan/suggest/stream` |
 
 前端通过 `Accept: text/event-stream` 调用，浏览器直连 FastAPI（见 `frontend/lib/api-base.ts`）。
+
+前端通用流式请求层会在 JSON 型生成任务失败时保存最近一次 `path + body`，并在当前页面提供原参数重试。`meta.llmErrorCode` 保留规则回退前的原始错误码；当 Codex / OAuth 返回 `auth_invalid` 或 `not_configured` 时，即使业务已回退规则生成，也会保留请求上下文并提示先重新连接账号。成功、用户忽略或主动取消后清除该记录；`FormData` 音频上传不保存文件内容，也不自动重试。
 
 ### 9.1 获取 provider 列表
 

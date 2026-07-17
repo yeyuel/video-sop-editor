@@ -12,6 +12,7 @@ import {
   fillStoryboardVoiceoverFromSubtitles,
   generateStoryboard,
   generateStoryboardWithLlm,
+  regenerateStoryboardRangeWithLlm,
   reorderStoryboard
 } from "@/lib/browser-api";
 import {
@@ -63,6 +64,9 @@ export function StoryboardListClient({
     tone?: "error" | "success" | "warning";
   } | null>(null);
   const [deleteSegmentId, setDeleteSegmentId] = useState("");
+  const [selectionMode, setSelectionMode] = useState(false);
+  const [selectedSegmentIds, setSelectedSegmentIds] = useState<string[]>([]);
+  const [partialInstruction, setPartialInstruction] = useState("");
   const [isPending, startTransition] = useTransition();
   const [llmProgress, setLlmProgress] = useState<LlmProgressViewState | null>(null);
 
@@ -139,6 +143,21 @@ export function StoryboardListClient({
     }
     return counts;
   }, [bundle.segments]);
+
+  const selectedRange = useMemo(() => {
+    const selected = bundle.segments.filter((segment) =>
+      selectedSegmentIds.includes(segment.id)
+    );
+    if (selected.length === 0) {
+      return null;
+    }
+    return {
+      count: selected.length,
+      duration: Number((selected.at(-1)!.endTime - selected[0].startTime).toFixed(2)),
+      endTime: selected.at(-1)!.endTime,
+      startTime: selected[0].startTime
+    };
+  }, [bundle.segments, selectedSegmentIds]);
 
   function showError(message: string) {
     setError(message);
@@ -349,6 +368,73 @@ export function StoryboardListClient({
     });
   }
 
+  function toggleSegmentSelection(segmentId: string) {
+    const indexById = new Map(bundle.segments.map((segment, index) => [segment.id, index]));
+    const nextIds = selectedSegmentIds.includes(segmentId)
+      ? selectedSegmentIds.filter((id) => id !== segmentId)
+      : [...selectedSegmentIds, segmentId];
+    const indexes = nextIds
+      .map((id) => indexById.get(id))
+      .filter((index): index is number => index !== undefined)
+      .sort((left, right) => left - right);
+    if (indexes.length > 8) {
+      showError("一次最多重跑 8 个连续镜头，请缩小选择范围。");
+      return;
+    }
+    if (indexes.length > 1 && indexes.at(-1)! - indexes[0] + 1 !== indexes.length) {
+      showError("局部重跑需要选择连续镜头；可从区间两端增减选择。");
+      return;
+    }
+    setError("");
+    setSelectedSegmentIds(
+      bundle.segments.filter((segment) => nextIds.includes(segment.id)).map((segment) => segment.id)
+    );
+  }
+
+  function handlePartialRerun() {
+    if (selectedSegmentIds.length === 0) {
+      showError("请先选择至少一个镜头。");
+      return;
+    }
+    setError("");
+    setLlmProgress(createLlmProgressState("LLM 局部分镜重跑", STORYBOARD_LLM_STAGES));
+    startTransition(async () => {
+      try {
+        const { data: nextBundle, meta } = await regenerateStoryboardRangeWithLlm(
+          projectId,
+          {
+            segmentIds: selectedSegmentIds,
+            instruction: partialInstruction.trim()
+          },
+          (event) => {
+            setLlmProgress((current) =>
+              current ? applyLlmProgressEvent(current, event) : current
+            );
+          }
+        );
+        setBundle(nextBundle);
+        setSelectedSegmentIds([]);
+        setPartialInstruction("");
+        setSelectionMode(false);
+        router.refresh();
+        const llmNotice = describeLlmStatus(meta);
+        setNotice({
+          title: llmNotice?.title ?? "局部分镜已更新",
+          message:
+            llmNotice?.message ??
+            "选中区间已重新编排，区间外镜头、时间轴和节拍保持不变。",
+          tone: llmNotice ? llmNoticeTone(llmNotice.tone) : "success"
+        });
+      } catch (submitError) {
+        showError(
+          submitError instanceof Error ? submitError.message : "局部分镜重跑失败，请稍后再试。"
+        );
+      } finally {
+        setLlmProgress(null);
+      }
+    });
+  }
+
   return (
     <>
       <BlockingNotice
@@ -415,9 +501,60 @@ export function StoryboardListClient({
               >
                 从字幕生成口播稿
               </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setSelectionMode((current) => !current);
+                  setSelectedSegmentIds([]);
+                  setPartialInstruction("");
+                  setError("");
+                }}
+                disabled={isPending || Boolean(llmProgress) || bundle.segments.length === 0}
+                className={selectionMode ? "btn-primary" : "btn-secondary"}
+              >
+                {selectionMode ? "退出局部重跑" : "局部重跑"}
+              </button>
             </div>
           </div>
         </div>
+
+        {selectionMode ? (
+          <div className="surface-panel border-pine/15 p-4 md:p-5">
+            <div className="flex flex-wrap items-start justify-between gap-4">
+              <div>
+                <p className="font-semibold text-ink">选择连续分镜区间</p>
+                <p className="mt-1 text-sm leading-6 text-ink/60">
+                  最多选择 8 个连续镜头。重跑只替换素材与镜头文案，叙事角色、时间和节拍不变。
+                </p>
+              </div>
+              <span className="stat-pill">
+                {selectedRange
+                  ? `${selectedRange.startTime}s–${selectedRange.endTime}s · ${selectedRange.count} 镜头 · ${selectedRange.duration}s`
+                  : "尚未选择"}
+              </span>
+            </div>
+            <div className="mt-4 flex flex-col gap-3 md:flex-row md:items-end">
+              <label className="block min-w-0 flex-1">
+                <span className="mb-2 block text-sm text-ink/70">调整要求（可选）</span>
+                <input
+                  value={partialInstruction}
+                  onChange={(event) => setPartialInstruction(event.target.value)}
+                  maxLength={500}
+                  placeholder="例如：保留路线顺序，增加人物参与感，结尾自然接入下一个地点"
+                  className="w-full rounded-2xl border border-pine/30 bg-white px-4 py-3 outline-none transition focus:border-pine"
+                />
+              </label>
+              <button
+                type="button"
+                onClick={handlePartialRerun}
+                disabled={isPending || Boolean(llmProgress) || selectedSegmentIds.length === 0}
+                className="btn-ai disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                重跑选中区间
+              </button>
+            </div>
+          </div>
+        ) : null}
 
         {error ? <InlineErrorBanner message={error} /> : null}
 
@@ -467,6 +604,17 @@ export function StoryboardListClient({
                   <div className="flex flex-wrap items-start justify-between gap-4">
                     <div className="min-w-0 flex-1">
                       <div className="flex flex-wrap items-center gap-2">
+                        {selectionMode ? (
+                          <label className="inline-flex cursor-pointer items-center gap-2 rounded-full border border-pine/20 bg-white px-3 py-1.5 text-sm font-medium text-pine">
+                            <input
+                              type="checkbox"
+                              checked={selectedSegmentIds.includes(segment.id)}
+                              onChange={() => toggleSegmentSelection(segment.id)}
+                              className="h-4 w-4 rounded border-line text-pine focus:ring-pine/20"
+                            />
+                            选择
+                          </label>
+                        ) : null}
                         <span className="stat-pill">
                           {segment.startTime}s – {segment.endTime}s
                         </span>

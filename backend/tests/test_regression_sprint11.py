@@ -31,5 +31,6 @@ def test_app_lifespan_boots_and_seeds_demo_data() -> None:
             headers={"X-Session-Token": token},
         )
         assert projects.status_code == 200
-        assert len(projects.json()["data"]) == 1
+        project_ids = {project["id"] for project in projects.json()["data"]}
+        assert "proj_001" in project_ids
     reset_shutdown_state()

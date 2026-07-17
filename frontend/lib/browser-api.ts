@@ -8,6 +8,8 @@ import type {
   Project,
   RhythmPlan,
   RoughCutGenerationResult,
+  RoughCutRestoreResult,
+  RoughCutVersion,
   StoryboardBundle,
   StoryboardSegment
 } from "@/types/domain";
@@ -285,6 +287,36 @@ export function generateRoughCutPlan(
   );
 }
 
+export function fetchRoughCutVersions(projectId: string): Promise<RoughCutVersion[]> {
+  return request<RoughCutVersion[]>(`/projects/${projectId}/rough-cut/versions`);
+}
+
+export function restoreRoughCutVersion(
+  projectId: string,
+  versionId: string
+): Promise<RoughCutRestoreResult> {
+  return request<RoughCutRestoreResult>(
+    `/projects/${projectId}/rough-cut/versions/${versionId}/restore`,
+    { method: "POST", body: JSON.stringify({}) }
+  );
+}
+
+export function rerunRoughCutStep(
+  projectId: string,
+  step: "theme" | "storyboard" | "export",
+  onProgress: (event: LlmStreamProgressEvent) => void,
+  signal?: AbortSignal
+): Promise<RequestWithMetaResult<RoughCutGenerationResult>> {
+  return postLlmStream<RoughCutGenerationResult>(
+    `/projects/${projectId}/rough-cut/rerun/${step}/stream`,
+    {},
+    (event) => {
+      if (event.type === "progress") onProgress(event);
+    },
+    signal
+  );
+}
+
 export function generateThemesWithLlm(
   projectId: string,
   count = 3,
@@ -445,6 +477,27 @@ export function generateStoryboardWithLlm(
     method: "POST",
     body: JSON.stringify(payload)
   });
+}
+
+export function regenerateStoryboardRangeWithLlm(
+  projectId: string,
+  payload: {
+    segmentIds: string[];
+    instruction?: string;
+  },
+  onProgress?: (event: LlmStreamProgressEvent) => void,
+  signal?: AbortSignal
+): Promise<RequestWithMetaResult<StoryboardBundle>> {
+  return postLlmStream<StoryboardBundle>(
+    `/projects/${projectId}/storyboard/rerun-partial/stream`,
+    payload,
+    (event) => {
+      if (event.type === "progress") {
+        onProgress?.(event);
+      }
+    },
+    signal
+  );
 }
 
 export function saveStoryboard(

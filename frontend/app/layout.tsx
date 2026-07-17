@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import { Plus_Jakarta_Sans } from "next/font/google";
 
+import { LlmRetryBanner } from "@/components/llm-retry-banner";
+
 import "./globals.css";
 
 const sans = Plus_Jakarta_Sans({
@@ -21,7 +23,10 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="zh-CN" suppressHydrationWarning>
-      <body className={`${sans.variable} font-sans antialiased`}>{children}</body>
+      <body className={`${sans.variable} font-sans antialiased`}>
+        {children}
+        <LlmRetryBanner />
+      </body>
     </html>
   );
 }
