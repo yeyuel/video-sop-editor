@@ -13,6 +13,14 @@ CODEX_CALLBACK_PATH = "/auth/callback"
 GEMINI_CALLBACK_PATH = "/oauth2callback"
 
 
+class ThreadingHTTPServerV6(ThreadingHTTPServer):
+    address_family = socket.AF_INET6
+
+    def server_bind(self) -> None:
+        self.socket.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_V6ONLY, 1)
+        super().server_bind()
+
+
 def pick_free_loopback_port() -> int:
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
         sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -21,7 +29,8 @@ def pick_free_loopback_port() -> int:
 
 
 def ensure_loopback_port_available(host: str, port: int) -> None:
-    probe = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    family = socket.AF_INET6 if ":" in host else socket.AF_INET
+    probe = socket.socket(family, socket.SOCK_STREAM)
     probe.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     try:
         probe.bind((host, port))
@@ -32,6 +41,17 @@ def ensure_loopback_port_available(host: str, port: int) -> None:
         ) from exc
     finally:
         probe.close()
+
+
+def localhost_bind_hosts() -> list[str]:
+    hosts = ["127.0.0.1"]
+    try:
+        addresses = socket.getaddrinfo("localhost", None, type=socket.SOCK_STREAM)
+    except OSError:
+        return hosts
+    if any(family == socket.AF_INET6 for family, *_rest in addresses):
+        hosts.append("::1")
+    return hosts
 
 
 def start_loopback_server(
@@ -94,13 +114,40 @@ def start_loopback_server(
             self.wfile.write(body)
 
     bind_host = host if host else "127.0.0.1"
-    server = ThreadingHTTPServer((bind_host, port), OAuthCallbackHandler)
+    server_class = ThreadingHTTPServerV6 if ":" in bind_host else ThreadingHTTPServer
+    server = server_class((bind_host, port), OAuthCallbackHandler)
     server.daemon_threads = True
     server.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
     logger.info("OAuth loopback listening on http://%s:%s%s", bind_host, port, expected_path)
     return server, thread
+
+
+def start_loopback_servers(
+    *,
+    hosts: list[str],
+    port: int,
+    expected_path: str,
+    on_callback: Callable[[dict[str, str]], None],
+) -> tuple[list[ThreadingHTTPServer], list[threading.Thread]]:
+    servers: list[ThreadingHTTPServer] = []
+    threads: list[threading.Thread] = []
+    try:
+        for host in hosts:
+            server, thread = start_loopback_server(
+                host=host,
+                port=port,
+                expected_path=expected_path,
+                on_callback=on_callback,
+            )
+            servers.append(server)
+            threads.append(thread)
+    except Exception:
+        for server in servers:
+            stop_loopback_server(server)
+        raise
+    return servers, threads
 
 
 def stop_loopback_server(server: ThreadingHTTPServer) -> None:

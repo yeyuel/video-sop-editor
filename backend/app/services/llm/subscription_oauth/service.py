@@ -28,14 +28,15 @@ from app.services.llm.subscription_oauth.loopback import (
     CODEX_CALLBACK_PATH,
     GEMINI_CALLBACK_PATH,
     ensure_loopback_port_available,
+    localhost_bind_hosts,
     pick_free_loopback_port,
-    start_loopback_server,
+    start_loopback_servers,
     stop_loopback_server,
 )
 from app.services.llm.types import LlmProviderStatus
 from app.services.secret_vault import decrypt_api_key_if_needed, encrypt_api_key_if_needed
 
-_loopback_servers: dict[str, ThreadingHTTPServer] = {}
+_loopback_servers: dict[str, list[ThreadingHTTPServer]] = {}
 _loopback_lock = threading.Lock()
 logger = logging.getLogger(__name__)
 
@@ -74,6 +75,13 @@ def start_subscription_oauth(
     if oauth_mode not in {OAUTH_MODE_CODEX, OAUTH_MODE_GEMINI_SUBSCRIPTION}:
         raise ValueError(f"不支持的订阅登录类型：{auth_type}")
 
+    _clear_previous_pending_flows(
+        session,
+        provider_id=canonical,
+        user_id=user_id,
+        oauth_mode=oauth_mode,
+    )
+
     state = generate_oauth_state()
     code_verifier = generate_code_verifier()
     expires_at = _utc_now() + timedelta(minutes=_pending_expiry_minutes())
@@ -85,7 +93,8 @@ def start_subscription_oauth(
         adapter = get_codex_adapter()
         loopback_port = adapter.loopback_port
         redirect_uri = adapter.redirect_uri
-        ensure_loopback_port_available("127.0.0.1", loopback_port)
+        for host in localhost_bind_hosts():
+            ensure_loopback_port_available(host, loopback_port)
     else:
         loopback_port = pick_free_loopback_port()
         redirect_uri = f"http://127.0.0.1:{loopback_port}{GEMINI_CALLBACK_PATH}"
@@ -360,9 +369,9 @@ def _start_loopback_listener(
     user_id: str,
     adapter: SubscriptionOAuthAdapter,
 ) -> None:
-    host = "127.0.0.1"
     port = adapter.loopback_port
     expected_path = CODEX_CALLBACK_PATH if adapter.oauth_mode == OAUTH_MODE_CODEX else GEMINI_CALLBACK_PATH
+    hosts = localhost_bind_hosts() if adapter.oauth_mode == OAUTH_MODE_CODEX else ["127.0.0.1"]
 
     def handle_callback(params: dict[str, str]) -> None:
         if not params:
@@ -370,26 +379,27 @@ def _start_loopback_listener(
 
         callback_state = str(params.get("state", "")).strip()
         if callback_state and callback_state != state:
-            logger.warning("OAuth state mismatch for subscription callback")
-            return
+            message = "OAuth 回调状态不匹配，请重新发起连接。"
+            _mark_pending_error(state, message)
+            raise ValueError(message)
 
         if params.get("error"):
-            if not callback_state or callback_state == state:
-                _mark_pending_error(state, str(params.get("error_description") or params["error"]))
-            return
+            message = str(params.get("error_description") or params["error"])
+            _mark_pending_error(state, message)
+            raise ValueError(message)
 
         code = str(params.get("code", "")).strip()
         if not code:
-            if callback_state == state:
-                _mark_pending_error(state, "OAuth 回调缺少 code。")
-            return
+            message = "OAuth 回调缺少 code。"
+            _mark_pending_error(state, message)
+            raise ValueError(message)
         try:
             from app.db import engine
 
             with Session(engine) as callback_session:
                 pending = callback_session.get(LlmOAuthPendingEntity, state)
                 if not pending:
-                    return
+                    raise ValueError("OAuth state 无效或已过期，请重新发起授权。")
                 token_payload = _exchange_authorization_code(
                     adapter,
                     code=code,
@@ -401,25 +411,52 @@ def _start_loopback_listener(
                 callback_session.commit()
         except ValueError as exc:
             _mark_pending_error(state, str(exc))
+            raise
         except Exception as exc:  # noqa: BLE001
-            _mark_pending_error(state, f"OAuth 回调处理异常：{exc}")
+            message = f"OAuth 回调处理异常：{exc}"
+            _mark_pending_error(state, message)
+            raise RuntimeError(message) from exc
         finally:
             with _loopback_lock:
-                server = _loopback_servers.pop(state, None)
-            if server:
+                servers = _loopback_servers.pop(state, [])
+            for server in servers:
                 stop_loopback_server(server)
 
-    server, _thread = start_loopback_server(
-        host=host,
+    servers, _threads = start_loopback_servers(
+        hosts=hosts,
         port=port,
         expected_path=expected_path,
         on_callback=handle_callback,
     )
     with _loopback_lock:
-        previous = _loopback_servers.pop(state, None)
-        if previous:
-            stop_loopback_server(previous)
-        _loopback_servers[state] = server
+        previous = _loopback_servers.pop(state, [])
+        for server in previous:
+            stop_loopback_server(server)
+        _loopback_servers[state] = servers
+
+
+def _clear_previous_pending_flows(
+    session: Session,
+    *,
+    provider_id: str,
+    user_id: str,
+    oauth_mode: str,
+) -> None:
+    pending_flows = session.exec(
+        select(LlmOAuthPendingEntity).where(
+            LlmOAuthPendingEntity.provider_id == provider_id,
+            LlmOAuthPendingEntity.user_id == user_id,
+            LlmOAuthPendingEntity.oauth_mode == oauth_mode,
+        )
+    ).all()
+    for pending in pending_flows:
+        with _loopback_lock:
+            servers = _loopback_servers.pop(pending.state, [])
+        for server in servers:
+            stop_loopback_server(server)
+        session.delete(pending)
+    if pending_flows:
+        session.commit()
 
 
 def _mark_pending_error(state: str, message: str) -> None:
