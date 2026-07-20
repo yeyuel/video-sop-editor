@@ -185,6 +185,8 @@ npm run test:e2e
 
 ## 文档索引
 
+- 五期规划：[`docs/phase5-master.md`](docs/phase5-master.md)（**待开发**）
+- 五期清单：[`docs/phase5-checklist.md`](docs/phase5-checklist.md)
 - 四期总控：[`docs/phase4-master.md`](docs/phase4-master.md)（**已关闭**）
 - 四期清单：[`docs/phase4-checklist.md`](docs/phase4-checklist.md)
 - 三期总控：[`docs/phase3-master.md`](docs/phase3-master.md)（**已关闭**）
